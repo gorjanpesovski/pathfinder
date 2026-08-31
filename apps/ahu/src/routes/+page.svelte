@@ -10,8 +10,8 @@
 
     const elementPadding = 20;
 
-    const yTop      = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 100);
-    const yBottom   = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 400);
+    const yTop      = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 80);
+    const yBottom   = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 420);
     const xLeft     = 60;
     const xCenter   = $derived(displayWidth / 2);
     const xRight    = $derived(displayWidth - 60);
@@ -23,10 +23,12 @@
     const rightExtreme        = $derived(xRight - elementPadding);
 
     const RECUPERATION_MAP = {
-        "plate-heat-exchanger": "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Plate_Heat_Exchnager",
-        "rotary-heat-exchanger": "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Rotary_Heat_Exchnager",
-        "run-around-coils": "SYSTEM.LIBRARY.CAREL.OBJECTDISPLAYS.4-Symbols.Heat%20recovery.rotary_exchanger"
+      "plate-heat-exchanger": "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Plate_Heat_Exchnager",
+      "rotary-heat-exchanger": "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Rotary_Heat_Exchnager"
+      // "run-around-coils": "SYSTEM.LIBRARY.CAREL.OBJECTDISPLAYS.4-Symbols.Heat%20recovery.rotary_exchanger"
     };
+    
+    let selectedRecuperation = $state("plate-heat-exchanger");
 
     const MODBUS_MAP = {
     "carel": {
@@ -67,7 +69,7 @@
         { key: "sup-fan",             label: "Supply Fan",                       checked: false, type: "fan", dpSwitch: false},
         { key: "sup-temp-sensor",     label: "Temperature Sensor",               checked: false, type: "temperatureSensor" },
         { key: "sup-humidity-sensor", label: "Humidity Sensor",                  checked: false, type: "humiditySensor" },
-        { key: "sup-pressure-sensor", label: "Pressure Transmit / Switch",       checked: false, type: "pressureSensor" },
+        // { key: "sup-pressure-sensor", label: "Pressure Transmit / Switch",       checked: false, type: "pressureSensor" },
         { key: "sup-co2-sensor",      label: "CO2 Air Quality Sensor",           checked: false, type: "co2Sensor" }
     ]);
 
@@ -77,7 +79,7 @@
         { key: "int-fan",             label: "Intake Fan",                        checked: false, type: "fan", dpSwitch: false },
         { key: "int-temp-sensor",     label: "Outdoor Temperature Sensor",        checked: false, type: "temperatureSensor" },
         { key: "int-humidity-sensor", label: "Outdoor Humidity Sensor",           checked: false, type: "humiditySensor" },
-        { key: "int-pressure-sensor", label: "Intake Pressure Transmit / Switch", checked: false, type: "pressureSensor" },
+        // { key: "int-pressure-sensor", label: "Intake Pressure Transmit / Switch", checked: false, type: "pressureSensor" },
         { key: "int-co2-sensor",      label: "Intake CO2 Sensor",                 checked: false, type: "co2Sensor" }
     ]);
 
@@ -87,7 +89,7 @@
         { key: "exh-fan",             label: "Exhaust Fan",                       checked: false, type: "fan", dpSwitch: false },
         { key: "exh-temp-sensor",     label: "Exhaust Temperature Sensor",        checked: false, type: "temperatureSensor" },
         { key: "exh-humidity-sensor", label: "Exhaust Humidity Sensor",           checked: false, type: "humiditySensor" },
-        { key: "exh-pressure-sensor", label: "Exhaust Pressure Transmit / Switch",checked: false, type: "pressureSensor" },
+        // { key: "exh-pressure-sensor", label: "Exhaust Pressure Transmit / Switch",checked: false, type: "pressureSensor" },
         { key: "exh-co2-sensor",      label: "Exhaust CO2 Sensor",                checked: false, type: "co2Sensor" }
     ]);
 
@@ -97,11 +99,10 @@
         { key: "ret-fan",             label: "Return Fan",                        checked: false, type: "fan", dpSwitch: false },
         { key: "ret-temp-sensor",     label: "Return Temperature Sensor",         checked: false, type: "temperatureSensor" },
         { key: "ret-humidity-sensor", label: "Return Humidity Sensor",            checked: false, type: "humiditySensor" },
-        { key: "ret-pressure-sensor", label: "Return Pressure Transmit / Switch", checked: false, type: "pressureSensor" },
+        // { key: "ret-pressure-sensor", label: "Return Pressure Transmit / Switch", checked: false, type: "pressureSensor" },
         { key: "ret-co2-sensor",      label: "Return CO2 / VOC Sensor",           checked: false, type: "co2Sensor" }
     ]);
 
-    let selectedRecuperation = $state("plate-heat-exchanger");
 
     let dragSourceArray = $state(null);
     let dragSourceIndex = $state(null);
@@ -176,7 +177,7 @@
             let svgString = `<svg atv:refpx="${elementCenterPosition}" atv:refpy="${centerY}" height="${config.height}" id="${item.key}" width="${config.width}" x="${positionX}" y="${positionY}" xlink:href="${config.path}">${appendix}</svg>`;
             drawItemMap.push(svgString);
 
-            shapes.push({ key: item.key, x: positionX, y: centerY - (config.height / 2), width: config.width, height: config.height });
+            shapes.push({ key: item.key, type:item.type, x: positionX, y: centerY - (config.height / 2), width: config.width, height: config.height, offset:config.offset });
 
             currentX += config.width + gap;
         }
@@ -483,7 +484,7 @@
       <input id="title" type="text" bind:value={displayTitle}>
     </fieldset>
   <fieldset id="select-display-dimensions">
-      <legend>Selectt Display Dimensions</legend>
+      <legend>Select Display Dimensions</legend>
       <label class="input-group" for="width"> 
         <input id="width" type="text" bind:value={displayWidth}>
       </label>
@@ -498,7 +499,7 @@
         <select id="select-recuperations-unit" name="select-recuperations-unit" bind:value={selectedRecuperation}>
           <option value="plate-heat-exchanger">Plate Heat Exchanger</option>
           <option value="rotary-heat-exchanger">Rotary Heat Exchanger</option>
-          <option value="run-around-coils">Run Around Coils</option>
+          <!-- <option value="run-around-coils">Run Around Coils</option> -->
         </select>
       </label>
     </fieldset>
@@ -657,32 +658,33 @@
         <text x={displayWidth/2} y="60" font-family="Roboto" font-size="46" font-weight="bold" fill="#1E293B" text-anchor="middle">{displayTitle}</text>
         
         <polyline points="{xLeft},{yTop} {xCenter},{yTop}" fill="none" stroke="#EF4444" stroke-width="10"/>
-        {@html exhaustLineLayout.objects}
         {#each exhaustLineLayout.shapes as shape (shape.key)}
-          <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} fill="#94A3B8" stroke="#475569" stroke-width="2"/>
+          <image href="/icons/{shape.type}.svg" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
         {/each}
 
         <polyline points="{xLeft},{yBottom} {xCenter},{yBottom}" fill="none" stroke="#22C55E" stroke-width="10"/>
-        {@html intakeLineLayout.objects}
         {#each intakeLineLayout.shapes as shape (shape.key)}
-          <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} fill="#94A3B8" stroke="#475569" stroke-width="2"/>
-        {/each}
-
-        <polyline points="{xRight},{yTop} {xCenter},{yTop}" fill="none" stroke="#F59E0B" stroke-width="10"/>
-        {@html returnLineLayout.objects}
+          <image href="/icons/{shape.type}.svg" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
+          {/each}
+          
+          <polyline points="{xRight},{yTop} {xCenter},{yTop}" fill="none" stroke="#F59E0B" stroke-width="10"/>
         {#each returnLineLayout.shapes as shape (shape.key)}
-          <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} fill="#94A3B8" stroke="#475569" stroke-width="2"/>
+        <image href="/icons/{shape.type}.svg" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
         {/each}
 
         <polyline points="{xRight},{yBottom} {xCenter},{yBottom}" fill="none" stroke="#3B82F6" stroke-width="10"/>
-        {@html supplyLineLayout.objects}
         {#each supplyLineLayout.shapes as shape (shape.key)}
-          <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} fill="#94A3B8" stroke="#475569" stroke-width="2"/>
+        <image href="/icons/{shape.type}.svg" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
         {/each}
-
-        <rect x={(displayWidth/2) - (recuperationUnitWidth/2)} y={(displayHeight/2) - (recuperationUnitHeight/2)} width={recuperationUnitWidth} height={recuperationUnitHeight} fill="#94A3B8" stroke="#475569" stroke-width="2"/>
-        <svg x={(displayWidth/2) - (recuperationUnitWidth/2)} y={(displayHeight/2) - (recuperationUnitHeight/2)} width={recuperationUnitWidth} height={recuperationUnitHeight} xlink:href={RECUPERATION_MAP[selectedRecuperation] || ''}></svg>
-      </svg>
+        
+        
+        <polyline points="{xLeft - 10},{yTop - 10} {xLeft - 30},{yTop} {xLeft - 10},{yTop + 10}" fill="none" stroke="#EF4444" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="{xLeft - 30},{yBottom - 10} {xLeft - 10},{yBottom} {xLeft - 30},{yBottom + 10}" fill="none" stroke="#22C55E" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="{xRight + 30},{yTop - 10} {xRight + 10},{yTop} {xRight + 30},{yTop + 10}" fill="none" stroke="#F59E0B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="{xRight + 10},{yBottom - 10} {xRight + 30},{yBottom} {xRight + 10},{yBottom + 10}" fill="none" stroke="#3B82F6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        
+        <image href={`/icons/${selectedRecuperation}.svg`} x={(displayWidth/2) - (recuperationUnitWidth/2)} y={(displayHeight/2) - (recuperationUnitHeight/2)} width={recuperationUnitWidth} height={recuperationUnitHeight} />
+        </svg>
     </div>
   </div>
 </div>
