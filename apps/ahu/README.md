@@ -1,42 +1,36 @@
-# sv
+# Auto AHU — User Manual
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Auto AHU helps you build an AHU (Air Handling Unit) display screen without drawing it by hand. Pick the components your unit has, arrange them, and export a ready-to-use display file.
 
-## Creating a project
+## 1. Set up the display
 
-If you're seeing this, you've probably already done this step. Congrats!
+- **Display Title** — the name shown at the top of the screen.
+- **Width / Height** — the size of the display in pixels.
 
-```sh
-# create a new project
-npx sv create my-app
-```
+## 2. Choose the recuperation unit
 
-To recreate this project with the same configuration:
+Select **Plate Heat Exchanger** or **Rotary Heat Exchanger**. Use the slider below it to move the unit left or right.
 
-```sh
-# recreate this project
-npx sv@0.17.0 create --template minimal --no-types --install npm Auto_AHU
-```
+## 3. Set the Modbus table and node path
 
-## Developing
+- **Modbus Table** — select the controller type your unit uses (currently: Carel).
+- **Node Path Prefix** — the base address for your project (e.g. `AGENT.OBJECTS.Klimat`). This is combined automatically with each component you add, so you only need to set it once.
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+## 4. Add components to each line
 
-```sh
-npm run dev
+There are four lines: **Exhaust**, **Intake**, **Return**, and **Supply**. Tick the checkbox next to any component your unit has on that line — damper, filter, fan, sensors, coils, or electric heater. Some components show extra options once checked (for example, a damper's signal type, or a filter/fan's DP switch).
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
+Components appear in the display in the order you check them. To change the order, drag a component up or down within its line.
 
-## Building
+## 5. Check the preview
 
-To create a production version of your app:
+The right-hand panel shows a live preview of your display, updating as you make changes.
 
-```sh
-npm run build
-```
+## 6. Export
 
-You can preview the production build with `npm run preview`.
+Click **Configure Selection**. The finished display is copied to your clipboard — paste it into atvise as a new SVG display.
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+## Tips
+
+- If a component looks unbound or missing data after import, double-check the Node Path Prefix and Modbus Table selection.
+- You can revisit and change any setting — the preview and export always reflect your latest choices.

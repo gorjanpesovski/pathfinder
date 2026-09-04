@@ -1,342 +1,574 @@
 <script>
+  import { ICON_SPRITE } from "$lib/iconSprite.js";
+
   let displayWidth = $state(1920);
   let displayHeight = $state(1125);
   let displayTitle = $state("Klimatska Naprava");
   let nodePathPrefix = $state("AGENT.OBJECTS.Klimat");
+  let elementMapLocation = $state("SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone");
   let selectModbusTable = $state("carel");
 
   let recuperationUnitWidth = $state(150);
   let recuperationUnitHeight = $state(500);
-  let recuperationUnitX =$derived(displayWidth/2);
+  let recuperationUnitX = $derived(displayWidth / 2);
 
-    const elementPadding = 20;
+  const elementPadding = 20;
 
-    const yTop      = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 80);
-    const yBottom   = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 420);
-    const xLeft     = 60;
-    const xCenter   = $derived(recuperationUnitX);
-    const xRight    = $derived(displayWidth - 60);
-    let scaleWidth  = 1;
+  const yTop = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 80);
+  const yBottom = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 420);
+  const xLeft = 60;
+  const xCenter = $derived(recuperationUnitX);
+  const xRight = $derived(displayWidth - 60);
+  let elementScale = $state(1);
 
-    const leftExtreme         = $derived(xLeft + elementPadding);
-    const centerExtremeLeft   = $derived(xCenter - (recuperationUnitWidth/2) - elementPadding);
-    const centerExtremeRight  = $derived(xCenter + (recuperationUnitWidth/2) + elementPadding);
-    const rightExtreme        = $derived(xRight - elementPadding);
+  const leftExtreme = $derived(xLeft + elementPadding);
+  const centerExtremeLeft = $derived(xCenter - (recuperationUnitWidth / 2) - elementPadding);
+  const centerExtremeRight = $derived(xCenter + (recuperationUnitWidth / 2) + elementPadding);
+  const rightExtreme = $derived(xRight - elementPadding);
 
-    const RECUPERATION_MAP = {
-      "plate-heat-exchanger": "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Plate_Heat_Exchnager",
-      "rotary-heat-exchanger": "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Rotary_Heat_Exchnager"
-    };
+  const RECUPERATION_MAP = $derived(
+    {
+          "plate-heat-exchanger": `${elementMapLocation}.AHU.Plate_Heat_Exchnager`,
+          "rotary-heat-exchanger": `${elementMapLocation}.AHU.Rotary_Heat_Exchnager`
+    });
     
-    let selectedRecuperation = $state("plate-heat-exchanger");
 
-    const exhaustY = $derived(selectedRecuperation === "rotary-heat-exchanger" ? yBottom : yTop);
-    const intakeY  = $derived(selectedRecuperation === "rotary-heat-exchanger" ? yTop : yBottom);
+  let selectedRecuperation = $state("rotary-heat-exchanger");
 
-    const recuperationFillPercent = $derived(
-      rightExtreme > leftExtreme
-        ? ((recuperationUnitX - leftExtreme) / (rightExtreme - leftExtreme)) * 100
-        : 0
-    );
+  const exhaustY = $derived(selectedRecuperation === "plate-heat-exchanger" ? yBottom : yTop);
+  const intakeY = $derived(selectedRecuperation === "plate-heat-exchanger" ? yTop : yBottom);
 
-    const MODBUS_MAP = {
+  const recuperationFillPercent = $derived(
+      rightExtreme > leftExtreme ?
+      ((recuperationUnitX - leftExtreme) / (rightExtreme - leftExtreme)) * 100 :
+      0
+  );
+
+  const MODBUS_MAP = {
       "carel": {
           "int-damper": (el) => `${el.signalType === "continous" ? ".Mod_External_Damper" : ".On_Off_External_Damper"}`,
-          "exh-damper": (el) => `${el.signalType === "continous" ? ".Mod_Exhaust_Damper" : ".On_Off_Exhaust_Damper"}`, 
+          "exh-damper": (el) => `${el.signalType === "continous" ? ".Mod_Exhaust_Damper" : ".On_Off_Exhaust_Damper"}`,
           "sup-fan": {
-            base: ".Supply_Fan",
-            alarm: ".Supply_Fan_Alarm"
+              base: ".Supply_Fan",
+              alarm: ".Supply_Fan_Alarm"
           },
           "exh-fan": {
-            base: ".Exhaust_Fan",
-            alarm: ".ALM_Return_Fan_Overload_1"
+              base: ".Exhaust_Fan",
+              alarm: ".ALM_Return_Fan_Overload_1"
           },
           "ret-fan": {
-            base: ".Return_Fan",
-            alarm: ".ALM_Return_Fan_Overload_1"
+              base: ".Return_Fan",
+              alarm: ".ALM_Return_Fan_Overload_1"
           },
           "sup-filter": {
-            base: ".ALM_Supply_Filter",
+              base: ".ALM_Supply_Filter",
           },
           "ret-filter": {
-            base: ".ALM_Return_Filter",
+              base: ".ALM_Return_Filter",
           },
           "int-pre-filter": {
-            base: ".ALM_Filter", // generic alarm, no intake-specific entry in table
+              base: ".ALM_Filter", // generic alarm, no intake-specific entry in table
           },
           "exh-filter": {
-            base: ".ALM_Filters", // generic alarm, no exhaust-specific entry in table
+              base: ".ALM_Filters", // generic alarm, no exhaust-specific entry in table
           },
           "sup-temp-sensor": {
-            base: ".Supply_Temp",
-            alarm: ".ALM_Regulation_Probe" // only generic probe alarm exists
+              base: ".Supply_Temp",
+              alarm: ".ALM_Regulation_Probe" // only generic probe alarm exists
           },
           "int-temp-sensor": {
-            base: ".External_Temp"
+              base: ".External_Temp"
           },
           "exh-temp-sensor": {
-            base: ".Exhaust_Temp"
+              base: ".Exhaust_Temp"
           },
           "ret-temp-sensor": {
-            base: ".Return_Temp"
+              base: ".Return_Temp"
           },
           "sup-humidity-sensor": {
-            base: ".Supply_Humid"
+              base: ".Supply_Humid"
           },
           "int-humidity-sensor": {
-            base: ".External_Humid"
+              base: ".External_Humid"
           },
           "ret-humidity-sensor": {
-            base: ".Return_Humid"
+              base: ".Return_Humid"
           },
           "sup-co2-sensor": {
-            base: ".Air_Quality_CO2"
+              base: ".Air_Quality_CO2"
           },
           "sup-preheat-hot-water-coils": {
-            base: ".Pre_Heat_Coil_Temp",
-            valve: ".Mod_Valve_Preheat",
-            pump: ".Pre_Heat_Pump_1",
-            alarm_pump_1_overload: ".ALM_Pre_Heat_Pump_1_Overload",
-            alarm_pump_1_flow: ".ALM_Pre_Heat_Pump_1_Flow",
-            alarm_water_temp: ".ALM_Pre_Heat_Pump_Water_Temperature",
+              base: ".Pre_Heat_Coil_Temp",
+              valve: ".Mod_Valve_Preheat",
+              pump: ".Pre_Heat_Pump_1",
+              alarm_pump_1_overload: ".ALM_Pre_Heat_Pump_1_Overload",
+              alarm_pump_1_flow: ".ALM_Pre_Heat_Pump_1_Flow",
+              alarm_water_temp: ".ALM_Pre_Heat_Pump_Water_Temperature",
           },
           "sup-postheat-hot-water-coils": {
-            base: ".Post_Heat_Coil_Temp",
-            valve: ".Mod_Valve_Postheat",
-            pump: ".Post_Heat_Pump_1",
-            alarm_pump_1_overload: ".ALM_Post_Heat_Pump_1_Overload",
-            alarm_pump_1_flow: ".ALM_Post_Heat_Pump_1_Flow",
-            alarm_water_temp: ".ALM_Post_Heat_Pump_Water_Temperature",
+              base: ".Post_Heat_Coil_Temp",
+              valve: ".Mod_Valve_Postheat",
+              pump: ".Post_Heat_Pump_1",
+              alarm_pump_1_overload: ".ALM_Post_Heat_Pump_1_Overload",
+              alarm_pump_1_flow: ".ALM_Post_Heat_Pump_1_Flow",
+              alarm_water_temp: ".ALM_Post_Heat_Pump_Water_Temperature",
           },
           "sup-cold-water-coils": {
-            base: ".Cool_Coil_Temp",
-            valve: ".Mod_Valve_Cool",
-            pump: ".Cool_Pump_1",
-            alarm_pump_1_overload: ".ALM_Cool_Pump_1_Overload",
-            alarm_pump_1_flow: ".ALM_Cool_Pump_1_Flow",
-            alarm_water_temp: ".ALM_Cool_Pump_Water_Temperature",
+              base: ".Cool_Coil_Temp",
+              valve: ".Mod_Valve_Cool",
+              pump: ".Cool_Pump_1",
+              alarm_pump_1_overload: ".ALM_Cool_Pump_1_Overload",
+              alarm_pump_1_flow: ".ALM_Cool_Pump_1_Flow",
+              alarm_water_temp: ".ALM_Cool_Pump_Water_Temperature",
           },
           "sup-preheat-electric-heater": {
-            base: ".Heaters_Pre_1",
-            alarm_overload: ".Din_OverL_Pre_H_Heaters",
-            alarm_heaters: ".ALM_Pre_H_Heaters",
+              base: ".Heaters_Pre_1",
+              alarm_overload: ".Din_OverL_Pre_H_Heaters",
+              alarm_heaters: ".ALM_Pre_H_Heaters",
           },
           "sup-postheat-electric-heater": {
-            base: ".Heaters_Post_1",
-            alarm_overload: ".Din_OverL_Post_H_Heaters",
-            alarm_heaters: ".ALM_Post_H_Heaters",
+              base: ".Heaters_Post_1",
+              alarm_overload: ".Din_OverL_Post_H_Heaters",
+              alarm_heaters: ".ALM_Post_H_Heaters",
           }
       }
-    };
+  };
 
-    const OBJECT_DISPLAY_MAP = $derived({
-        damper: { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Damper", width: 120, height: 300, offset: 11 },
-        filter: { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Filter", width: 145, height: 225, offset: -11 },
-        fan:    { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Fan", width: 135, height: 190, offset: 11 },
-        temperatureSensor: { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Temperature_Sensor", width: 120, height: 90, offset: 29 },
-        humiditySensor:    { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Humidity_Sensor", width: 120, height: 90, offset: 29 },
-        pressureSensor:    { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Pressure_Sensor", width: 120, height: 90, offset: 29 },
-        co2Sensor:         { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.CO2_Sensor", width: 120, height: 90, offset: 29 },
-        hotWaterCoils:     { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Hot_Water_Coil", width: 120, height: 280, offset: 38 },
-        coldWaterCoils:    { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Cold_Water_Coil", width: 120, height: 280, offset: 38 },
-        electricHeater:    { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Electric_Heater", width: 100, height: 200, offset: -2 },
-    });
+  const OBJECT_DISPLAY_MAP = $derived({
+      damper: {
+          path: `${elementMapLocation}.AHU.Damper`,
+          width: 120,
+          height: 300,
+          offset: 11
+      },
+      filter: {
+          path: `${elementMapLocation}.AHU.Filter`,
+          width: 145,
+          height: 225,
+          offset: -11
+      },
+      fan: {
+          path: `${elementMapLocation}.AHU.Fan`,
+          width: 135,
+          height: 190,
+          offset: 11
+      },
+      temperatureSensor: {
+          path: `${elementMapLocation}.AHU.Temperature_Sensor`,
+          width: 120,
+          height: 90,
+          offset: 29
+      },
+      humiditySensor: {
+          path: `${elementMapLocation}.AHU.Humidity_Sensor`,
+          width: 120,
+          height: 90,
+          offset: 29
+      },
+      pressureSensor: {
+          path: `${elementMapLocation}.AHU.Pressure_Sensor`,
+          width: 120,
+          height: 90,
+          offset: 29
+      },
+      co2Sensor: {
+          path: `${elementMapLocation}.AHU.CO2_Sensor`,
+          width: 120,
+          height: 90,
+          offset: 29
+      },
+      hotWaterCoils: {
+          path: `${elementMapLocation}.AHU.Hot_Water_Coil`,
+          width: 120,
+          height: 280,
+          offset: 38
+      },
+      coldWaterCoils: {
+          path: `${elementMapLocation}.AHU.Cold_Water_Coil`,
+          width: 120,
+          height: 280,
+          offset: 38
+      },
+      electricHeater: {
+          path: `${elementMapLocation}.AHU.Electric_Heater`,
+          width: 100,
+          height: 200,
+          offset: -2
+      },
+      humidifier: {
+          path: `${elementMapLocation}.AHU.Humidifier`,
+          width: 100,
+          height: 210,
+          offset: -2
+      },
+      frostThermostat: {
+          path: `${elementMapLocation}.AHU.Frost_Protection_Thermostat`,
+          width: 35,
+          height: 35,
+          offset: 0
+      },
+  });
 
-    const ELEMENT_OPTIONS = {
-      damper: [ 
-        {key: "signalType", label: "Signal Type", type: "select"}
-      ],
-      filter: [
-        {key: "dpSwitch", label: "DP Switch", type: "checkbox"}
-      ],
-      fan: [
-        {key: "dpSwitch", label: "DP Switch", type: "checkbox"}
-      ]
-    }
+  const ELEMENT_OPTIONS = {
+      damper: [{
+          key: "signalType",
+          label: "Signal Type",
+          type: "select"
+      }],
+      filter: [{
+          key: "dpSwitch",
+          label: "DP Switch",
+          type: "checkbox"
+      }],
+      fan: [{
+          key: "dpSwitch",
+          label: "DP Switch",
+          type: "checkbox"
+      }]
+  }
 
-    let supplyLineElements = $state([
-        { key: "sup-filter",          label: "Supply Air Filter",                checked: false, type: "filter", dpSwitch: false },
-        { key: "sup-fan",             label: "Supply Fan",                       checked: false, type: "fan", dpSwitch: false},
-        { key: "sup-temp-sensor",     label: "Temperature Sensor",               checked: false, type: "temperatureSensor" },
-        { key: "sup-humidity-sensor", label: "Humidity Sensor",                  checked: false, type: "humiditySensor" },
-        { key: "sup-co2-sensor",      label: "CO2 Air Quality Sensor",           checked: false, type: "co2Sensor" },
-        { key: "sup-preheat-hot-water-coils", label: "Preheat Hot Water Coils",                  checked: false, type: "hotWaterCoils" },
-        { key: "sup-postheat-hot-water-coils", label: "Postheat Hot Water Coils",                  checked: false, type: "hotWaterCoils" },
-        { key: "sup-cold-water-coils",label: "Cold Water Coils",                 checked: false, type: "coldWaterCoils" },
-        { key: "sup-electric-heater", label: "Electric Heaters",                 checked: false, type: "electricHeater" }
-    ]);
+  let supplyLineElements = $state([{
+          key: "sup-filter",
+          label: "Supply Air Filter",
+          checked: false,
+          type: "filter",
+          dpSwitch: false
+      },
+      {
+          key: "sup-frost-thermostat",
+          label: "Frost Protection Thermostat",
+          checked: false,
+          type: "frostThermostat"
+      },
+      {
+          key: "sup-preheat-hot-water-coils",
+          label: "Preheat Hot Water Coils",
+          checked: false,
+          type: "hotWaterCoils"
+      },
+      {
+          key: "sup-cold-water-coils",
+          label: "Cold Water Coils",
+          checked: false,
+          type: "coldWaterCoils"
+      },
+      {
+          key: "sup-postheat-hot-water-coils",
+          label: "Postheat Hot Water Coils",
+          checked: false,
+          type: "hotWaterCoils"
+      },
+      {
+          key: "sup-electric-heater",
+          label: "Electric Heaters",
+          checked: false,
+          type: "electricHeater"
+      },
+      {
+          key: "sup-humidifier",
+          label: "Humidifier",
+          checked: false,
+          type: "humidifier"
+      },
+      {
+          key: "sup-fan",
+          label: "Supply Fan",
+          checked: false,
+          type: "fan",
+          dpSwitch: false
+      },
+      {
+          key: "sup-temp-sensor",
+          label: "Temperature Sensor",
+          checked: false,
+          type: "temperatureSensor"
+      },
+      {
+          key: "sup-humidity-sensor",
+          label: "Humidity Sensor",
+          checked: false,
+          type: "humiditySensor"
+      },
+      {
+          key: "sup-co2-sensor",
+          label: "CO2 Air Quality Sensor",
+          checked: false,
+          type: "co2Sensor"
+      }
+  ]);
 
-    let intakeLineElements = $state([
-        { key: "int-damper",          label: "Outdoor Air Damper",                checked: false, type: "damper", signalType: "continious" },
-        { key: "int-pre-filter",      label: "Intake Weather Louver / Pre-Filter",checked: false, type: "filter", dpSwitch: false },
-        { key: "int-fan",             label: "Intake Fan",                        checked: false, type: "fan", dpSwitch: false },
-        { key: "int-temp-sensor",     label: "Outdoor Temperature Sensor",        checked: false, type: "temperatureSensor" },
-        { key: "int-humidity-sensor", label: "Outdoor Humidity Sensor",           checked: false, type: "humiditySensor" },
-        { key: "int-co2-sensor",      label: "Intake CO2 Sensor",                 checked: false, type: "co2Sensor" }
-    ]);
+  let intakeLineElements = $state([{
+          key: "int-damper",
+          label: "Outdoor Air Damper",
+          checked: false,
+          type: "damper",
+          signalType: "continious"
+      },
+      {
+          key: "int-pre-filter",
+          label: "Intake Weather Louver / Pre-Filter",
+          checked: false,
+          type: "filter",
+          dpSwitch: false
+      },
+      {
+          key: "int-temp-sensor",
+          label: "Outdoor Temperature Sensor",
+          checked: false,
+          type: "temperatureSensor"
+      },
+      {
+          key: "int-humidity-sensor",
+          label: "Outdoor Humidity Sensor",
+          checked: false,
+          type: "humiditySensor"
+      },
+      {
+          key: "int-fan",
+          label: "Intake Fan",
+          checked: false,
+          type: "fan",
+          dpSwitch: false
+      }
+  ]);
 
-    let exhaustLineElements = $state([
-        { key: "exh-damper",          label: "Exhaust Air Damper",                checked: false, type: "damper", signalType: "continious" },
-        { key: "exh-filter",          label: "Exhaust Filter",                    checked: false, type: "filter", dpSwitch: false },
-        { key: "exh-fan",             label: "Exhaust Fan",                       checked: false, type: "fan", dpSwitch: false },
-        { key: "exh-temp-sensor",     label: "Exhaust Temperature Sensor",        checked: false, type: "temperatureSensor" },
-        { key: "exh-humidity-sensor", label: "Exhaust Humidity Sensor",           checked: false, type: "humiditySensor" },
-        { key: "exh-co2-sensor",      label: "Exhaust CO2 Sensor",                checked: false, type: "co2Sensor" }
-    ]);
+  let exhaustLineElements = $state([{
+          key: "exh-frost-thermostat",
+          label: "Recovery Core Frost Thermostat",
+          checked: false,
+          type: "frostThermostat"
+      },
+      {
+          key: "exh-filter",
+          label: "Exhaust Filter",
+          checked: false,
+          type: "filter",
+          dpSwitch: false
+      },
+      {
+          key: "exh-temp-sensor",
+          label: "Exhaust Temperature Sensor",
+          checked: false,
+          type: "temperatureSensor"
+      },
+      {
+          key: "exh-humidity-sensor",
+          label: "Exhaust Humidity Sensor",
+          checked: false,
+          type: "humiditySensor"
+      },
+      {
+          key: "exh-fan",
+          label: "Exhaust Fan",
+          checked: false,
+          type: "fan",
+          dpSwitch: false
+      },
+      {
+          key: "exh-damper",
+          label: "Exhaust Air Damper",
+          checked: false,
+          type: "damper",
+          signalType: "continious"
+      }
+  ]);
 
-    let returnLineElements = $state([
-        { key: "ret-filter",          label: "Return Air Filter",                 checked: false, type: "filter", dpSwitch: false },
-        { key: "ret-fan",             label: "Return Fan",                        checked: false, type: "fan", dpSwitch: false },
-        { key: "ret-temp-sensor",     label: "Return Temperature Sensor",         checked: false, type: "temperatureSensor" },
-        { key: "ret-humidity-sensor", label: "Return Humidity Sensor",            checked: false, type: "humiditySensor" },
-        { key: "ret-co2-sensor",      label: "Return CO2 Sensor",                 checked: false, type: "co2Sensor" }
-    ]);
+  let returnLineElements = $state([{
+          key: "ret-filter",
+          label: "Return Air Filter",
+          checked: false,
+          type: "filter",
+          dpSwitch: false
+      },
+      {
+          key: "ret-temp-sensor",
+          label: "Return Temperature Sensor",
+          checked: false,
+          type: "temperatureSensor"
+      },
+      {
+          key: "ret-humidity-sensor",
+          label: "Return Humidity Sensor",
+          checked: false,
+          type: "humiditySensor"
+      },
+      {
+          key: "ret-co2-sensor",
+          label: "Return CO2 Sensor",
+          checked: false,
+          type: "co2Sensor"
+      },
+      {
+          key: "ret-fan",
+          label: "Return Fan",
+          checked: false,
+          type: "fan",
+          dpSwitch: false
+      }
+  ]);
 
 
-    let dragSourceArray = $state(null);
-    let dragSourceIndex = $state(null);
-    let dragOverArray = $state(null);
-    let dragOverIndex = $state(null);
-    let copySuccess = $state(false);
+  let dragSourceArray = $state(null);
+  let dragSourceIndex = $state(null);
+  let dragOverArray = $state(null);
+  let dragOverIndex = $state(null);
+  let copySuccess = $state(false);
 
-    function handleDragStart(array, index){
-        dragSourceArray = array;
-        dragSourceIndex = index;
-    }
+  function handleDragStart(array, index) {
+      dragSourceArray = array;
+      dragSourceIndex = index;
+  }
 
-    function handleDragOver(event, array, index){
-        event.preventDefault();
-        dragOverArray = array;
-        dragOverIndex = index;
-    }
+  function handleDragOver(event, array, index) {
+      event.preventDefault();
+      dragOverArray = array;
+      dragOverIndex = index;
+  }
 
-    function handleDragEnd(){
-        dragSourceArray = null;
-        dragSourceIndex = null;
-        dragOverArray = null;
-        dragOverIndex = null;
-    }
+  function handleDragEnd() {
+      dragSourceArray = null;
+      dragSourceIndex = null;
+      dragOverArray = null;
+      dragOverIndex = null;
+  }
 
-    function handleDrop(array, index){
-        if(dragSourceArray === array && dragSourceIndex !== null && dragSourceIndex !== index){
-            const updated = [...array];
-            const [movedItem] = updated.splice(dragSourceIndex, 1);
-            updated.splice(index, 0, movedItem);
-            
-            if (array === supplyLineElements) supplyLineElements = updated;
-            else if (array === intakeLineElements) intakeLineElements = updated;
-            else if (array === exhaustLineElements) exhaustLineElements = updated;
-            else if (array === returnLineElements) returnLineElements = updated;
-        }
-        handleDragEnd();
-    }
+  function handleDrop(array, index) {
+      if (dragSourceArray === array && dragSourceIndex !== null && dragSourceIndex !== index) {
+          const updated = [...array];
+          const [movedItem] = updated.splice(dragSourceIndex, 1);
+          updated.splice(index, 0, movedItem);
 
-    function calculateLineLayout(array, startingPosition, distance, centerY){
-        const checkedItems = array.filter(item => item.checked && item.type && OBJECT_DISPLAY_MAP[item.type]);
-        let drawItemMap = [];
-        let shapes = [];
-        let elementCount = checkedItems.length;
+          if (array === supplyLineElements) supplyLineElements = updated;
+          else if (array === intakeLineElements) intakeLineElements = updated;
+          else if (array === exhaustLineElements) exhaustLineElements = updated;
+          else if (array === returnLineElements) returnLineElements = updated;
+      }
+      handleDragEnd();
+  }
 
-        if (elementCount === 0) {
-            return { objects: "", shapes: [] };
-        }
+  function calculateLineLayout(array, startingPosition, distance, centerY) {
+      const checkedItems = array.filter(item => item.checked && item.type && OBJECT_DISPLAY_MAP[item.type]);
+      let drawItemMap = [];
+      let shapes = [];
+      let elementCount = checkedItems.length;
 
-        const totalElementsWidth = checkedItems.reduce((sum, item) => {
-            return sum + OBJECT_DISPLAY_MAP[item.type].width;
-        }, 0);
+      if (elementCount === 0) {
+          return {
+              objects: "",
+              shapes: []
+          };
+      }
 
-        const gap = elementCount > 1 
-            ? (distance - totalElementsWidth) / (elementCount - 1) 
-            : 0;
+      const totalElementsWidth = checkedItems.reduce((sum, item) => {
+          return sum + (OBJECT_DISPLAY_MAP[item.type].width * elementScale);
+      }, 0);
 
-        let currentX = startingPosition;
+      const gap = elementCount > 1 ?
+          (distance - totalElementsWidth) / (elementCount - 1) :
+          0;
 
-        for (let i = 0; i < elementCount; i++){
-            const item = checkedItems[i];
-            const config = OBJECT_DISPLAY_MAP[item.type];
-            
-            let positionX = currentX;
-            let positionY = centerY - (config.height / 2) + config.offset;
-            let elementCenterPosition = positionX + (config.width / 2);
+      let currentX = startingPosition;
 
-            const mapEntry = MODBUS_MAP[selectModbusTable]?.[item.key];
-            let appendix = "";
+      for (let i = 0; i < elementCount; i++) {
+          const item = checkedItems[i];
+          const config = OBJECT_DISPLAY_MAP[item.type];
+          const scaledWidth = config.width * elementScale;
 
-            if(typeof(mapEntry) === "object"){
+          let positionX = currentX;
+          let positionY = centerY - ((config.height * elementScale) / 2) + (config.offset * elementScale);
+          let elementCenterPosition = positionX + (scaledWidth / 2);
 
-              for(const [key, value] of Object.entries(mapEntry)){
-                appendix +=  `<atv:argument name="${key}" value="${nodePathPrefix}${value}"/>`
+          const mapEntry = MODBUS_MAP[selectModbusTable]?.[item.key];
+          let appendix = "";
+
+          if (typeof(mapEntry) === "object") {
+
+              for (const [key, value] of Object.entries(mapEntry)) {
+                  appendix += `<atv:argument name="${key}" value="${nodePathPrefix}${value}"/>`
               }
-            }else{
+          } else {
               let suffix = typeof mapEntry === "function" ? mapEntry(item) : (mapEntry || "");
               appendix = suffix ? `<atv:argument name="base" value="${nodePathPrefix}${suffix}"/>` : "";
-            }
+          }
 
-            let svgString = `<svg atv:refpx="${elementCenterPosition}" atv:refpy="${centerY}" height="${config.height}" id="${item.key}" width="${config.width}" x="${positionX}" y="${positionY}" xlink:href="${config.path}">${appendix}</svg>`;
-            drawItemMap.push(svgString);
+          let svgString = `<svg atv:refpx="${elementCenterPosition}" atv:refpy="${centerY}" height="${config.height}" id="${item.key}" width="${config.width}" x="0" y="0" transform="matrix(${elementScale},0,0,${elementScale},${positionX},${positionY})" xlink:href="${config.path}">${appendix}</svg>`;
+          drawItemMap.push(svgString);
 
-            shapes.push({ key: item.key, type:item.type, x: positionX, y: centerY - (config.height / 2), width: config.width, height: config.height, offset:config.offset });
+          shapes.push({
+              key: item.key,
+              type: item.type,
+              x: positionX,
+              y: centerY - ((config.height * elementScale) / 2),
+              width: scaledWidth,
+              height: config.height * elementScale,
+              offset: config.offset * elementScale
+          });
 
-            currentX += config.width + gap;
-        }
+          currentX += scaledWidth + gap;
+      }
 
-        return { objects: drawItemMap.join("\n            "), shapes };
-    }
+      return {
+          objects: drawItemMap.join("\n            "),
+          shapes
+      };
+  }
 
-    const exhaustLineLayout = $derived(calculateLineLayout(exhaustLineElements, leftExtreme, centerExtremeLeft - leftExtreme, exhaustY));
-    const intakeLineLayout = $derived(calculateLineLayout(intakeLineElements, leftExtreme, centerExtremeLeft - leftExtreme, intakeY));
-    const returnLineLayout = $derived(calculateLineLayout(returnLineElements, centerExtremeRight, rightExtreme - centerExtremeRight, yTop));
-    const supplyLineLayout = $derived(calculateLineLayout(supplyLineElements, centerExtremeRight, rightExtreme - centerExtremeRight, yBottom));
+  const exhaustLineLayout = $derived(calculateLineLayout(exhaustLineElements, leftExtreme, centerExtremeLeft - leftExtreme, exhaustY));
+  const intakeLineLayout = $derived(calculateLineLayout(intakeLineElements, leftExtreme, centerExtremeLeft - leftExtreme, intakeY));
+  const returnLineLayout = $derived(calculateLineLayout(returnLineElements, centerExtremeRight, rightExtreme - centerExtremeRight, yTop));
+  const supplyLineLayout = $derived(calculateLineLayout(supplyLineElements, centerExtremeRight, rightExtreme - centerExtremeRight, yBottom));
 
-    async function handleConfiguration() {
-        const boilerPlate =            
-            `<?xml version='1.0' encoding='UTF-8' standalone='no'?>
-            <svg height="${displayHeight}" version="1.2" width="${displayWidth}" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:ns1="http://sozi.baierouge.fr" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-            <defs/>
-            <metadata>
-            <atv:gridconfig enabled="true" gridstyle="lines" height="20" width="20"/>
-            <atv:snapconfig enabled="true" height="10" width="10"/>
-            </metadata>
-            <svg atv:refpx="1865" atv:refpy="65.335" height="121" id="settings_button" transform="matrix(0.6667,0,0,0.6667,0,0)" width="121" x="2736.86" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.4.%20Gumbi.Round_Buttons.Button" y="37.498">
-            <atv:argument name="animation_type" value="Background"/>
-            <atv:argument name="hover_color" value="#2A7A53"/>
-            </svg>
-            <text atv:refpx="960" atv:refpy="66" fill="#1E293B" font-family="Roboto" font-size="46" font-weight="bold" id="title" x="765.5" y="82">${displayTitle}</text>
-            <svg atv:refpx="55.0001" atv:refpy="65.3353" height="121" id="back_button" transform="matrix(0.6667,0,0,0.6667,0,0)" width="121" x="21.996" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.4.%20Gumbi.Round_Buttons.Button" y="37.498">
-            <atv:argument name="animation_type" value="Background"/>
-            <atv:argument name="hover_color" value="#A32A3A"/>
-            <atv:argument name="icon_type" value="Back"/>
-            </svg>
-            <script atv:desc="" atv:name="" type="text/ecmascript"/>
-            <svg atv:refpx="1765" atv:refpy="65.6677" height="121" id="graph_button" transform="matrix(0.6612,0,0,0.6612,0,0)" width="121" x="2608.893" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.4.%20Gumbi.Round_Buttons.Button" y="38.816">
-            <atv:argument name="hover_color" value="#2A7A53"/>
-            <atv:argument name="animation_type" value="Background"/>
-            <atv:argument name="icon_type" value="Graph"/>
-            </svg>
-            <polyline atv:refpx="700.5" atv:refpy="700.5" fill="#EF4444" fill-opacity="0" id="exhaust_line" points="${xLeft},${exhaustY} ${xCenter},${exhaustY}" stroke="#EF4444" stroke-width="10"/>
-            ${exhaustLineLayout.objects}
-            <polyline atv:refpx="500" atv:refpy="700.5" fill="#22C55E" fill-opacity="0" id="intake_line" points="${xLeft},${intakeY} ${xCenter},${intakeY}" stroke="#22C55E" stroke-width="10"/>
-            ${intakeLineLayout.objects}
-            <polyline atv:refpx="1420" atv:refpy="400.5" fill="#F59E0B" fill-opacity="0" id="return_line" points="${xRight},${yTop} ${xCenter},${yTop}" stroke="#F59E0B" stroke-width="10"/>
-            ${returnLineLayout.objects}
-            <polyline atv:refpx="1420" atv:refpy="700.5" fill="#3B82F6" fill-opacity="0" id="supply_line" points="${xRight},${yBottom} ${xCenter},${yBottom}" stroke="#3B82F6" stroke-width="10"/>
-            ${supplyLineLayout.objects}
-            <svg atv:refpx="${(displayWidth/2) - (recuperationUnitWidth/2)}" atv:refpy="${(displayHeight/2) - (recuperationUnitHeight/2)}" height="${recuperationUnitHeight}" id="recuperation_unit" width="${displayWidth}" x="${(recuperationUnitX) - (recuperationUnitWidth/2)}" xlink:href="${RECUPERATION_MAP[selectedRecuperation] || ''}" y="${(displayHeight/2) - (recuperationUnitHeight/2)}"/>
-            <svg atv:refpx="40" atv:refpy="390" height="20" id="exhaust_arrows" width="40" x="${xLeft - 40}" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Arrows" y="${exhaustY - 10}"><atv:argument name="color" value="#EF4444"/></svg>
-            <svg atv:refpx="40" atv:refpy="390" height="20" id="intake_arrows" width="40" x="${xLeft - 40}" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Arrows" y="${intakeY - 10}"><atv:argument name="color" value="#22C55E"/></svg>
-            <svg atv:refpx="40" atv:refpy="390" height="20" id="return_arrows" width="40" x="${xRight}" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Arrows" y="${yTop - 10}"><atv:argument name="color" value="#F59E0B"/></svg>
-            <svg atv:refpx="40" atv:refpy="390" height="20" id="supply_arrows" width="40" x="${xRight}" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Arrows" y="${yBottom - 10}"><atv:argument name="color" value="#3B82F6"/></svg>
-            </svg>`;
+  async function handleConfiguration() {
+      const boilerPlate =
+          `<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+              <svg height="${displayHeight}" version="1.2" width="${displayWidth}" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:ns1="http://sozi.baierouge.fr" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+              <defs/>
+              <metadata>
+              <atv:gridconfig enabled="true" gridstyle="lines" height="20" width="20"/>
+              <atv:snapconfig enabled="true" height="10" width="10"/>
+              </metadata>
+              <svg atv:refpx="1865" atv:refpy="65.335" height="121" id="settings_button" transform="matrix(0.6667,0,0,0.6667,0,0)" width="121" x="2736.86" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.4.%20Gumbi.Round_Buttons.Button" y="37.498">
+              <atv:argument name="animation_type" value="Background"/>
+              <atv:argument name="hover_color" value="#2A7A53"/>
+              </svg>
+              <text atv:refpx="960" atv:refpy="66" fill="#1E293B" font-family="Roboto" font-size="46" font-weight="bold" id="title" x="765.5" y="82">${displayTitle}</text>
+              <svg atv:refpx="55.0001" atv:refpy="65.3353" height="121" id="back_button" transform="matrix(0.6667,0,0,0.6667,0,0)" width="121" x="21.996" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.4.%20Gumbi.Round_Buttons.Button" y="37.498">
+              <atv:argument name="animation_type" value="Background"/>
+              <atv:argument name="hover_color" value="#A32A3A"/>
+              <atv:argument name="icon_type" value="Back"/>
+              </svg>
+              <script atv:desc="" atv:name="" type="text/ecmascript"/>
+              <svg atv:refpx="1765" atv:refpy="65.6677" height="121" id="graph_button" transform="matrix(0.6612,0,0,0.6612,0,0)" width="121" x="2608.893" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.4.%20Gumbi.Round_Buttons.Button" y="38.816">
+              <atv:argument name="hover_color" value="#2A7A53"/>
+              <atv:argument name="animation_type" value="Background"/>
+              <atv:argument name="icon_type" value="Graph"/>
+              </svg>
+              <polyline atv:refpx="700.5" atv:refpy="700.5" fill="#EF4444" fill-opacity="0" id="exhaust_line" points="${xLeft},${exhaustY} ${xCenter},${exhaustY}" stroke="#EF4444" stroke-width="10"/>
+              ${exhaustLineLayout.objects}
+              <polyline atv:refpx="500" atv:refpy="700.5" fill="#22C55E" fill-opacity="0" id="intake_line" points="${xLeft},${intakeY} ${xCenter},${intakeY}" stroke="#22C55E" stroke-width="10"/>
+              ${intakeLineLayout.objects}
+              <polyline atv:refpx="1420" atv:refpy="400.5" fill="#F59E0B" fill-opacity="0" id="return_line" points="${xRight},${yTop} ${xCenter},${yTop}" stroke="#F59E0B" stroke-width="10"/>
+              ${returnLineLayout.objects}
+              <polyline atv:refpx="1420" atv:refpy="700.5" fill="#3B82F6" fill-opacity="0" id="supply_line" points="${xRight},${yBottom} ${xCenter},${yBottom}" stroke="#3B82F6" stroke-width="10"/>
+              ${supplyLineLayout.objects}
+              <svg atv:refpx="${(displayWidth/2) - (recuperationUnitWidth/2)}" atv:refpy="${(displayHeight/2) - (recuperationUnitHeight/2)}" height="${recuperationUnitHeight}" id="recuperation_unit" width="${displayWidth}" x="${(recuperationUnitX) - (recuperationUnitWidth/2)}" xlink:href="${RECUPERATION_MAP[selectedRecuperation] || ''}" y="${(displayHeight/2) - (recuperationUnitHeight/2)}"/>
+              <svg atv:refpx="40" atv:refpy="390" height="20" id="exhaust_arrows" width="40" x="${xLeft - 40}" xlink:href="${elementMapLocation}.AHU.Arrows" y="${exhaustY - 10}"><atv:argument name="color" value="#EF4444"/></svg>
+              <svg atv:refpx="40" atv:refpy="390" height="20" id="intake_arrows" width="40" x="${xLeft - 40}" xlink:href="${elementMapLocation}.AHU.Arrows" y="${intakeY - 10}"><atv:argument name="color" value="#22C55E"/></svg>
+              <svg atv:refpx="40" atv:refpy="390" height="20" id="return_arrows" width="40" x="${xRight}" xlink:href="${elementMapLocation}.AHU.Arrows" y="${yTop - 10}"><atv:argument name="color" value="#F59E0B"/></svg>
+              <svg atv:refpx="40" atv:refpy="390" height="20" id="supply_arrows" width="40" x="${xRight}" xlink:href="${elementMapLocation}.AHU.Arrows" y="${yBottom - 10}"><atv:argument name="color" value="#3B82F6"/></svg>
+              </svg>`;
 
-        try {
-            await navigator.clipboard.writeText(boilerPlate);
-            console.log("Copied to clipboard");
-            copySuccess = true;
-            setTimeout(() => { copySuccess = false; }, 2000);
-        } catch(err) {
-            console.log("Failed to copy:", err);
-        }
-    }
+      try {
+          await navigator.clipboard.writeText(boilerPlate);
+          console.log("Copied to clipboard");
+          copySuccess = true;
+          setTimeout(() => {
+              copySuccess = false;
+          }, 2000);
+      } catch (err) {
+          console.log("Failed to copy:", err);
+      }
+  }
 </script>
 
 <style>
@@ -414,10 +646,22 @@
   .input-group {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
+    text-align: left;
     gap: 6px;
     font-weight: 600;
     font-size: 13px;
     color: #475569;
+  }
+
+  .input-group:has(input[type="range"]) {
+    gap: 0;
+  }
+
+  .field-hint {
+    font-weight: 400;
+    font-size: 12px;
+    color: #94a3b8;
   }
 
   .input-group input,
@@ -512,7 +756,7 @@
     appearance: none;
     width: 100%;
     height: 20px;
-    margin: 4px 0 0 0;
+    margin: 0;
     padding: 0;
     border: none;
     background: transparent;
@@ -545,8 +789,8 @@
   input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
     margin-top: -6px; /* centers the 16px thumb on the 6px track */
     border-radius: 50%;
     background-color: #ffffff;
@@ -556,8 +800,8 @@
   }
 
   input[type="range"]::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     background-color: #ffffff;
     border: 2px solid #2563eb;
@@ -671,6 +915,7 @@
 </style>
 
 <title>Auto AHU</title>
+{@html ICON_SPRITE}
 <div class="header">
   <img class="logo" src="/logo.svg" alt="Auto AHU logo">Auto AHU
   <link rel="icon" type="image/x-icon" href="/logo.svg">
@@ -692,17 +937,33 @@
       </label>
     </fieldset>
     <fieldset id="select-recuperations-unit">
-      <legend>Select Recuperation Unit</legend>
+      <legend>Select Recuperation Unit and Bypass Damper</legend>
       <label class="input-group" for="select-recuperations-unit">
         <select id="select-recuperations-unit" name="select-recuperations-unit" bind:value={selectedRecuperation}>
           <option value="plate-heat-exchanger">Plate Heat Exchanger</option>
           <option value="rotary-heat-exchanger">Rotary Heat Exchanger</option>
         </select>
+      </label>
+      <label class="input-group" for="select-bypass-damper">
+        <select id="select-bypass-damper" name="select-bypass-damper">
+          <option value="no-bypass-damper">No Bypass Damper</option>
+          <option value="bypass-damper-present">Bypass Damper Present</option>
+        </select>
+      </label>
+    </fieldset>
+    <fieldset id="select-layout-adjustments">
+      <legend>Layout Adjustments</legend>
+      <label class="input-group" for="recuperation-unit-x-position">
+        <span class="field-hint">Recuperation Unit X Position</span>
         <input type="range" name="recuperation-unit-x-position" id="recuperation-unit-x-position" min={leftExtreme} max={rightExtreme} bind:value={recuperationUnitX} style="--fill: {recuperationFillPercent}%">
+      </label>
+      <label class="input-group" for="element-scale">
+        <span class="field-hint">Element Scale</span>
+        <input type="range" name="element-scale" id="element-scale" min={0.5} max={1} step="0.01" bind:value={elementScale} style="--fill: {recuperationFillPercent}%">
       </label>
     </fieldset>
     <fieldset id="select-modbus">
-      <legend>Select Modbus Table and Node Path Prefix</legend>
+      <legend>Modbus Table, Node Path Prefix, Element Map</legend>
       <label class="input-group" for="modbus-table-selection">
         <select id="modbus-table-selection" name="modbus-table-selection" bind:value={selectModbusTable}>
           <option value="empty">Empty</option>
@@ -710,6 +971,7 @@
           
         </select>
         <input id="node-path-prefix" type="text" bind:value={nodePathPrefix}>
+        <input id="element-map" type="text" bind:value={elementMapLocation}>
       </label>
     </fieldset>
     <fieldset id="select-exhaust-line-elements">
@@ -857,22 +1119,22 @@
 
         <polyline points="{xLeft},{exhaustY} {xCenter},{exhaustY}" fill="none" stroke="#EF4444" stroke-width="10"/>
         {#each exhaustLineLayout.shapes as shape (shape.key)}
-          <image href="/icons/{shape.type}.svg" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
+          <use href="#icon-{shape.type}" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
         {/each}
 
         <polyline points="{xLeft},{intakeY} {xCenter},{intakeY}" fill="none" stroke="#22C55E" stroke-width="10"/>
         {#each intakeLineLayout.shapes as shape (shape.key)}
-          <image href="/icons/{shape.type}.svg" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
+          <use href="#icon-{shape.type}" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
           {/each}
           
           <polyline points="{xRight},{yTop} {xCenter},{yTop}" fill="none" stroke="#F59E0B" stroke-width="10"/>
         {#each returnLineLayout.shapes as shape (shape.key)}
-        <image href="/icons/{shape.type}.svg" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
+        <use href="#icon-{shape.type}" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
         {/each}
 
         <polyline points="{xRight},{yBottom} {xCenter},{yBottom}" fill="none" stroke="#3B82F6" stroke-width="10"/>
         {#each supplyLineLayout.shapes as shape (shape.key)}
-        <image href="/icons/{shape.type}.svg" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
+        <use href="#icon-{shape.type}" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
         {/each}
         
         
@@ -881,7 +1143,7 @@
         <polyline points="{xRight + 30},{yTop - 10} {xRight + 10},{yTop} {xRight + 30},{yTop + 10}" fill="none" stroke="#F59E0B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
         <polyline points="{xRight + 10},{yBottom - 10} {xRight + 30},{yBottom} {xRight + 10},{yBottom + 10}" fill="none" stroke="#3B82F6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
         
-        <image href={`/icons/${selectedRecuperation}.svg`} x={(recuperationUnitX) - (recuperationUnitWidth/2)} y={(displayHeight/2) - (recuperationUnitHeight/2)} width={recuperationUnitWidth} height={recuperationUnitHeight} />
+        <use href={`#icon-${selectedRecuperation}`} x={(recuperationUnitX) - (recuperationUnitWidth/2)} y={(displayHeight/2) - (recuperationUnitHeight/2)} width={recuperationUnitWidth} height={recuperationUnitHeight} />
         </svg>
     </div>
   </div>
