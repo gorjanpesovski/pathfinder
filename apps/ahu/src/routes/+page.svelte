@@ -5,7 +5,7 @@
   let displayHeight = $state(1125);
   let displayTitle = $state("Klimatska Naprava");
   let nodePathPrefix = $state("AGENT.OBJECTS.Klimat");
-  let elementMapLocation = $state("SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone");
+  let elementMapLocation = $state("SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU");
   let selectModbusTable = $state("carel");
 
   let recuperationUnitWidth = $state(150);
@@ -28,8 +28,8 @@
 
   const RECUPERATION_MAP = $derived(
     {
-          "plate-heat-exchanger": `${elementMapLocation}.AHU.Plate_Heat_Exchnager`,
-          "rotary-heat-exchanger": `${elementMapLocation}.AHU.Rotary_Heat_Exchnager`
+          "plate-heat-exchanger": `${elementMapLocation}.Plate_Heat_Exchnager`,
+          "rotary-heat-exchanger": `${elementMapLocation}.Rotary_Heat_Exchnager`
     });
     
 
@@ -136,73 +136,73 @@
 
   const OBJECT_DISPLAY_MAP = $derived({
       damper: {
-          path: `${elementMapLocation}.AHU.Damper`,
+          path: `${elementMapLocation}.Damper`,
           width: 120,
           height: 300,
           offset: 11
       },
       filter: {
-          path: `${elementMapLocation}.AHU.Filter`,
+          path: `${elementMapLocation}.Filter`,
           width: 145,
           height: 225,
           offset: -11
       },
       fan: {
-          path: `${elementMapLocation}.AHU.Fan`,
+          path: `${elementMapLocation}.Fan`,
           width: 135,
           height: 190,
           offset: 11
       },
       temperatureSensor: {
-          path: `${elementMapLocation}.AHU.Temperature_Sensor`,
+          path: `${elementMapLocation}.Temperature_Sensor`,
           width: 120,
           height: 90,
           offset: 29
       },
       humiditySensor: {
-          path: `${elementMapLocation}.AHU.Humidity_Sensor`,
+          path: `${elementMapLocation}.Humidity_Sensor`,
           width: 120,
           height: 90,
           offset: 29
       },
       pressureSensor: {
-          path: `${elementMapLocation}.AHU.Pressure_Sensor`,
+          path: `${elementMapLocation}.Pressure_Sensor`,
           width: 120,
           height: 90,
           offset: 29
       },
       co2Sensor: {
-          path: `${elementMapLocation}.AHU.CO2_Sensor`,
+          path: `${elementMapLocation}.CO2_Sensor`,
           width: 120,
           height: 90,
           offset: 29
       },
       hotWaterCoils: {
-          path: `${elementMapLocation}.AHU.Hot_Water_Coil`,
+          path: `${elementMapLocation}.Hot_Water_Coil`,
           width: 120,
           height: 280,
           offset: 38
       },
       coldWaterCoils: {
-          path: `${elementMapLocation}.AHU.Cold_Water_Coil`,
+          path: `${elementMapLocation}.Cold_Water_Coil`,
           width: 120,
           height: 280,
           offset: 38
       },
       electricHeater: {
-          path: `${elementMapLocation}.AHU.Electric_Heater`,
+          path: `${elementMapLocation}.Electric_Heater`,
           width: 100,
           height: 200,
           offset: -2
       },
       humidifier: {
-          path: `${elementMapLocation}.AHU.Humidifier`,
+          path: `${elementMapLocation}.Humidifier`,
           width: 100,
           height: 210,
           offset: -2
       },
       frostThermostat: {
-          path: `${elementMapLocation}.AHU.Frost_Protection_Thermostat`,
+          path: `${elementMapLocation}.Frost_Protection_Thermostat`,
           width: 35,
           height: 35,
           offset: 0
@@ -552,10 +552,10 @@
               <polyline atv:refpx="1420" atv:refpy="700.5" fill="#3B82F6" fill-opacity="0" id="supply_line" points="${xRight},${yBottom} ${xCenter},${yBottom}" stroke="#3B82F6" stroke-width="10"/>
               ${supplyLineLayout.objects}
               <svg atv:refpx="${(displayWidth/2) - (recuperationUnitWidth/2)}" atv:refpy="${(displayHeight/2) - (recuperationUnitHeight/2)}" height="${recuperationUnitHeight}" id="recuperation_unit" width="${displayWidth}" x="${(recuperationUnitX) - (recuperationUnitWidth/2)}" xlink:href="${RECUPERATION_MAP[selectedRecuperation] || ''}" y="${(displayHeight/2) - (recuperationUnitHeight/2)}"/>
-              <svg atv:refpx="40" atv:refpy="390" height="20" id="exhaust_arrows" width="40" x="${xLeft - 40}" xlink:href="${elementMapLocation}.AHU.Arrows" y="${exhaustY - 10}"><atv:argument name="color" value="#EF4444"/></svg>
-              <svg atv:refpx="40" atv:refpy="390" height="20" id="intake_arrows" width="40" x="${xLeft - 40}" xlink:href="${elementMapLocation}.AHU.Arrows" y="${intakeY - 10}"><atv:argument name="color" value="#22C55E"/></svg>
-              <svg atv:refpx="40" atv:refpy="390" height="20" id="return_arrows" width="40" x="${xRight}" xlink:href="${elementMapLocation}.AHU.Arrows" y="${yTop - 10}"><atv:argument name="color" value="#F59E0B"/></svg>
-              <svg atv:refpx="40" atv:refpy="390" height="20" id="supply_arrows" width="40" x="${xRight}" xlink:href="${elementMapLocation}.AHU.Arrows" y="${yBottom - 10}"><atv:argument name="color" value="#3B82F6"/></svg>
+              <svg atv:refpx="40" atv:refpy="390" height="20" id="exhaust_arrows" width="40" x="${xLeft - 40}" xlink:href="${elementMapLocation}.Arrows" y="${exhaustY - 10}"><atv:argument name="color" value="#EF4444"/></svg>
+              <svg atv:refpx="40" atv:refpy="390" height="20" id="intake_arrows" width="40" x="${xLeft - 40}" xlink:href="${elementMapLocation}.Arrows" y="${intakeY - 10}"><atv:argument name="color" value="#22C55E"/></svg>
+              <svg atv:refpx="40" atv:refpy="390" height="20" id="return_arrows" width="40" x="${xRight}" xlink:href="${elementMapLocation}.Arrows" y="${yTop - 10}"><atv:argument name="color" value="#F59E0B"/></svg>
+              <svg atv:refpx="40" atv:refpy="390" height="20" id="supply_arrows" width="40" x="${xRight}" xlink:href="${elementMapLocation}.Arrows" y="${yBottom - 10}"><atv:argument name="color" value="#3B82F6"/></svg>
               </svg>`;
 
       try {
