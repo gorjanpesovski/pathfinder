@@ -1,19 +1,20 @@
 <script>
-    let recuperationUnitWidth = $state(150);
-    let recuperationUnitHeight = $state(500);
+  let displayWidth = $state(1920);
+  let displayHeight = $state(1125);
+  let displayTitle = $state("Klimatska Naprava");
+  let nodePathPrefix = $state("AGENT.OBJECTS.Klimat");
+  let selectModbusTable = $state("carel");
 
-    let displayWidth = $state(1920);
-    let displayHeight = $state(1080);
-    let displayTitle = $state("Klimatska Naprava");
-    let nodePathPrefix = $state("AGENT.OBJECTS.Klimat");
-    let selectModbusTable = $state("carel");
+  let recuperationUnitWidth = $state(150);
+  let recuperationUnitHeight = $state(500);
+  let recuperationUnitX =$derived(displayWidth/2);
 
     const elementPadding = 20;
 
     const yTop      = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 80);
     const yBottom   = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 420);
     const xLeft     = 60;
-    const xCenter   = $derived(displayWidth / 2);
+    const xCenter   = $derived(recuperationUnitX);
     const xRight    = $derived(displayWidth - 60);
     let scaleWidth  = 1;
 
@@ -25,21 +26,108 @@
     const RECUPERATION_MAP = {
       "plate-heat-exchanger": "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Plate_Heat_Exchnager",
       "rotary-heat-exchanger": "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Rotary_Heat_Exchnager"
-      // "run-around-coils": "SYSTEM.LIBRARY.CAREL.OBJECTDISPLAYS.4-Symbols.Heat%20recovery.rotary_exchanger"
     };
     
     let selectedRecuperation = $state("plate-heat-exchanger");
 
+    const exhaustY = $derived(selectedRecuperation === "rotary-heat-exchanger" ? yBottom : yTop);
+    const intakeY  = $derived(selectedRecuperation === "rotary-heat-exchanger" ? yTop : yBottom);
+
+    const recuperationFillPercent = $derived(
+      rightExtreme > leftExtreme
+        ? ((recuperationUnitX - leftExtreme) / (rightExtreme - leftExtreme)) * 100
+        : 0
+    );
+
     const MODBUS_MAP = {
-    "carel": {
-        "sup-damper": (el) => `.SupDamper_${el.signalType === "continous" ? "AO" : "DO"}`,
-        "int-damper": (el) => `.SupDamper_${el.signalType === "continous" ? "AO" : "DO"}`,
-        "exh-damper": (el) => `.SupDamper_${el.signalType === "continous" ? "AO" : "DO"}`,
-        "ret-damper": (el) => `.SupDamper_${el.signalType === "continous" ? "AO" : "DO"}`,  
-        "sup-fan": ".Supply_Fan",
-        "exh-fan": ".Exhaust_Fan"
-    }
-};
+      "carel": {
+          "int-damper": (el) => `${el.signalType === "continous" ? ".Mod_External_Damper" : ".On_Off_External_Damper"}`,
+          "exh-damper": (el) => `${el.signalType === "continous" ? ".Mod_Exhaust_Damper" : ".On_Off_Exhaust_Damper"}`, 
+          "sup-fan": {
+            base: ".Supply_Fan",
+            alarm: ".Supply_Fan_Alarm"
+          },
+          "exh-fan": {
+            base: ".Exhaust_Fan",
+            alarm: ".ALM_Return_Fan_Overload_1"
+          },
+          "ret-fan": {
+            base: ".Return_Fan",
+            alarm: ".ALM_Return_Fan_Overload_1"
+          },
+          "sup-filter": {
+            base: ".ALM_Supply_Filter",
+          },
+          "ret-filter": {
+            base: ".ALM_Return_Filter",
+          },
+          "int-pre-filter": {
+            base: ".ALM_Filter", // generic alarm, no intake-specific entry in table
+          },
+          "exh-filter": {
+            base: ".ALM_Filters", // generic alarm, no exhaust-specific entry in table
+          },
+          "sup-temp-sensor": {
+            base: ".Supply_Temp",
+            alarm: ".ALM_Regulation_Probe" // only generic probe alarm exists
+          },
+          "int-temp-sensor": {
+            base: ".External_Temp"
+          },
+          "exh-temp-sensor": {
+            base: ".Exhaust_Temp"
+          },
+          "ret-temp-sensor": {
+            base: ".Return_Temp"
+          },
+          "sup-humidity-sensor": {
+            base: ".Supply_Humid"
+          },
+          "int-humidity-sensor": {
+            base: ".External_Humid"
+          },
+          "ret-humidity-sensor": {
+            base: ".Return_Humid"
+          },
+          "sup-co2-sensor": {
+            base: ".Air_Quality_CO2"
+          },
+          "sup-preheat-hot-water-coils": {
+            base: ".Pre_Heat_Coil_Temp",
+            valve: ".Mod_Valve_Preheat",
+            pump: ".Pre_Heat_Pump_1",
+            alarm_pump_1_overload: ".ALM_Pre_Heat_Pump_1_Overload",
+            alarm_pump_1_flow: ".ALM_Pre_Heat_Pump_1_Flow",
+            alarm_water_temp: ".ALM_Pre_Heat_Pump_Water_Temperature",
+          },
+          "sup-postheat-hot-water-coils": {
+            base: ".Post_Heat_Coil_Temp",
+            valve: ".Mod_Valve_Postheat",
+            pump: ".Post_Heat_Pump_1",
+            alarm_pump_1_overload: ".ALM_Post_Heat_Pump_1_Overload",
+            alarm_pump_1_flow: ".ALM_Post_Heat_Pump_1_Flow",
+            alarm_water_temp: ".ALM_Post_Heat_Pump_Water_Temperature",
+          },
+          "sup-cold-water-coils": {
+            base: ".Cool_Coil_Temp",
+            valve: ".Mod_Valve_Cool",
+            pump: ".Cool_Pump_1",
+            alarm_pump_1_overload: ".ALM_Cool_Pump_1_Overload",
+            alarm_pump_1_flow: ".ALM_Cool_Pump_1_Flow",
+            alarm_water_temp: ".ALM_Cool_Pump_Water_Temperature",
+          },
+          "sup-preheat-electric-heater": {
+            base: ".Heaters_Pre_1",
+            alarm_overload: ".Din_OverL_Pre_H_Heaters",
+            alarm_heaters: ".ALM_Pre_H_Heaters",
+          },
+          "sup-postheat-electric-heater": {
+            base: ".Heaters_Post_1",
+            alarm_overload: ".Din_OverL_Post_H_Heaters",
+            alarm_heaters: ".ALM_Post_H_Heaters",
+          }
+      }
+    };
 
     const OBJECT_DISPLAY_MAP = $derived({
         damper: { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Damper", width: 120, height: 300, offset: 11 },
@@ -48,7 +136,10 @@
         temperatureSensor: { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Temperature_Sensor", width: 120, height: 90, offset: 29 },
         humiditySensor:    { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Humidity_Sensor", width: 120, height: 90, offset: 29 },
         pressureSensor:    { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Pressure_Sensor", width: 120, height: 90, offset: 29 },
-        co2Sensor:         { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.CO2_Sensor", width: 120, height: 90, offset: 29 }
+        co2Sensor:         { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.CO2_Sensor", width: 120, height: 90, offset: 29 },
+        hotWaterCoils:     { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Hot_Water_Coil", width: 120, height: 280, offset: 38 },
+        coldWaterCoils:    { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Cold_Water_Coil", width: 120, height: 280, offset: 38 },
+        electricHeater:    { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Electric_Heater", width: 100, height: 200, offset: -2 },
     });
 
     const ELEMENT_OPTIONS = {
@@ -64,13 +155,15 @@
     }
 
     let supplyLineElements = $state([
-        { key: "sup-damper",          label: "Supply Air Damper",                checked: false, type: "damper", signalType: "continious" },
         { key: "sup-filter",          label: "Supply Air Filter",                checked: false, type: "filter", dpSwitch: false },
         { key: "sup-fan",             label: "Supply Fan",                       checked: false, type: "fan", dpSwitch: false},
         { key: "sup-temp-sensor",     label: "Temperature Sensor",               checked: false, type: "temperatureSensor" },
         { key: "sup-humidity-sensor", label: "Humidity Sensor",                  checked: false, type: "humiditySensor" },
-        // { key: "sup-pressure-sensor", label: "Pressure Transmit / Switch",       checked: false, type: "pressureSensor" },
-        { key: "sup-co2-sensor",      label: "CO2 Air Quality Sensor",           checked: false, type: "co2Sensor" }
+        { key: "sup-co2-sensor",      label: "CO2 Air Quality Sensor",           checked: false, type: "co2Sensor" },
+        { key: "sup-preheat-hot-water-coils", label: "Preheat Hot Water Coils",                  checked: false, type: "hotWaterCoils" },
+        { key: "sup-postheat-hot-water-coils", label: "Postheat Hot Water Coils",                  checked: false, type: "hotWaterCoils" },
+        { key: "sup-cold-water-coils",label: "Cold Water Coils",                 checked: false, type: "coldWaterCoils" },
+        { key: "sup-electric-heater", label: "Electric Heaters",                 checked: false, type: "electricHeater" }
     ]);
 
     let intakeLineElements = $state([
@@ -79,7 +172,6 @@
         { key: "int-fan",             label: "Intake Fan",                        checked: false, type: "fan", dpSwitch: false },
         { key: "int-temp-sensor",     label: "Outdoor Temperature Sensor",        checked: false, type: "temperatureSensor" },
         { key: "int-humidity-sensor", label: "Outdoor Humidity Sensor",           checked: false, type: "humiditySensor" },
-        // { key: "int-pressure-sensor", label: "Intake Pressure Transmit / Switch", checked: false, type: "pressureSensor" },
         { key: "int-co2-sensor",      label: "Intake CO2 Sensor",                 checked: false, type: "co2Sensor" }
     ]);
 
@@ -89,18 +181,15 @@
         { key: "exh-fan",             label: "Exhaust Fan",                       checked: false, type: "fan", dpSwitch: false },
         { key: "exh-temp-sensor",     label: "Exhaust Temperature Sensor",        checked: false, type: "temperatureSensor" },
         { key: "exh-humidity-sensor", label: "Exhaust Humidity Sensor",           checked: false, type: "humiditySensor" },
-        // { key: "exh-pressure-sensor", label: "Exhaust Pressure Transmit / Switch",checked: false, type: "pressureSensor" },
         { key: "exh-co2-sensor",      label: "Exhaust CO2 Sensor",                checked: false, type: "co2Sensor" }
     ]);
 
     let returnLineElements = $state([
-        { key: "ret-damper",          label: "Return Air / Recirculation Damper", checked: false, type: "damper", signalType: "continious" },
         { key: "ret-filter",          label: "Return Air Filter",                 checked: false, type: "filter", dpSwitch: false },
         { key: "ret-fan",             label: "Return Fan",                        checked: false, type: "fan", dpSwitch: false },
         { key: "ret-temp-sensor",     label: "Return Temperature Sensor",         checked: false, type: "temperatureSensor" },
         { key: "ret-humidity-sensor", label: "Return Humidity Sensor",            checked: false, type: "humiditySensor" },
-        // { key: "ret-pressure-sensor", label: "Return Pressure Transmit / Switch", checked: false, type: "pressureSensor" },
-        { key: "ret-co2-sensor",      label: "Return CO2 / VOC Sensor",           checked: false, type: "co2Sensor" }
+        { key: "ret-co2-sensor",      label: "Return CO2 Sensor",                 checked: false, type: "co2Sensor" }
     ]);
 
 
@@ -171,8 +260,17 @@
             let elementCenterPosition = positionX + (config.width / 2);
 
             const mapEntry = MODBUS_MAP[selectModbusTable]?.[item.key];
-            const suffix = typeof mapEntry === "function" ? mapEntry(item) : (mapEntry || "");
-            const appendix = suffix ? `<atv:argument name="base" value="${nodePathPrefix}${suffix}"/>` : "";
+            let appendix = "";
+
+            if(typeof(mapEntry) === "object"){
+
+              for(const [key, value] of Object.entries(mapEntry)){
+                appendix +=  `<atv:argument name="${key}" value="${nodePathPrefix}${value}"/>`
+              }
+            }else{
+              let suffix = typeof mapEntry === "function" ? mapEntry(item) : (mapEntry || "");
+              appendix = suffix ? `<atv:argument name="base" value="${nodePathPrefix}${suffix}"/>` : "";
+            }
 
             let svgString = `<svg atv:refpx="${elementCenterPosition}" atv:refpy="${centerY}" height="${config.height}" id="${item.key}" width="${config.width}" x="${positionX}" y="${positionY}" xlink:href="${config.path}">${appendix}</svg>`;
             drawItemMap.push(svgString);
@@ -185,8 +283,8 @@
         return { objects: drawItemMap.join("\n            "), shapes };
     }
 
-    const exhaustLineLayout = $derived(calculateLineLayout(exhaustLineElements, leftExtreme, centerExtremeLeft - leftExtreme, yTop));
-    const intakeLineLayout = $derived(calculateLineLayout(intakeLineElements, leftExtreme, centerExtremeLeft - leftExtreme, yBottom));
+    const exhaustLineLayout = $derived(calculateLineLayout(exhaustLineElements, leftExtreme, centerExtremeLeft - leftExtreme, exhaustY));
+    const intakeLineLayout = $derived(calculateLineLayout(intakeLineElements, leftExtreme, centerExtremeLeft - leftExtreme, intakeY));
     const returnLineLayout = $derived(calculateLineLayout(returnLineElements, centerExtremeRight, rightExtreme - centerExtremeRight, yTop));
     const supplyLineLayout = $derived(calculateLineLayout(supplyLineElements, centerExtremeRight, rightExtreme - centerExtremeRight, yBottom));
 
@@ -215,17 +313,17 @@
             <atv:argument name="animation_type" value="Background"/>
             <atv:argument name="icon_type" value="Graph"/>
             </svg>
-            <polyline atv:refpx="700.5" atv:refpy="700.5" fill="#EF4444" fill-opacity="0" id="exhaust_line" points="${xLeft},${yTop} ${xCenter},${yTop}" stroke="#EF4444" stroke-width="10"/>
+            <polyline atv:refpx="700.5" atv:refpy="700.5" fill="#EF4444" fill-opacity="0" id="exhaust_line" points="${xLeft},${exhaustY} ${xCenter},${exhaustY}" stroke="#EF4444" stroke-width="10"/>
             ${exhaustLineLayout.objects}
-            <polyline atv:refpx="500" atv:refpy="700.5" fill="#22C55E" fill-opacity="0" id="intake_line" points="${xLeft},${yBottom} ${xCenter},${yBottom}" stroke="#22C55E" stroke-width="10"/>
+            <polyline atv:refpx="500" atv:refpy="700.5" fill="#22C55E" fill-opacity="0" id="intake_line" points="${xLeft},${intakeY} ${xCenter},${intakeY}" stroke="#22C55E" stroke-width="10"/>
             ${intakeLineLayout.objects}
             <polyline atv:refpx="1420" atv:refpy="400.5" fill="#F59E0B" fill-opacity="0" id="return_line" points="${xRight},${yTop} ${xCenter},${yTop}" stroke="#F59E0B" stroke-width="10"/>
             ${returnLineLayout.objects}
             <polyline atv:refpx="1420" atv:refpy="700.5" fill="#3B82F6" fill-opacity="0" id="supply_line" points="${xRight},${yBottom} ${xCenter},${yBottom}" stroke="#3B82F6" stroke-width="10"/>
             ${supplyLineLayout.objects}
-            <svg atv:refpx="${(displayWidth/2) - (recuperationUnitWidth/2)}" atv:refpy="${(displayHeight/2) - (recuperationUnitHeight/2)}" height="${recuperationUnitHeight}" id="recuperation_unit" width="${displayWidth}" x="${(displayWidth/2) - (recuperationUnitWidth/2)}" xlink:href="${RECUPERATION_MAP[selectedRecuperation] || ''}" y="${(displayHeight/2) - (recuperationUnitHeight/2)}"/>
-            <svg atv:refpx="40" atv:refpy="390" height="20" id="exhaust_arrows" width="40" x="${xLeft - 40}" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Arrows" y="${yTop - 10}"><atv:argument name="color" value="#EF4444"/></svg>
-            <svg atv:refpx="40" atv:refpy="390" height="20" id="intake_arrows" width="40" x="${xLeft - 40}" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Arrows" y="${yBottom - 10}"><atv:argument name="color" value="#22C55E"/></svg>
+            <svg atv:refpx="${(displayWidth/2) - (recuperationUnitWidth/2)}" atv:refpy="${(displayHeight/2) - (recuperationUnitHeight/2)}" height="${recuperationUnitHeight}" id="recuperation_unit" width="${displayWidth}" x="${(recuperationUnitX) - (recuperationUnitWidth/2)}" xlink:href="${RECUPERATION_MAP[selectedRecuperation] || ''}" y="${(displayHeight/2) - (recuperationUnitHeight/2)}"/>
+            <svg atv:refpx="40" atv:refpy="390" height="20" id="exhaust_arrows" width="40" x="${xLeft - 40}" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Arrows" y="${exhaustY - 10}"><atv:argument name="color" value="#EF4444"/></svg>
+            <svg atv:refpx="40" atv:refpy="390" height="20" id="intake_arrows" width="40" x="${xLeft - 40}" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Arrows" y="${intakeY - 10}"><atv:argument name="color" value="#22C55E"/></svg>
             <svg atv:refpx="40" atv:refpy="390" height="20" id="return_arrows" width="40" x="${xRight}" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Arrows" y="${yTop - 10}"><atv:argument name="color" value="#F59E0B"/></svg>
             <svg atv:refpx="40" atv:refpy="390" height="20" id="supply_arrows" width="40" x="${xRight}" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Arrows" y="${yBottom - 10}"><atv:argument name="color" value="#3B82F6"/></svg>
             </svg>`;
@@ -254,11 +352,18 @@
     overflow: hidden;
   }
 
-  h1 {
-    font-size: 26px;
+  .header {
+    display: flex;
+    align-items: center;
+    font-size: 20px;
     font-weight: 700;
     margin: 0 0 20px 0;
-    color: #0f172a;
+    color: #1E293B;
+  }
+
+  .logo{
+    height: 50px;
+    margin-right: 10px;
   }
 
   h2 {
@@ -402,6 +507,96 @@
     color: #94a3b8;
   }
 
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 20px;
+    margin: 4px 0 0 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  /* Track — filled portion driven by --fill, set inline from the bound value */
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background:
+      linear-gradient(#2563eb, #2563eb) 0 / var(--fill, 50%) 100% no-repeat,
+      #e2e8f0;
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #e2e8f0;
+  }
+
+  input[type="range"]::-moz-range-progress {
+    height: 6px;
+    border-radius: 999px;
+    background-color: #2563eb;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -6px; /* centers the 16px thumb on the 6px track */
+    border-radius: 50%;
+    background-color: #ffffff;
+    border: 2px solid #2563eb;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: #ffffff;
+    border: 2px solid #2563eb;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  }
+
+  input[type="range"]:hover::-webkit-slider-thumb {
+    background-color: #eff6ff;
+    border-color: #1d4ed8;
+  }
+
+  input[type="range"]:hover::-moz-range-thumb {
+    background-color: #eff6ff;
+    border-color: #1d4ed8;
+  }
+
+  input[type="range"]:active::-webkit-slider-thumb {
+    background-color: #2563eb;
+    transform: scale(1.1);
+  }
+
+  input[type="range"]:active::-moz-range-thumb {
+    background-color: #2563eb;
+    transform: scale(1.1);
+  }
+
+  input[type="range"]:focus {
+    outline: none;
+  }
+
+  input[type="range"]:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+  }
+
+  input[type="range"]:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+  }
+
   input[type="checkbox"] {
     width: 16px;
     height: 16px;
@@ -475,8 +670,11 @@
   }
 </style>
 
-<title>AUTO AHU</title>
-<h1>Auto AHU</h1>
+<title>Auto AHU</title>
+<div class="header">
+  <img class="logo" src="/logo.svg" alt="Auto AHU logo">Auto AHU
+  <link rel="icon" type="image/x-icon" href="/logo.svg">
+</div>
 <div class="app-layout">
   <div class="selection-section">
   <fieldset id="select-title">
@@ -499,8 +697,8 @@
         <select id="select-recuperations-unit" name="select-recuperations-unit" bind:value={selectedRecuperation}>
           <option value="plate-heat-exchanger">Plate Heat Exchanger</option>
           <option value="rotary-heat-exchanger">Rotary Heat Exchanger</option>
-          <!-- <option value="run-around-coils">Run Around Coils</option> -->
         </select>
+        <input type="range" name="recuperation-unit-x-position" id="recuperation-unit-x-position" min={leftExtreme} max={rightExtreme} bind:value={recuperationUnitX} style="--fill: {recuperationFillPercent}%">
       </label>
     </fieldset>
     <fieldset id="select-modbus">
@@ -656,13 +854,13 @@
     <div class="svg-container">
       <svg class="preview-svg" viewBox="0 0 {displayWidth} {displayHeight}">
         <text x={displayWidth/2} y="60" font-family="Roboto" font-size="46" font-weight="bold" fill="#1E293B" text-anchor="middle">{displayTitle}</text>
-        
-        <polyline points="{xLeft},{yTop} {xCenter},{yTop}" fill="none" stroke="#EF4444" stroke-width="10"/>
+
+        <polyline points="{xLeft},{exhaustY} {xCenter},{exhaustY}" fill="none" stroke="#EF4444" stroke-width="10"/>
         {#each exhaustLineLayout.shapes as shape (shape.key)}
           <image href="/icons/{shape.type}.svg" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
         {/each}
 
-        <polyline points="{xLeft},{yBottom} {xCenter},{yBottom}" fill="none" stroke="#22C55E" stroke-width="10"/>
+        <polyline points="{xLeft},{intakeY} {xCenter},{intakeY}" fill="none" stroke="#22C55E" stroke-width="10"/>
         {#each intakeLineLayout.shapes as shape (shape.key)}
           <image href="/icons/{shape.type}.svg" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
           {/each}
@@ -678,12 +876,12 @@
         {/each}
         
         
-        <polyline points="{xLeft - 10},{yTop - 10} {xLeft - 30},{yTop} {xLeft - 10},{yTop + 10}" fill="none" stroke="#EF4444" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        <polyline points="{xLeft - 30},{yBottom - 10} {xLeft - 10},{yBottom} {xLeft - 30},{yBottom + 10}" fill="none" stroke="#22C55E" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="{xLeft - 10},{exhaustY - 10} {xLeft - 30},{exhaustY} {xLeft - 10},{exhaustY + 10}" fill="none" stroke="#EF4444" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="{xLeft - 30},{intakeY - 10} {xLeft - 10},{intakeY} {xLeft - 30},{intakeY + 10}" fill="none" stroke="#22C55E" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
         <polyline points="{xRight + 30},{yTop - 10} {xRight + 10},{yTop} {xRight + 30},{yTop + 10}" fill="none" stroke="#F59E0B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
         <polyline points="{xRight + 10},{yBottom - 10} {xRight + 30},{yBottom} {xRight + 10},{yBottom + 10}" fill="none" stroke="#3B82F6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
         
-        <image href={`/icons/${selectedRecuperation}.svg`} x={(displayWidth/2) - (recuperationUnitWidth/2)} y={(displayHeight/2) - (recuperationUnitHeight/2)} width={recuperationUnitWidth} height={recuperationUnitHeight} />
+        <image href={`/icons/${selectedRecuperation}.svg`} x={(recuperationUnitX) - (recuperationUnitWidth/2)} y={(displayHeight/2) - (recuperationUnitHeight/2)} width={recuperationUnitWidth} height={recuperationUnitHeight} />
         </svg>
     </div>
   </div>
