@@ -1,6 +1,7 @@
 <script>
   import { base } from "$app/paths";
   import { ICON_SPRITE } from "$lib/iconSprite.js";
+  import { RESOURCE_SECTIONS } from "$lib/resources.js";
 
   let displayWidth = $state(1920);
   let displayHeight = $state(1125);
@@ -409,6 +410,59 @@
   ]);
 
 
+  let resourcesDialog = $state(null);
+  let copiedResourceId = $state(null);
+  let copiedResourceTimer;
+
+  function openResources() {
+      resourcesDialog?.showModal();
+  }
+
+  function closeResources() {
+      resourcesDialog?.close();
+  }
+
+  // showModal() already handles Escape and the focus trap, so the only thing
+  // left is dismissing on a click that lands on the backdrop rather than the panel.
+  function handleDialogClick(event) {
+      if (event.target === resourcesDialog) closeResources();
+  }
+
+  function handleDialogClose() {
+      clearTimeout(copiedResourceTimer);
+      copiedResourceId = null;
+  }
+
+  async function copyResource(resource) {
+      try {
+          await navigator.clipboard.writeText(resource.text);
+          copiedResourceId = resource.id;
+          clearTimeout(copiedResourceTimer);
+          copiedResourceTimer = setTimeout(() => {
+              copiedResourceId = null;
+          }, 2000);
+      } catch (err) {
+          console.log("Failed to copy:", err);
+      }
+  }
+
+  function downloadResource(resource) {
+      // Text resources are inlined rather than emitted as assets, so they need
+      // a blob URL; everything under elements/ already has one.
+      const objectUrl = resource.url ? null : URL.createObjectURL(
+          new Blob([resource.text], { type: "text/plain;charset=utf-8" })
+      );
+
+      const link = document.createElement("a");
+      link.href = resource.url ?? objectUrl;
+      link.download = resource.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+
   let dragSourceArray = $state(null);
   let dragSourceIndex = $state(null);
   let dragOverArray = $state(null);
@@ -585,19 +639,254 @@
     overflow: hidden;
   }
 
-  .header {
+  .header{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1800px;
+    margin: 0 auto 20px auto;
+  }
+
+  .logo-section {
     display: flex;
     align-items: center;
     font-size: 20px;
-    font-weight: 700;
-    margin: 0 0 20px 0;
     color: #1E293B;
+
+    .subtitle{
+        font-size: 12px;
+        color: #475569;
+        font-weight: 500;
+    }
   }
 
   .logo{
     height: 50px;
     margin-right: 10px;
   }
+
+  .resources-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: #2563eb;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .resources-link:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+  }
+
+  .resources-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  .resources-dialog {
+    width: min(760px, calc(100vw - 48px));
+    max-height: calc(100dvh - 96px);
+    padding: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #0f172a;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.18);
+    overflow: hidden;
+  }
+
+  .resources-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.45);
+  }
+
+  .dialog-panel {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 96px);
+  }
+
+  .dialog-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 24px 16px 24px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .dialog-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1E293B;
+  }
+
+  .dialog-subtitle {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #64748b;
+  }
+
+  .dialog-close {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .dialog-close:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+  }
+
+  .dialog-body {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding: 20px 24px 24px 24px;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .resource-group-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  .resource-group-note {
+    margin: 4px 0 0 0;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+
+  .resource-empty {
+    margin: 12px 0 0 0;
+    padding: 14px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    background: #f8fafc;
+    font-size: 12px;
+    color: #64748b;
+  }
+
+  .resource-empty code {
+    font-size: 11px;
+    color: #475569;
+  }
+
+  .resource-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 12px 0 0 0;
+    padding: 0;
+  }
+
+  .resource {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8fafc;
+    padding: 14px;
+  }
+
+  .resource-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .resource-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  .resource-meta {
+    margin-top: 2px;
+    font-size: 11px;
+    color: #94a3b8;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+
+  .resource-description {
+    margin: 6px 0 0 0;
+    font-size: 12px;
+    color: #64748b;
+  }
+
+  .resource-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .resource-button {
+    padding: 7px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #334155;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .resource-button:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+  }
+
+  .resource-button.primary {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+  }
+
+  .resource-button.primary:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+  }
+
+  .resource-button.primary.copied,
+  .resource-button.primary.copied:hover {
+    background: #16a34a;
+    border-color: #16a34a;
+  }
+
+  .resource-preview {
+    max-height: 180px;
+    margin: 12px 0 0 0;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #475569;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow: auto;
+  }
+
 
   h2 {
     font-size: 18px;
@@ -887,6 +1176,8 @@
   .svg-container {
     width: 100%;
     max-width: 100%;
+    flex: 1;
+    min-height: 0;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -898,7 +1189,7 @@
 
   svg.preview-svg {
     width: 100%;
-    height: auto;
+    height: 100%;
     display: block;
   }
 
@@ -918,9 +1209,87 @@
 <title>Auto AHU</title>
 {@html ICON_SPRITE}
 <div class="header">
-  <img class="logo" src="{base}/logo.svg" alt="Auto AHU logo">Auto AHU
-  <link rel="icon" type="image/x-icon" href="{base}/logo.svg">
+    <div class="logo-section">
+        <link rel="icon" type="image/x-icon" href="{base}/logo.svg">
+        <img class="logo" src="{base}/logo.svg" alt="Auto AHU logo">
+        <div class="title">
+            <div class="title">Auto AHU</div>
+            <div class="subtitle">Automatic AHU Generator v0.2</div>
+        </div>
+    </div>
+    <div class="resources-section">
+        <button class="resources-link" type="button" onclick={openResources}>
+            <svg class="resources-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3v10"/>
+                <path d="m8 11 4 4 4-4"/>
+                <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+            </svg>
+            Resources
+        </button>
+    </div>
 </div>
+
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<dialog class="resources-dialog" bind:this={resourcesDialog} onclick={handleDialogClick} onclose={handleDialogClose}>
+    <div class="dialog-panel">
+        <div class="dialog-head">
+            <div>
+                <div class="dialog-title">Resources</div>
+                <div class="dialog-subtitle">Object display element and modbus tables.</div>
+            </div>
+            <button class="dialog-close" type="button" onclick={closeResources} aria-label="Close resources">&times;</button>
+        </div>
+
+        <div class="dialog-body">
+            {#each RESOURCE_SECTIONS as section (section.id)}
+                <section class="resource-group">
+                    <div class="resource-group-title">{section.title}</div>
+                    {#if section.description}
+                        <p class="resource-group-note">{section.description}</p>
+                    {/if}
+
+                    {#if section.resources.length === 0}
+                        <p class="resource-empty">
+                            Nothing here yet — drop files into <code>{section.folder}</code> and list them in <code>manifest.js</code>.
+                        </p>
+                    {:else}
+                        <ul class="resource-list">
+                            {#each section.resources as resource (resource.id)}
+                                <li class="resource">
+                                    <div class="resource-row">
+                                        <div class="resource-info">
+                                            <div class="resource-title">{resource.title}</div>
+                                            <div class="resource-meta">
+                                                {resource.filename}{resource.size ? ` · ${resource.size}` : ""}
+                                            </div>
+                                            {#if resource.description}
+                                                <p class="resource-description">{resource.description}</p>
+                                            {/if}
+                                        </div>
+                                        <div class="resource-actions">
+                                            {#if resource.text !== undefined}
+                                                <button class="resource-button primary" class:copied={copiedResourceId === resource.id} type="button" onclick={() => copyResource(resource)}>
+                                                    {copiedResourceId === resource.id ? "Copied" : "Copy"}
+                                                </button>
+                                            {/if}
+                                            <button class="resource-button" type="button" onclick={() => downloadResource(resource)}>
+                                                Download
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {#if resource.text !== undefined}
+                                        <pre class="resource-preview">{resource.text}</pre>
+                                    {/if}
+                                </li>
+                            {/each}
+                        </ul>
+                    {/if}
+                </section>
+            {/each}
+        </div>
+    </div>
+</dialog>
 <div class="app-layout">
   <div class="selection-section">
   <fieldset id="select-title">
@@ -945,12 +1314,12 @@
           <option value="rotary-heat-exchanger">Rotary Heat Exchanger</option>
         </select>
       </label>
-      <label class="input-group" for="select-bypass-damper">
+      <!-- <label class="input-group" for="select-bypass-damper">
         <select id="select-bypass-damper" name="select-bypass-damper">
           <option value="no-bypass-damper">No Bypass Damper</option>
           <option value="bypass-damper-present">Bypass Damper Present</option>
         </select>
-      </label>
+      </label> -->
     </fieldset>
     <fieldset id="select-layout-adjustments">
       <legend>Layout Adjustments</legend>

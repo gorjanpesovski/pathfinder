@@ -3,6 +3,13 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	build: {
+		// Downloadable resources have to stay real files with real names — inlining
+		// a small one as a data URI would hand the user a base64 blob instead.
+		assetsInlineLimit: (filePath) =>
+			filePath.split(/[/\\]/).includes('resources') ? false : undefined
+	},
+
 	plugins: [
 		sveltekit({
 			compilerOptions: {
