@@ -7,7 +7,7 @@
   let displayHeight = $state(1125);
   let displayTitle = $state("Klimatska Naprava");
   let nodePathPrefix = $state("AGENT.OBJECTS.Klimat");
-  let elementMapLocation = $state("SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU");
+  let elementMapLocation = $state("SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Carel");
   let selectModbusTable = $state("carel");
 
   let recuperationUnitWidth = $state(150);
@@ -46,92 +46,112 @@
       0
   );
 
+  // Register names follow the Carel table in resources/maps/carel-modbus-map.txt:
+  //   ALM_    = alarm
+  //   Status_ = read-only value the controller reports
+  //   CMD_    = writable setpoint or command
+  // Object keys are atvise display argument names - only the values are registers.
   const MODBUS_MAP = {
       "carel": {
-          "int-damper": (el) => `${el.signalType === "continous" ? ".Mod_External_Damper" : ".On_Off_External_Damper"}`,
-          "exh-damper": (el) => `${el.signalType === "continous" ? ".Mod_Exhaust_Damper" : ".On_Off_Exhaust_Damper"}`,
+          "int-damper": (el) => el.signalType === "continious" ? ".Status_Damper_Outdoor_Modulating" : ".Status_Damper_Outdoor",
+          "exh-damper": (el) => el.signalType === "continious" ? ".Status_Damper_Exhaust_Modulating" : ".Status_Damper_Exhaust",
           "sup-fan": {
-              base: ".Supply_Fan",
-              alarm: ".Supply_Fan_Alarm"
+              base: ".Status_Fan_Supply_Modulating",
+              alarm: ".ALM_Fan_Supply_1_Overload"
           },
-          "exh-fan": {
-              base: ".Exhaust_Fan",
-              alarm: ".ALM_Return_Fan_Overload_1"
+          "int-fan": {
+              // no separate intake fan on this controller - intake air is moved by the supply fan
+              base: ".Status_Fan_Supply_Modulating",
+              alarm: ".ALM_Fan_Supply_1_Overload"
           },
           "ret-fan": {
-              base: ".Return_Fan",
-              alarm: ".ALM_Return_Fan_Overload_1"
+              base: ".Status_Fan_Return_Modulating",
+              alarm: ".ALM_Fan_Return_1_Overload"
+          },
+          "exh-fan": {
+              // no separate exhaust fan on this controller - exhaust air is moved by the return fan
+              base: ".Status_Fan_Return_Modulating",
+              alarm: ".ALM_Fan_Return_1_Overload"
           },
           "sup-filter": {
-              base: ".ALM_Supply_Filter",
+              base: ".ALM_Filter_Supply"
           },
           "ret-filter": {
-              base: ".ALM_Return_Filter",
+              base: ".ALM_Filter_Return"
           },
           "int-pre-filter": {
-              base: ".ALM_Filter", // generic alarm, no intake-specific entry in table
-          },
-          "exh-filter": {
-              base: ".ALM_Filters", // generic alarm, no exhaust-specific entry in table
+              base: ".ALM_Filter_Dirty_Digital_Input" // generic alarm, no intake-specific entry in table
           },
           "sup-temp-sensor": {
-              base: ".Supply_Temp",
-              alarm: ".ALM_Regulation_Probe" // only generic probe alarm exists
+              base: ".Status_Temperature_Supply",
+              alarm: ".ALM_Probe_Regulation" // only generic probe alarm exists
           },
           "int-temp-sensor": {
-              base: ".External_Temp"
+              base: ".Status_Temperature_Outdoor"
           },
           "exh-temp-sensor": {
-              base: ".Exhaust_Temp"
+              base: ".Status_Temperature_Exhaust"
           },
           "ret-temp-sensor": {
-              base: ".Return_Temp"
+              base: ".Status_Temperature_Return"
           },
           "sup-humidity-sensor": {
-              base: ".Supply_Humid"
+              base: ".Status_Humidity_Supply"
           },
           "int-humidity-sensor": {
-              base: ".External_Humid"
+              base: ".Status_Humidity_Outdoor"
           },
           "ret-humidity-sensor": {
-              base: ".Return_Humid"
+              base: ".Status_Humidity_Return"
           },
+          // exh-humidity-sensor has no register: the controller has no exhaust humidity probe
           "sup-co2-sensor": {
-              base: ".Air_Quality_CO2"
+              base: ".Status_Air_Quality_CO2"
           },
+          "ret-co2-sensor": {
+              base: ".Status_Air_Quality_CO2" // single CO2 probe shared with the supply line
+          },
+          "sup-frost-thermostat": {
+              base: ".ALM_Frost_Protection_Thermostat"
+          },
+          "exh-frost-thermostat": {
+              base: ".ALM_Frost_Protection_Thermostat" // same thermostat, no recovery-specific entry
+          },
+          "sup-humidifier": (el) => ({
+              base: el.signalType === "continious" ? ".Status_Humidifier_Modulating" : ".Status_Humidifier",
+              alarm: ".ALM_Humidifier"
+          }),
           "sup-preheat-hot-water-coils": {
-              base: ".Pre_Heat_Coil_Temp",
-              valve: ".Mod_Valve_Preheat",
-              pump: ".Pre_Heat_Pump_1",
-              alarm_pump_1_overload: ".ALM_Pre_Heat_Pump_1_Overload",
-              alarm_pump_1_flow: ".ALM_Pre_Heat_Pump_1_Flow",
-              alarm_water_temp: ".ALM_Pre_Heat_Pump_Water_Temperature",
+              base: ".Status_Temperature_Coil_Preheat_Water",
+              valve: ".Status_Valve_Preheat_Modulating",
+              pump: ".Status_Pump_Preheat_1",
+              alarm_pump_1_overload: ".ALM_Pump_Preheat_1_Overload",
+              alarm_pump_1_flow: ".ALM_Pump_Preheat_1_Flow",
+              alarm_water_temp: ".ALM_Coil_Preheat_Water_Temperature"
           },
-          "sup-postheat-hot-water-coils": {
-              base: ".Post_Heat_Coil_Temp",
-              valve: ".Mod_Valve_Postheat",
-              pump: ".Post_Heat_Pump_1",
-              alarm_pump_1_overload: ".ALM_Post_Heat_Pump_1_Overload",
-              alarm_pump_1_flow: ".ALM_Post_Heat_Pump_1_Flow",
-              alarm_water_temp: ".ALM_Post_Heat_Pump_Water_Temperature",
+          "sup-reheat-hot-water-coils": {
+              base: ".Status_Temperature_Coil_Reheat_Water",
+              valve: ".Status_Valve_Reheat_Modulating",
+              pump: ".Status_Pump_Reheat_1",
+              alarm_pump_1_overload: ".ALM_Pump_Reheat_1_Overload",
+              alarm_pump_1_flow: ".ALM_Pump_Reheat_1_Flow",
+              alarm_water_temp: ".ALM_Coil_Reheat_Water_Temperature"
           },
           "sup-cold-water-coils": {
-              base: ".Cool_Coil_Temp",
-              valve: ".Mod_Valve_Cool",
-              pump: ".Cool_Pump_1",
-              alarm_pump_1_overload: ".ALM_Cool_Pump_1_Overload",
-              alarm_pump_1_flow: ".ALM_Cool_Pump_1_Flow",
-              alarm_water_temp: ".ALM_Cool_Pump_Water_Temperature",
+              base: ".Status_Temperature_Coil_Cooling_Water",
+              valve: ".Status_Valve_Cooling_Modulating",
+              pump: ".Status_Pump_Cooling_1",
+              alarm_pump_1_overload: ".ALM_Pump_Cooling_1_Overload",
+              alarm_pump_1_flow: ".ALM_Pump_Cooling_1_Flow",
+              alarm_water_temp: ".ALM_Coil_Cooling_Water_Temperature"
           },
           "sup-preheat-electric-heater": {
-              base: ".Heaters_Pre_1",
-              alarm_overload: ".Din_OverL_Pre_H_Heaters",
-              alarm_heaters: ".ALM_Pre_H_Heaters",
+              base: ".Status_Heater_Preheat_Stage_1",
+              alarm_heaters: ".ALM_Heater_Preheat" // AL B03 - latched, manual reset
           },
-          "sup-postheat-electric-heater": {
-              base: ".Heaters_Post_1",
-              alarm_overload: ".Din_OverL_Post_H_Heaters",
-              alarm_heaters: ".ALM_Post_H_Heaters",
+          "sup-reheat-electric-heater": {
+              base: ".Status_Heater_Reheat_Stage_1",
+              alarm_heaters: ".ALM_Heater_Reheat" // AL B02 - latched, manual reset
           }
       }
   };
@@ -182,13 +202,13 @@
       hotWaterCoils: {
           path: `${elementMapLocation}.Hot_Water_Coil`,
           width: 120,
-          height: 280,
+          height: 370,
           offset: 38
       },
       coldWaterCoils: {
           path: `${elementMapLocation}.Cold_Water_Coil`,
           width: 120,
-          height: 280,
+          height: 370,
           offset: 38
       },
       electricHeater: {
@@ -217,15 +237,10 @@
           label: "Signal Type",
           type: "select"
       }],
-      filter: [{
-          key: "dpSwitch",
-          label: "DP Switch",
-          type: "checkbox"
-      }],
-      fan: [{
-          key: "dpSwitch",
-          label: "DP Switch",
-          type: "checkbox"
+      humidifier: [{
+          key: "signalType",
+          label: "Signal Type",
+          type: "select"
       }]
   }
 
@@ -249,20 +264,26 @@
           type: "hotWaterCoils"
       },
       {
+          key: "sup-preheat-electric-heater",
+          label: "Preheat Electric Heaters",
+          checked: false,
+          type: "electricHeater"
+      },
+      {
           key: "sup-cold-water-coils",
           label: "Cold Water Coils",
           checked: false,
           type: "coldWaterCoils"
       },
       {
-          key: "sup-postheat-hot-water-coils",
-          label: "Postheat Hot Water Coils",
+          key: "sup-reheat-hot-water-coils",
+          label: "Reheat Hot Water Coils",
           checked: false,
           type: "hotWaterCoils"
       },
       {
-          key: "sup-electric-heater",
-          label: "Electric Heaters",
+          key: "sup-reheat-electric-heater",
+          label: "Reheat Electric Heaters",
           checked: false,
           type: "electricHeater"
       },
@@ -270,7 +291,8 @@
           key: "sup-humidifier",
           label: "Humidifier",
           checked: false,
-          type: "humidifier"
+          type: "humidifier",
+          signalType: "continious"
       },
       {
           key: "sup-fan",
@@ -334,18 +356,19 @@
       }
   ]);
 
-  let exhaustLineElements = $state([{
+  let exhaustLineElements = $state([
+      {
+          key: "exh-damper",
+          label: "Exhaust Air Damper",
+          checked: false,
+          type: "damper",
+          signalType: "continious"
+      },
+      {
           key: "exh-frost-thermostat",
           label: "Recovery Core Frost Thermostat",
           checked: false,
           type: "frostThermostat"
-      },
-      {
-          key: "exh-filter",
-          label: "Exhaust Filter",
-          checked: false,
-          type: "filter",
-          dpSwitch: false
       },
       {
           key: "exh-temp-sensor",
@@ -365,13 +388,6 @@
           checked: false,
           type: "fan",
           dpSwitch: false
-      },
-      {
-          key: "exh-damper",
-          label: "Exhaust Air Damper",
-          checked: false,
-          type: "damper",
-          signalType: "continious"
       }
   ]);
 
@@ -533,17 +549,19 @@
           let positionY = centerY - ((config.height * elementScale) / 2) + (config.offset * elementScale);
           let elementCenterPosition = positionX + (scaledWidth / 2);
 
-          const mapEntry = MODBUS_MAP[selectModbusTable]?.[item.key];
+          // Entries may be a plain string, an object of atvise arguments, or a
+          // function of the element - which itself returns either of those.
+          const rawEntry = MODBUS_MAP[selectModbusTable]?.[item.key];
+          const mapEntry = typeof rawEntry === "function" ? rawEntry(item) : rawEntry;
           let appendix = "";
 
-          if (typeof(mapEntry) === "object") {
+          if (mapEntry && typeof mapEntry === "object") {
 
               for (const [key, value] of Object.entries(mapEntry)) {
                   appendix += `<atv:argument name="${key}" value="${nodePathPrefix}${value}"/>`
               }
           } else {
-              let suffix = typeof mapEntry === "function" ? mapEntry(item) : (mapEntry || "");
-              appendix = suffix ? `<atv:argument name="base" value="${nodePathPrefix}${suffix}"/>` : "";
+              appendix = mapEntry ? `<atv:argument name="base" value="${nodePathPrefix}${mapEntry}"/>` : "";
           }
 
           let svgString = `<svg atv:refpx="${elementCenterPosition}" atv:refpy="${centerY}" height="${config.height}" id="${item.key}" width="${config.width}" x="0" y="0" transform="matrix(${elementScale},0,0,${elementScale},${positionX},${positionY})" xlink:href="${config.path}">${appendix}</svg>`;
@@ -607,12 +625,11 @@
               <polyline atv:refpx="1420" atv:refpy="700.5" fill="#3B82F6" fill-opacity="0" id="supply_line" points="${xRight},${yBottom} ${xCenter},${yBottom}" stroke="#3B82F6" stroke-width="10"/>
               ${supplyLineLayout.objects}
               <svg atv:refpx="${(displayWidth/2) - (recuperationUnitWidth/2)}" atv:refpy="${(displayHeight/2) - (recuperationUnitHeight/2)}" height="${recuperationUnitHeight}" id="recuperation_unit" width="${displayWidth}" x="${(recuperationUnitX) - (recuperationUnitWidth/2)}" xlink:href="${RECUPERATION_MAP[selectedRecuperation] || ''}" y="${(displayHeight/2) - (recuperationUnitHeight/2)}"/>
-              <svg atv:refpx="40" atv:refpy="390" height="20" id="exhaust_arrows" width="40" x="${xLeft - 40}" xlink:href="${elementMapLocation}.Arrows" y="${exhaustY - 10}"><atv:argument name="color" value="#EF4444"/></svg>
-              <svg atv:refpx="40" atv:refpy="390" height="20" id="intake_arrows" width="40" x="${xLeft - 40}" xlink:href="${elementMapLocation}.Arrows" y="${intakeY - 10}"><atv:argument name="color" value="#22C55E"/></svg>
-              <svg atv:refpx="40" atv:refpy="390" height="20" id="return_arrows" width="40" x="${xRight}" xlink:href="${elementMapLocation}.Arrows" y="${yTop - 10}"><atv:argument name="color" value="#F59E0B"/></svg>
-              <svg atv:refpx="40" atv:refpy="390" height="20" id="supply_arrows" width="40" x="${xRight}" xlink:href="${elementMapLocation}.Arrows" y="${yBottom - 10}"><atv:argument name="color" value="#3B82F6"/></svg>
+              <svg atv:refpx="${xLeft - 20}" atv:refpy="${exhaustY}" height="20" id="exhaust_arrows" width="40" x="${xLeft - 50}" xlink:href="${elementMapLocation}.Arrows" y="${exhaustY - 10}"><atv:argument name="color" value="#EF4444"/><atv:argument name="direction" value="left"/></svg>
+              <svg atv:refpx="${xLeft - 20}" atv:refpy="${intakeY}" height="20" id="intake_arrows" width="40" x="${xLeft - 50}" xlink:href="${elementMapLocation}.Arrows" y="${intakeY - 10}"><atv:argument name="color" value="#22C55E"/><atv:argument name="direction" value="right"/></svg>
+              <svg atv:refpx="${xRight + 20}" atv:refpy="${yTop}" height="20" id="return_arrows" width="40" x="${xRight + 10}" xlink:href="${elementMapLocation}.Arrows" y="${yTop - 10}"><atv:argument name="color" value="#F59E0B"/><atv:argument name="direction" value="left"/></svg>
+              <svg atv:refpx="${xRight + 20}" atv:refpy="${yBottom}" height="20" id="supply_arrows" width="40" x="${xRight + 10}" xlink:href="${elementMapLocation}.Arrows" y="${yBottom - 10}"><atv:argument name="color" value="#3B82F6"/><atv:argument name="direction" value="right"/></svg>
               </svg>`;
-
       try {
           await navigator.clipboard.writeText(boilerPlate);
           console.log("Copied to clipboard");
@@ -1214,7 +1231,7 @@
         <img class="logo" src="{base}/logo.svg" alt="Auto AHU logo">
         <div class="title">
             <div class="title">Auto AHU</div>
-            <div class="subtitle">Automatic AHU Generator v0.2</div>
+            <div class="subtitle" title="commit {__APP_COMMIT__}">Automatic AHU Generator {__APP_VERSION__}</div>
         </div>
     </div>
     <div class="resources-section">

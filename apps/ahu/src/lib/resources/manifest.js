@@ -30,5 +30,12 @@ export const RESOURCES = [
         title: "Carel Modbus Table",
         description: "",
         file: "./maps/carel-modbus-map.txt"
+    },
+    {
+        id: "carel-object-elements",
+        group: "elements",
+        title: "Carel Object Elements",
+        description: "",
+        file: "./elements/carel-items.xml"
     }
 ];
