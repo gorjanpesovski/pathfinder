@@ -40,10 +40,19 @@
   const exhaustY = $derived(selectedRecuperation === "plate-heat-exchanger" ? yBottom : yTop);
   const intakeY = $derived(selectedRecuperation === "plate-heat-exchanger" ? yTop : yBottom);
 
+  const ELEMENT_SCALE_MIN = 0.5;
+  const ELEMENT_SCALE_MAX = 1;
+
+  // Chrome has no ::-moz-range-progress, so the filled part of every slider track
+  // is faked with a gradient sized by --fill. Each slider needs its own percentage.
   const recuperationFillPercent = $derived(
       rightExtreme > leftExtreme ?
       ((recuperationUnitX - leftExtreme) / (rightExtreme - leftExtreme)) * 100 :
       0
+  );
+
+  const elementScaleFillPercent = $derived(
+      ((elementScale - ELEMENT_SCALE_MIN) / (ELEMENT_SCALE_MAX - ELEMENT_SCALE_MIN)) * 100
   );
 
   // Register names follow the Carel table in resources/maps/carel-modbus-map.txt:
@@ -1059,6 +1068,14 @@
   }
 
   input[type="range"] {
+    /* Track and thumb sizes live here so the thumb offset below can be derived
+       from them instead of being a hand-tuned magic number. No box-sizing is
+       set on the pseudo-elements, so borders add to these values. */
+    --track-height: 6px;
+    --track-border: 1px;
+    --thumb-size: 12px;
+    --thumb-border: 2px;
+
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
@@ -1072,9 +1089,9 @@
 
   /* Track — filled portion driven by --fill, set inline from the bound value */
   input[type="range"]::-webkit-slider-runnable-track {
-    height: 6px;
+    height: var(--track-height);
     border-radius: 999px;
-    border: 1px solid #cbd5e1;
+    border: var(--track-border) solid #cbd5e1;
     background:
       linear-gradient(#2563eb, #2563eb) 0 / var(--fill, 50%) 100% no-repeat,
       #e2e8f0;
@@ -1096,9 +1113,15 @@
   input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 12px;
-    height: 12px;
-    margin-top: -6px; /* centers the 16px thumb on the 6px track */
+    width: var(--thumb-size);
+    height: var(--thumb-size);
+    /* Chrome offsets the thumb from the top of the track's border box, so centre
+       it by half the difference between the two outer heights. Firefox centres
+       ::-moz-range-thumb on its own and ignores this. */
+    margin-top: calc(
+      (var(--track-height) + 2 * var(--track-border)
+        - var(--thumb-size) - 2 * var(--thumb-border)) / 2
+    );
     border-radius: 50%;
     background-color: #ffffff;
     border: 2px solid #2563eb;
@@ -1346,7 +1369,7 @@
       </label>
       <label class="input-group" for="element-scale">
         <span class="field-hint">Element Scale</span>
-        <input type="range" name="element-scale" id="element-scale" min={0.5} max={1} step="0.01" bind:value={elementScale} style="--fill: {recuperationFillPercent}%">
+        <input type="range" name="element-scale" id="element-scale" min={ELEMENT_SCALE_MIN} max={ELEMENT_SCALE_MAX} step="0.01" bind:value={elementScale} style="--fill: {elementScaleFillPercent}%">
       </label>
     </fieldset>
     <fieldset id="select-modbus">
