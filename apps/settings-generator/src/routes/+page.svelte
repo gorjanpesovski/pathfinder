@@ -1,5 +1,8 @@
 <script>
   import { base } from "$app/paths";
+  import { Tween, prefersReducedMotion } from "svelte/motion";
+  import { cubicOut } from "svelte/easing";
+
   let padding = $state(40);
   let paddingSettings = $state(40);
   let paddingElements = $state(38);
@@ -130,6 +133,16 @@
   );
   let settingsHeight = $derived(paddingSettings * 2 + rowsHeight);
 
+  // The preview eases into its new size. The export deliberately reads the exact
+  // geometry above instead, so clicking Configure mid-animation still writes the
+  // final coordinates rather than a half-expanded box.
+  const EXPAND_MS = 280;
+  const previewRowsHeight = Tween.of(() => rowsHeight, {
+    duration: () => (prefersReducedMotion.current ? 0 : EXPAND_MS),
+    easing: cubicOut
+  });
+  let previewSettingsHeight = $derived(paddingSettings * 2 + previewRowsHeight.current);
+
   let canvasMargin = $derived(isFull ? padding : shadowMargin);
   let titleY = $derived(canvasMargin);
   let headerHeight = $derived(
@@ -143,6 +156,7 @@
   );
   let displayWidth = $derived(settingsWidht + canvasMargin * 2);
   let displayHeight = $derived(settingsY + settingsHeight + canvasMargin);
+  let previewDisplayHeight = $derived(settingsY + previewSettingsHeight + canvasMargin);
 
   let contentLeft = $derived(settingsX + paddingSettings);
   let contentRight = $derived(settingsX + settingsWidht - paddingSettings);
@@ -242,6 +256,12 @@
       : `<defs>\n    ${gradients.join("\n    ")}\n  </defs>`;
   }
 
+  // Every display atvise writes itself carries an empty ecmascript node, and so
+  // does the Auto AHU generator. Leaving it out is what breaks re-saving: the
+  // first save takes, but reopening and editing the display gives Builder no
+  // script node to write back to, and the save is refused.
+  const ATVISE_SCRIPT = `<script atv:desc="" atv:name="" type="text/ecmascript"/>`;
+
   function buildAtviseSvg(){
     const objects = rows.map((row, index) => {
       const id = escapeXml(row.id);
@@ -287,8 +307,39 @@
     <atv:gridconfig enabled="true" gridstyle="lines" height="20" width="20"/>
     <atv:snapconfig enabled="true" height="10" width="10"/>
   </metadata>
+  ${ATVISE_SCRIPT}
   ${body}
 </svg>`;
+  }
+
+  // Settings are appended and popped at the tail, so nothing already on the
+  // canvas moves — fading the new row in is all the preview needs.
+  function appear(node, { duration = 240, dy = 6, delay = 0 } = {}) {
+    if (prefersReducedMotion.current) return { duration: 0 };
+    return {
+      delay,
+      duration,
+      easing: cubicOut,
+      css: (t, u) => `opacity: ${t}; transform: translate(0, ${u * dy}px);`
+    };
+  }
+
+  // Collapses the row's own height plus the fieldset's 8px gap above it, so the
+  // list closes up smoothly instead of snapping by a row.
+  function addRow(node, { duration = 220 } = {}) {
+    if (prefersReducedMotion.current) return { duration: 0 };
+    const height = parseFloat(getComputedStyle(node).height);
+    return {
+      duration,
+      easing: cubicOut,
+      css: (t, u) => `
+        opacity: ${t};
+        height: ${t * height}px;
+        margin-top: ${u * -8}px;
+        align-items: flex-start;
+        overflow: hidden;
+      `
+    };
   }
 
   let showDisplaySettings = $state(false);
@@ -329,12 +380,27 @@
     overflow: hidden;
   }
 
+  /* Page load: the header and the two panels rise into place in sequence.
+     `both` holds the opening frame, so nothing flashes before its delay. */
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+  }
+
   .header{
     display: flex;
     align-items: center;
     justify-content: space-between;
     max-width: 1800px;
     margin: 0 auto 20px auto;
+    animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    /* The rise animation transforms the header, which makes it a stacking
+       context — so the settings panel inside can no longer out-stack the later
+       .app-layout on its own. Lift the whole header above it instead. */
+    position: relative;
+    z-index: 2;
   }
 
   .logo-section {
@@ -442,6 +508,7 @@
     align-items: center;
     box-sizing: border-box;
     min-height: 0;
+    animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.18s both;
   }
 
   .svg-container {
@@ -478,6 +545,15 @@
     overflow-y: auto;
     box-sizing: border-box;
     min-height: 0;
+    animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.09s both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .header,
+    .selection-section,
+    .viewer-section {
+      animation: none;
+    }
   }
 
   .field-row {
@@ -973,7 +1049,7 @@
           </button>
         </div>
         {#each buttonsList as button}
-          <div class="field-row setting-row">
+          <div class="field-row setting-row" transition:addRow>
             <select bind:value={button.type}>
               <option value="close">Close window</option>
               <option value="general">Round button</option>
@@ -1012,7 +1088,7 @@
         </button>
       </div>
       {#each settingsList as setting}
-        <div class="field-row setting-row">
+        <div class="field-row setting-row" transition:addRow>
           <input type="text" bind:value={setting.title}>
           <span class="row-sep" aria-hidden="true">:</span>
           <select bind:value={setting.type}>
@@ -1032,7 +1108,7 @@
   <div class="viewer-section">
     <h2>Live Preview</h2>
     <div class="svg-container">
-      <svg class="preview-svg" width="{displayWidth}" height="{displayHeight}" viewBox="0 0 {displayWidth} {displayHeight}">
+      <svg class="preview-svg" width="{displayWidth}" height="{previewDisplayHeight}" viewBox="0 0 {displayWidth} {previewDisplayHeight}">
         <defs>
           {#if isFull && backgroundFill.mode === "gradient"}
             {@const axis = gradientAxis(backgroundFill.angle, backgroundFill.start, backgroundFill.end)}
@@ -1050,50 +1126,54 @@
           {/if}
         </defs>
         {#if isFull}
-          <rect x="0" y="0" width="{displayWidth}" height="{displayHeight}" fill="{backgroundFillRef}"/>
+          <rect x="0" y="0" width="{displayWidth}" height="{previewDisplayHeight}" fill="{backgroundFillRef}"/>
           <text x={displayWidth / 2} y="{titleBaselineY}" font-family="Roboto" font-size={titleFontSize} font-weight="bold" fill="#1E293B" text-anchor="middle">{settingsTitle}</text>
         {/if}
         {#each buttons as entry}
           {@const cx = entry.x + buttonSize / 2}
           {@const cy = entry.y + buttonSize / 2}
           {@const radius = buttonSize * CLOSE_BUTTON.radius}
-          {#if entry.button.type === "close"}
-            {@const arm = buttonSize * CLOSE_BUTTON.arm}
-            <circle cx={cx} cy={cy} r={radius} fill={CLOSE_BUTTON.fill}/>
-            <path d="M {cx - arm} {cy - arm} L {cx + arm} {cy + arm} M {cx + arm} {cy - arm} L {cx - arm} {cy + arm}"
-                  stroke="#FFFFFF" stroke-width={buttonSize * CLOSE_BUTTON.stroke}
-                  stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          {:else}
-            {@const gear = buttonSize * GEAR_EXTENT}
-            <circle cx={cx} cy={cy} r={radius} fill={settingsFillRef}
-                    stroke={settingsBackgroundStroke} stroke-width="1" style={settingsShadow}/>
-            <path d={GEAR_PATH} fill={GEAR_FILL}
-                  transform="translate({cx - gear / 2} {cy - gear / 2}) scale({gear / GEAR_SIZE})"/>
-          {/if}
+          <g transition:appear={{ delay: 60 }}>
+            {#if entry.button.type === "close"}
+              {@const arm = buttonSize * CLOSE_BUTTON.arm}
+              <circle cx={cx} cy={cy} r={radius} fill={CLOSE_BUTTON.fill}/>
+              <path d="M {cx - arm} {cy - arm} L {cx + arm} {cy + arm} M {cx + arm} {cy - arm} L {cx - arm} {cy + arm}"
+                    stroke="#FFFFFF" stroke-width={buttonSize * CLOSE_BUTTON.stroke}
+                    stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            {:else}
+              {@const gear = buttonSize * GEAR_EXTENT}
+              <circle cx={cx} cy={cy} r={radius} fill={settingsFillRef}
+                      stroke={settingsBackgroundStroke} stroke-width="1" style={settingsShadow}/>
+              <path d={GEAR_PATH} fill={GEAR_FILL}
+                    transform="translate({cx - gear / 2} {cy - gear / 2}) scale({gear / GEAR_SIZE})"/>
+            {/if}
+          </g>
         {/each}
-        <rect x={settingsX} y={settingsY} fill="{settingsFillRef}" height="{settingsHeight}" id="settings_background" stroke="{settingsBackgroundStroke}" stroke-width="1" rx="10" ry="10" style={settingsShadow} width="{settingsWidht}"/>
+        <rect x={settingsX} y={settingsY} fill="{settingsFillRef}" height="{previewSettingsHeight}" id="settings_background" stroke="{settingsBackgroundStroke}" stroke-width="1" rx="10" ry="10" style={settingsShadow} width="{settingsWidht}"/>
         {#each rows as row, index}
-          {#if index > 0}
-            <line x1={contentLeft} x2={contentRight} y1={row.dividerY} y2={row.dividerY} stroke="#E2E8F0" stroke-width="1"/>
-          {/if}
-          <text x={contentLeft} y={row.baselineY} font-family="Roboto" font-size={rowFontSize} fill="#1E293B" text-anchor="start">{row.setting.title}</text>
-          <foreignObject x={row.x} y={row.top} width={row.width} height={elementHeight}>
-            <div xmlns="http://www.w3.org/1999/xhtml" class="preview-control" style="--input-font-size: {inputFontSize}px">
-              {#if row.setting.type === "dropdown"}
-                <select bind:value={row.setting.value}>
-                  <option value="">Combobox</option>
-                </select>
-              {:else if row.setting.type === "switch"}
-                <button class="preview-switch" class:on={row.setting.value === true} type="button"
-                        role="switch" aria-checked={row.setting.value === true} aria-label={row.setting.title}
-                        onclick={() => row.setting.value = row.setting.value !== true}>
-                  <span class="knob"></span>
-                </button>
-              {:else}
-                <input type="text" class="value-field" placeholder="In/Out Value" bind:value={row.setting.value}>
-              {/if}
-            </div>
-          </foreignObject>
+          <g transition:appear={{ delay: 60 }}>
+            {#if index > 0}
+              <line x1={contentLeft} x2={contentRight} y1={row.dividerY} y2={row.dividerY} stroke="#E2E8F0" stroke-width="1"/>
+            {/if}
+            <text x={contentLeft} y={row.baselineY} font-family="Roboto" font-size={rowFontSize} fill="#1E293B" text-anchor="start">{row.setting.title}</text>
+            <foreignObject x={row.x} y={row.top} width={row.width} height={elementHeight}>
+              <div xmlns="http://www.w3.org/1999/xhtml" class="preview-control" style="--input-font-size: {inputFontSize}px">
+                {#if row.setting.type === "dropdown"}
+                  <select bind:value={row.setting.value}>
+                    <option value="">Combobox</option>
+                  </select>
+                {:else if row.setting.type === "switch"}
+                  <button class="preview-switch" class:on={row.setting.value === true} type="button"
+                          role="switch" aria-checked={row.setting.value === true} aria-label={row.setting.title}
+                          onclick={() => row.setting.value = row.setting.value !== true}>
+                    <span class="knob"></span>
+                  </button>
+                {:else}
+                  <input type="text" class="value-field" placeholder="In/Out Value" bind:value={row.setting.value}>
+                {/if}
+              </div>
+            </foreignObject>
+          </g>
         {/each}
       </svg>
     </div>
