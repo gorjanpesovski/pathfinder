@@ -360,28 +360,26 @@
   }
 
   button.display-settings-toggle {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 8px;
-    height: 38px;
     padding: 8px 14px;
+    background: #ffffff;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
-    background-color: #ffffff;
-    color: #334155;
-    font-family: inherit;
-    font-size: 13px;
+    font: inherit;
+    font-size: 14px;
     font-weight: 600;
-    box-sizing: border-box;
+    color: #2563eb;
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   }
 
   button.display-settings-toggle:hover,
   button.display-settings-toggle.open {
-    border-color: #2563eb;
-    background-color: #eff6ff;
-    color: #2563eb;
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
   }
 
   button.display-settings-toggle:focus-visible {
@@ -390,9 +388,10 @@
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
   }
 
-  button.display-settings-toggle .gear {
-    font-size: 15px;
-    line-height: 1;
+  .display-settings-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
   }
 
   .display-settings-panel {
@@ -867,7 +866,7 @@
     <img class="logo" src="{base}/logo.svg" alt="Auto Settings logo">
     <div class="title">
       <div class="title">Auto Settings</div>
-      <div class="subtitle">Automatic Settings Generator v1.0.0</div>
+      <div class="subtitle" title="commit {__APP_COMMIT__}">Automatic Settings Generator {__APP_VERSION__}</div>
     </div>
   </div>
 
@@ -875,7 +874,9 @@
     <button class="display-settings-toggle" class:open={showDisplaySettings} type="button"
             aria-expanded={showDisplaySettings} aria-controls="display-settings-panel"
             onclick={() => showDisplaySettings = !showDisplaySettings}>
-      <span class="gear" aria-hidden="true">⚙</span>
+      <svg class="display-settings-icon" viewBox="0 0 {GEAR_SIZE} {GEAR_SIZE}" fill="currentColor" aria-hidden="true">
+        <path d={GEAR_PATH}/>
+      </svg>
       Display Settings
     </button>
 
