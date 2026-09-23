@@ -1,8 +1,34 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+// Reads git at build time. Falls back rather than throwing, so the build still
+// works where git is unavailable (a source tarball, a container without git).
+function git(args, fallback) {
+	try {
+		return execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] })
+			.toString()
+			.trim();
+	} catch {
+		return fallback;
+	}
+}
+
+// The patch number is the commit count, so every commit bumps the version.
+// Major and minor stay hand-managed in package.json.
+// Note: CI must check out with fetch-depth 0, or the count is always 1.
+const [major, minor] = JSON.parse(readFileSync('./package.json', 'utf8')).version.split('.');
+const APP_VERSION = `v${major}.${minor}.${git('rev-list --count HEAD', '0')}`;
+const APP_COMMIT = git('rev-parse --short HEAD', 'dev');
 
 export default defineConfig({
+	define: {
+		__APP_VERSION__: JSON.stringify(APP_VERSION),
+		__APP_COMMIT__: JSON.stringify(APP_COMMIT)
+	},
+
 	plugins: [
 		sveltekit({
 			compilerOptions: {
@@ -11,10 +37,15 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
-			// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-			// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-			// See https://svelte.dev/docs/kit/adapters for more information about adapters.
-			adapter: adapter()
+			// Static output for GitHub Pages. See https://svelte.dev/docs/kit/adapter-static
+			adapter: adapter({ fallback: '404.html' }),
+
+			// GitHub Pages serves a project repo from /<repo>, so the app has to know
+			// it lives in a subdirectory. The deploy workflow sets BASE_PATH; local
+			// dev/build leaves it empty and serves from the root.
+			paths: {
+				base: process.env.BASE_PATH || ''
+			}
 		})
 	]
 });
