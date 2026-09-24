@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<svg height="330" version="1.2" width="163" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:ns1="http://sozi.baierouge.fr" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs>
+  <linearGradient id="sleekBodyGrad" x1="0" x2="1" y1="0" y2="0">
+   <stop offset="0" stop-color="#CBD5E1"/>
+   <stop offset="0.14999999999999999" stop-color="#F1F5F9"/>
+   <stop offset="0.55000000000000004" stop-color="#FFFFFF"/>
+   <stop offset="0.88" stop-color="#E2E8F0"/>
+   <stop offset="1" stop-color="#CBD5E1"/>
+  </linearGradient>
+  <linearGradient id="linear_0" x1="0" x2="1" y1="0" y2="0">
+   <stop offset="0" stop-color="#CBD5E1"/>
+   <stop offset="0.14999999999999999" stop-color="#F1F5F9"/>
+   <stop offset="0.55000000000000004" stop-color="#FFFFFF"/>
+   <stop offset="0.88" stop-color="#E2E8F0"/>
+   <stop offset="1" stop-color="#CBD5E1"/>
+  </linearGradient>
+  <radialGradient cx="0.5" cy="0.5" id="tankShadow" r="0.5">
+   <stop offset="0" stop-color="#64748B" stop-opacity="0.25"/>
+   <stop offset="1" stop-color="#64748B" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient cx="0.5" cy="0.5" id="radial_1" r="0.5">
+   <stop offset="0" stop-color="#64748B" stop-opacity="0.25"/>
+   <stop offset="1" stop-color="#64748B" stop-opacity="0"/>
+  </radialGradient>
+ </defs>
+ <metadata>
+  <atv:parameter behavior="optional" defaultvalue="" desc="Stroke size" name="stroke_size" substitute="$StrokeSize$" valuetype="number"/>
+  <atv:gridconfig enabled="true" gridstyle="lines" height="20" width="20"/>
+  <atv:snapconfig enabled="false" height="20" width="20"/>
+ </metadata>
+ <script atv:desc="" atv:name="" type="text/ecmascript"/>
+ <g atv:refpx="81.5" atv:refpy="165" id="id_4" transform="matrix(1.0187,0,0,1.0178,-5.0937,-4.9894)">
+  <polyline atv:refpx="240" atv:refpy="310" fill="#CBD5E1" id="id_2" points="145,269.125 165,329.125 145,329.125 85,269.125 145,269.125" stroke="#94A3B8" stroke-linejoin="round" stroke-width="0.8"/>
+  <polyline atv:refpx="160" atv:refpy="310" fill="#CBD5E1" id="id_1" points="25,269.125 5,329.125 25,329.125 85,269.125 25,269.125" stroke="#94A3B8" stroke-linejoin="round" stroke-width="0.8"/>
+  <ellipse atv:refpx="127.241" atv:refpy="279.077" cx="-18.145" cy="306.178" fill="url(#tankShadow)" id="id_0" rx="25.553" ry="14.703" transform="matrix(0.8838,-0.468,0.468,0.8838,0,0)"/>
+  <line atv:refpx="40.5" atv:refpy="147.5" id="id_7" opacity="0.8" stroke="#FFFFFF" stroke-linecap="round" stroke-width="2.5" x1="40" x2="40" y1="80" y2="215"/>
+  <ellipse atv:refpx="42.366" atv:refpy="278.845" cx="184.074" cy="-213.708" fill="url(#radial_1)" id="id_3" rx="25.555" ry="14.704" transform="matrix(0.8471,0.5314,0.5314,-0.8471,0,0)"/>
+  <circle atv:refpx="388.27" atv:refpy="684.501" cx="64.122" cy="249.074" fill="url(#linear_0)" id="id_11" r="52.806" stroke="#94A3B8" stroke-linejoin="round" stroke-width="1" transform="matrix(1.3256,0,0,0.9942,0,0)"/>
+  <circle atv:refpx="388.094" atv:refpy="511.075" cx="64.122" cy="58.483" fill="url(#linear_0)" id="id_9" r="52.806" stroke="#94A3B8" stroke-linejoin="round" stroke-width="1" transform="matrix(1.3256,0,0,0.9469,0,0)"/>
+  <rect atv:refpx="386.965" atv:refpy="607.773" fill="url(#sleekBodyGrad)" height="190" id="id_10" stroke="#94A3B8" stroke-width="1" width="140" x="15" y="59.051"/>
+ </g>
+</svg>

@@ -63,6 +63,8 @@ export function roomKindLabel(kind){
   if (kind === "curve") return "Curve";
   if (kind === "image") return "Image";
   if (kind === "wall") return "Wall";
+  if (kind === "equipment") return "Element";
+  if (kind === "pipe") return "Pipe";
   return "Room";
 }
 

@@ -1,0 +1,53 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<svg height="330" version="1.2" width="205" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:ns1="http://sozi.baierouge.fr" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs>
+  <linearGradient id="sleekBodyGrad" x1="0" x2="1" y1="0" y2="0">
+   <stop offset="0" stop-color="#CBD5E1"/>
+   <stop offset="0.15" stop-color="#F1F5F9"/>
+   <stop offset="0.55" stop-color="#FFFFFF"/>
+   <stop offset="0.88" stop-color="#E2E8F0"/>
+   <stop offset="1" stop-color="#CBD5E1"/>
+  </linearGradient>
+  <linearGradient id="pipeGrad" x1="0" x2="1" y1="0" y2="0">
+   <stop offset="0" stop-color="#94A3B8"/>
+   <stop offset="0.45" stop-color="#E2E8F0"/>
+   <stop offset="1" stop-color="#94A3B8"/>
+  </linearGradient>
+  <radialGradient cx="0.5" cy="0.5" id="gaugeGrad" r="0.5">
+   <stop offset="0" stop-color="#FFFFFF"/>
+   <stop offset="0.7" stop-color="#F1F5F9"/>
+   <stop offset="1" stop-color="#E2E8F0"/>
+  </radialGradient>
+  <radialGradient cx="0.5" cy="0.5" id="unitShadow" r="0.5">
+   <stop offset="0" stop-color="#64748B" stop-opacity="0.25"/>
+   <stop offset="1" stop-color="#64748B" stop-opacity="0"/>
+  </radialGradient>
+ </defs>
+ <metadata>
+  <atv:parameter behavior="optional" defaultvalue="" desc="Stroke size" name="stroke_size" substitute="$StrokeSize$" valuetype="number"/>
+  <atv:gridconfig enabled="false" gridstyle="lines" height="20" width="20"/>
+  <atv:snapconfig enabled="false" height="10" width="10"/>
+ </metadata>
+ <script atv:desc="" atv:name="" type="text/ecmascript"/>
+ <g atv:refpx="102.5" atv:refpy="165" id="id_3" transform="matrix(1,0,0,1,0,0.14)">
+  <g atv:refpx="102.5" atv:refpy="164.86" id="id_2" transform="matrix(1,0,0,1,-2.9085,-0.7971)">
+   <g atv:refpx="105.409" atv:refpy="165.657" id="id_0" transform="matrix(1.004,0,0,1.004,2.9085,0.7971)">
+    <rect atv:refpx="102.092" atv:refpy="167.144" fill="url(#sleekBodyGrad)" height="321.524" id="body" rx="11.964" stroke="#94A3B8" stroke-width="1" width="194.411" x="4.886" y="6.382"/>
+    <rect atv:refpx="102.092" atv:refpy="7.877" fill="#E2E8F0" height="14.954" id="top_cap" rx="4.486" stroke="#94A3B8" stroke-width="0.8" width="203.383" x="0.4" y="0.4"/>
+    <line atv:refpx="19.093" atv:refpy="167.892" id="highlight" opacity="0.8" stroke="#FFFFFF" stroke-linecap="round" stroke-width="2.5" x1="18.346" x2="18.346" y1="30.309" y2="305.475"/>
+    <rect atv:refpx="102.091" atv:refpy="57.228" fill="#F1F5F9" height="53.837" id="control_panel" rx="5.982" stroke="#94A3B8" stroke-width="0.8" width="149.546" x="27.318" y="30.309"/>
+    <rect atv:refpx="72.183" atv:refpy="57.228" fill="#E2E8F0" height="29.909" id="display" rx="2.99" stroke="#94A3B8" stroke-width="0.8" width="65.802" x="39.282" y="42.273"/>
+    <circle atv:refpx="157.424" atv:refpy="57.227" cx="157.424" cy="57.227" fill="url(#gaugeGrad)" id="knob_2" r="10.468" stroke="#94A3B8" stroke-width="0.8"/>
+    <circle atv:refpx="102.092" atv:refpy="134.993" cx="102.092" cy="134.993" fill="url(#gaugeGrad)" id="gauge" r="26.919" stroke="#94A3B8" stroke-width="1"/>
+    <circle atv:refpx="102.091" atv:refpy="134.991" cx="102.091" cy="134.991" fill="none" id="gauge_ring" r="19.44" stroke="#CBD5E1" stroke-dasharray="2 3" stroke-width="1.5"/>
+    <line atv:refpx="108.821" atv:refpy="129.01" id="gauge_needle" stroke="#64748B" stroke-linecap="round" stroke-width="1.5" x1="102.092" x2="115.551" y1="134.992" y2="123.028"/>
+    <circle atv:refpx="102.092" atv:refpy="134.992" cx="102.092" cy="134.992" fill="#94A3B8" id="gauge_pivot" r="3.739"/>
+    <rect atv:refpx="102.091" atv:refpy="238.179" fill="#F1F5F9" height="104.683" id="flame_window" rx="8.973" stroke="#94A3B8" stroke-width="1" width="89.727" x="57.228" y="185.838"/>
+    <line atv:refpx="102.092" atv:refpy="276.314" id="burner" stroke="#CBD5E1" stroke-linecap="round" stroke-width="3" x1="72.182" x2="132.001" y1="275.566" y2="275.566"/>
+    <path atv:refpx="102.045" atv:refpy="241.17" d="M102.091,269.583C81.155,257.62 81.155,233.692 96.109,212.756C96.109,230.701 105.082,236.683 108.073,224.719C120.037,239.674 126.019,254.629 102.091,269.583" fill="#94A3B8" id="flame" stroke="#64748B" stroke-linejoin="round" stroke-width="0.8"/>
+    <circle atv:refpx="170.884" atv:refpy="305.476" cx="170.884" cy="305.476" fill="#94A3B8" id="status_led" r="5.235"/>
+    <svg atv:refpx="129.163" atv:refpy="57.073" height="30" id="id_14" transform="matrix(0.7348,0,0,0.7348,0,0)" width="30" x="160.781" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.7.%20Indikatorji.General" y="62.672"/>
+   </g>
+  </g>
+ </g>
+</svg>

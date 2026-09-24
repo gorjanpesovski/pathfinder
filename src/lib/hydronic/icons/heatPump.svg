@@ -1,0 +1,53 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<svg height="235" version="1.2" width="330" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:ns1="http://sozi.baierouge.fr" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs>
+  <linearGradient id="sleekBodyGrad" x1="0" x2="1" y1="0" y2="0">
+   <stop offset="0" stop-color="#CBD5E1"/>
+   <stop offset="0.15" stop-color="#F1F5F9"/>
+   <stop offset="0.55" stop-color="#FFFFFF"/>
+   <stop offset="0.88" stop-color="#E2E8F0"/>
+   <stop offset="1" stop-color="#CBD5E1"/>
+  </linearGradient>
+  <radialGradient cx="0.5" cy="0.5" id="fanGrad" r="0.5">
+   <stop offset="0" stop-color="#FFFFFF"/>
+   <stop offset="0.7" stop-color="#F1F5F9"/>
+   <stop offset="1" stop-color="#E2E8F0"/>
+  </radialGradient>
+  <radialGradient cx="0.5" cy="0.5" id="unitShadow" r="0.5">
+   <stop offset="0" stop-color="#64748B" stop-opacity="0.25"/>
+   <stop offset="1" stop-color="#64748B" stop-opacity="0"/>
+  </radialGradient>
+ </defs>
+ <metadata>
+  <atv:parameter behavior="optional" defaultvalue="Toplotna Črpalka" desc="Name" name="name" substitute="$Ime$" valuetype="string"/>
+  <atv:gridconfig enabled="false" gridstyle="lines" height="20" width="20"/>
+  <atv:snapconfig enabled="false" height="10" width="10"/>
+ </metadata>
+ <script atv:desc="" atv:name="" type="text/ecmascript"/>
+ <rect atv:refpx="164.823" atv:refpy="120.833" fill="url(#sleekBodyGrad)" height="223.558" id="body" rx="8.654" stroke="#94A3B8" stroke-width="1.442" width="317.308" x="6.346" y="9.998"/>
+ <rect atv:refpx="164.823" atv:refpy="7.611" fill="#E2E8F0" height="14.423" id="top_cap" rx="4.327" stroke="#94A3B8" stroke-width="1.154" width="328.847" x="0.577" y="1.344"/>
+ <line atv:refpx="18.429" atv:refpy="121.554" id="highlight" opacity="0.8" stroke="#FFFFFF" stroke-linecap="round" stroke-width="3.606" x1="17.884" x2="17.884" y1="30.19" y2="214.806"/>
+ <g atv:refpx="121.929" atv:refpy="121.554" id="id_19" transform="matrix(1.0116,0,0,1.0116,-1.0368,-0.6442)">
+  <circle atv:refpx="84.4" atv:refpy="84.4" cx="121.731" cy="121.731" fill="url(#fanGrad)" id="fan_housing" r="86.539" stroke="#94A3B8" stroke-width="1.442"/>
+  <circle atv:refpx="84.4" atv:refpy="84.4" cx="121.731" cy="121.731" fill="none" id="grille_outer" r="72.116" stroke="#CBD5E1" stroke-width="1.154"/>
+  <circle atv:refpx="84.4" atv:refpy="84.4" cx="121.731" cy="121.731" fill="none" id="grille_inner" r="51.923" stroke="#CBD5E1" stroke-width="1.154"/>
+  <path atv:refpx="90.367" atv:refpy="73" d="M121.73,121.73C104.423,98.654 107.307,64.038 121.73,49.615C139.038,66.923 139.038,98.654 121.73,121.73" fill="#CBD5E1" id="id_0" stroke="#94A3B8" stroke-linejoin="round" stroke-width="1.154"/>
+  <path atv:refpx="111.651" atv:refpy="110.846" d="M121.73,121.73C150.37,118.28 178.905,138.086 184.184,157.788C160.542,164.123 133.062,148.258 121.73,121.73" fill="#CBD5E1" id="id_1" stroke="#94A3B8" stroke-linejoin="round" stroke-width="1.154"/>
+  <path atv:refpx="68.349" atv:refpy="110.704" d="M121.73,121.73C110.399,148.258 78.979,163.067 59.277,157.788C65.612,134.145 93.091,118.28 121.73,121.73" fill="#CBD5E1" id="id_2" stroke="#94A3B8" stroke-linejoin="round" stroke-width="1.154"/>
+  <circle atv:refpx="84.4" atv:refpy="84.4" cx="121.73" cy="121.73" fill="#E2E8F0" id="hub" r="11.538" stroke="#94A3B8" stroke-width="1.442"/>
+ </g>
+ <line atv:refpx="226.122" atv:refpy="121.554" id="divider" stroke="#CBD5E1" stroke-width="1.442" x1="225.577" x2="225.577" y1="24.421" y2="220.575"/>
+ <g atv:refpx="273.236" atv:refpy="141.079" id="louvers" transform="matrix(1.4423,0,0,1.4423,-7.8381,20.8688)">
+  <line atv:refpx="195" atv:refpy="42.5" id="id_3" stroke="#94A3B8" stroke-linecap="round" stroke-width="1.5" x1="172" x2="218" y1="42" y2="42"/>
+  <line atv:refpx="195" atv:refpy="54.5" id="id_4" stroke="#94A3B8" stroke-linecap="round" stroke-width="1.5" x1="172" x2="218" y1="54" y2="54"/>
+  <line atv:refpx="195" atv:refpy="66.5" id="id_5" stroke="#94A3B8" stroke-linecap="round" stroke-width="1.5" x1="172" x2="218" y1="66" y2="66"/>
+  <line atv:refpx="195" atv:refpy="78.5" id="id_6" stroke="#94A3B8" stroke-linecap="round" stroke-width="1.5" x1="172" x2="218" y1="78" y2="78"/>
+  <line atv:refpx="195" atv:refpy="90.5" id="id_7" stroke="#94A3B8" stroke-linecap="round" stroke-width="1.5" x1="172" x2="218" y1="90" y2="90"/>
+  <line atv:refpx="195" atv:refpy="102.5" id="id_8" stroke="#94A3B8" stroke-linecap="round" stroke-width="1.5" x1="172" x2="218" y1="102" y2="102"/>
+  <line atv:refpx="195" atv:refpy="114.5" id="id_9" stroke="#94A3B8" stroke-linecap="round" stroke-width="1.5" x1="172" x2="218" y1="114" y2="114"/>
+  <line atv:refpx="195" atv:refpy="126.5" id="id_10" stroke="#94A3B8" stroke-linecap="round" stroke-width="1.5" x1="172" x2="218" y1="126" y2="126"/>
+ </g>
+ <rect atv:refpx="273.236" atv:refpy="47.386" fill="#F1F5F9" height="43.37" id="status_panel" rx="4.327" stroke="#94A3B8" stroke-width="1.154" width="66.346" x="240.239" y="26.645"/>
+ <svg atv:refpx="259.367" atv:refpy="47.386" height="30" id="id_14" transform="matrix(0.7348,0,0,0.7348,0,0)" width="30" x="338.234" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.7.%20Indikatorji.General" y="50.777"/>
+ <svg atv:refpx="287.106" atv:refpy="47.388" height="30" id="id_15" transform="matrix(0.7347,0,0,0.7347,0,0)" width="30" x="376.012" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.7.%20Indikatorji.General" y="50.782"/>
+</svg>

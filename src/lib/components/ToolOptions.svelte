@@ -2,6 +2,9 @@
   import { ALIGN_ACTIONS } from "$lib/tools/align.js";
   import { ROOM_CATEGORIES } from "$lib/tools/categories.js";
   import { MIN_DOOR_WIDTH } from "$lib/tools/doors.js";
+  // import { PIPE_MEDIA, mediumOf } from "$lib/hydronic/elements.js";
+  import { PIPE_MEDIA, READOUT_MODES, mediumOf } from "$lib/hydronic/elements.js";
+  import BranchOptions from "./BranchOptions.svelte";
 
   let {
     tool,
@@ -14,6 +17,19 @@
     door = null,
     furniture = null,
     placing = null,
+    fitting = null,
+    medium = "supply",
+    onmedium,
+    onfittingflip,
+    onfittingremove,
+    onfittingscale,
+    onfittingreadout,
+    onreadoutreset,
+    onbranchparam,
+    onreverse,
+    onpipelayer,
+    onresetsize,
+    onelementname,
     onlinewidth,
     onelbow,
     onsnap,
@@ -46,6 +62,7 @@
     "room-poly": "Polygon",
     curve: "Curve",
     place: "Place",
+    pipe: "Pipe",
     line: "Line",
     rect: "Rectangle"
   };
@@ -59,6 +76,24 @@
   }
 
   const TARGET_TOOLS = ["room-rect", "room-poly", "curve"];
+
+  let mediumMenu = $state(null);
+
+  function openMedium(event){
+    const box = event.currentTarget.getBoundingClientRect();
+    mediumMenu = mediumMenu ? null : { x: box.left, y: box.bottom + 4 };
+  }
+
+  function cycleMedium(value, event){
+    const index = PIPE_MEDIA.findIndex((entry) => entry.id === mediumOf(value).id);
+    const step = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
+    if (step === 0) return;
+    onmedium(PIPE_MEDIA[(index + step + PIPE_MEDIA.length) % PIPE_MEDIA.length].id);
+  }
+
+  function closeMedium(event){
+    if (mediumMenu && !event.target.closest?.(".medium-menu, .medium-current")) mediumMenu = null;
+  }
 
   function plural(count, word){
     return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -78,6 +113,7 @@
   }
 
   .tool-name {
+    font-family: 'Sora', 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
     font-size: 13px;
     font-weight: 700;
     color: #0f172a;
@@ -185,6 +221,87 @@
     border-left: 1px solid #cbd5e1;
   }
 
+  .swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 5px;
+    border-radius: 2px;
+    vertical-align: 0;
+  }
+
+  .swatches {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .swatches button,
+  .swatches button:hover:not(:disabled) {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    background: var(--swatch);
+    box-shadow: 0 0 0 1px #cbd5e1;
+  }
+
+  .swatches button:hover:not(:disabled) {
+    box-shadow: 0 0 0 1px #64748b;
+  }
+
+  .swatches button.active,
+  .swatches button.active:hover:not(:disabled) {
+    box-shadow: 0 0 0 2px #2563eb;
+  }
+
+  button.medium-current {
+    display: inline-flex;
+    align-items: center;
+    min-width: 170px;
+  }
+
+  .caret {
+    margin-left: auto;
+    padding-left: 8px;
+    font-size: 10px;
+    color: #94a3b8;
+  }
+
+  .medium-menu {
+    position: fixed;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    min-width: 190px;
+    padding: 4px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+  }
+
+  .medium-menu button {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    border: none;
+    border-radius: 5px;
+    text-align: left;
+  }
+
+  .medium-menu button.active {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  .medium-name {
+    display: inline-flex;
+    align-items: center;
+    min-width: 118px;
+  }
+
   .segmented button.active {
     background: #eff6ff;
     color: #1d4ed8;
@@ -213,6 +330,51 @@
     cursor: not-allowed;
   }
 </style>
+
+<!--
+{#snippet mediumField(value)}
+  <div class="segmented" role="group" aria-label="Pipe medium">
+    {#each PIPE_MEDIA as entry (entry.id)}
+      <button type="button" class:active={value === entry.id} aria-pressed={value === entry.id}
+              onclick={() => onmedium(entry.id)}>
+        <span class="swatch" style="background: {entry.color}"></span>{entry.label}
+      </button>
+    {/each}
+  </div>
+{/snippet}
+-->
+
+<svelte:window onpointerdown={closeMedium} onkeydown={(e) => e.key === "Escape" && (mediumMenu = null)}/>
+
+{#snippet mediumField(value)}
+  <button type="button" class="medium-current" aria-haspopup="listbox" aria-expanded={!!mediumMenu}
+          title="Pipe type · scroll the mouse wheel to switch" onclick={openMedium} onwheel={(e) => cycleMedium(value, e)}>
+    <span class="swatch" style="background: {mediumOf(value).color}"></span>{mediumOf(value).label}<span class="caret" aria-hidden="true">▾</span>
+  </button>
+  {#if mediumMenu}
+    <div class="medium-menu" role="listbox" aria-label="Pipe type" style="left: {mediumMenu.x}px; top: {mediumMenu.y}px">
+      {#each PIPE_MEDIA as entry (entry.id)}
+        <button type="button" role="option" class:active={mediumOf(value).id === entry.id} aria-selected={mediumOf(value).id === entry.id}
+                onclick={() => { onmedium(entry.id); mediumMenu = null; }}>
+          <span class="swatch" style="background: {entry.color}"></span>{entry.label}
+        </button>
+      {/each}
+    </div>
+  {/if}
+{/snippet}
+
+<!--
+{#snippet mediumField(value)}
+  <div class="swatches" role="radiogroup" aria-label="Pipe medium">
+    {#each PIPE_MEDIA as entry (entry.id)}
+      <button type="button" role="radio" class:active={mediumOf(value).id === entry.id} aria-checked={mediumOf(value).id === entry.id}
+              aria-label={entry.label} title={entry.label} style="--swatch: {entry.color}"
+              onclick={() => onmedium(entry.id)}></button>
+    {/each}
+  </div>
+  <span class="medium-name"><span class="swatch" style="background: {mediumOf(value).color}"></span>{mediumOf(value).label}</span>
+{/snippet}
+-->
 
 {#snippet snapField()}
   <label>
@@ -279,7 +441,32 @@
       </div>
       <span class="sep" aria-hidden="true"></span>
     {/if}
-    {#if furniture}
+    {#if fitting}
+      <span>{fitting.label}</span>
+      <!-- <button type="button" onclick={onfittingflip} title="Turn it around: reverses a pump or check valve, moves a valve actuator to the other side">Flip</button> -->
+      {#if fitting.measure}
+        <div class="segmented" role="group" aria-label="Readout">
+          {#each READOUT_MODES as mode (mode.id)}
+            <button type="button" class:active={fitting.readout === mode.id} aria-pressed={fitting.readout === mode.id}
+                    onclick={() => onfittingreadout(mode.id)}>{mode.id === "value" ? fitting.measure : mode.label}</button>
+          {/each}
+        </div>
+        {#if fitting.moved}
+          <button type="button" onclick={onreadoutreset} title="Let the readout pick a free side again">Auto position</button>
+        {/if}
+      {:else}
+        <button type="button" onclick={onfittingflip} title="Turn it around: reverses a pump or check valve, moves a valve actuator to the other side">Flip</button>
+      {/if}
+      <label>
+        Size
+        <input type="range" min="50" max="200" step="5" value={Math.round(fitting.scale * 100)}
+               oninput={(e) => onfittingscale(Number(e.currentTarget.value) / 100)}>
+        <span class="unit">{Math.round(fitting.scale * 100)}%</span>
+      </label>
+      <button type="button" onclick={onfittingremove}>Remove</button>
+      <!-- <span class="muted">Drag it along the pipe to move it</span> -->
+      <span class="muted">{fitting.measure && fitting.readout !== "none" ? "Drag it along the pipe · drag the readout to place it" : "Drag it along the pipe to move it"}</span>
+    {:else if furniture}
       <span>{furniture.label} · {furniture.roomName}</span>
       <button type="button" onclick={onfurniturerotate} title="Rotate 90°">Rotate 90°</button>
       <button type="button" onclick={onfurnitureremove}>Remove</button>
@@ -343,6 +530,33 @@
                  onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}>
         </label>
       {/if}
+      {#if selection.shape.kind === "pipe"}
+        {@render mediumField(selection.shape.medium)}
+        <button type="button" onclick={onreverse} title="Reverse the flow direction">Reverse flow</button>
+        <div class="segmented" role="group" aria-label="Crossing order">
+          <button type="button" onclick={() => onpipelayer(false)} title="Pass under other pipes where they cross">Below</button>
+          <button type="button" onclick={() => onpipelayer(true)} title="Pass over other pipes where they cross">Above</button>
+        </div>
+        <!-- <span class="muted">Drag the square handles to move bend points · Alt+click removes one</span> -->
+        <span class="muted">Drag a corner or an edge to reshape · Alt+click a corner removes it</span>
+      {/if}
+      {#if selection.shape.kind === "equipment"}
+        <label>
+          Name
+          <input type="text" value={selection.shape.name ?? ""}
+                 onchange={(e) => onelementname(e.currentTarget.value)}
+                 onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}>
+        </label>
+        {#if selection.shape.type === "manifold"}
+          {@render mediumField(selection.shape.medium)}
+        {/if}
+        {#if selection.shape.type === "branch"}
+          <BranchOptions element={selection.shape} onchange={onbranchparam}/>
+        {/if}
+        <button type="button" onclick={onresetsize}>Reset size</button>
+        <!-- <span class="muted">Drag a corner to scale · Shift frees the aspect ratio</span> -->
+        <span class="muted">{selection.shape.type === "manifold" ? "Drag a corner to change the length" : "Drag a corner to scale · Shift frees the aspect ratio"}</span>
+      {/if}
       {#if selection.legacy}
         <label>
           Stroke (all traces)
@@ -393,11 +607,15 @@
     <span class="sep" aria-hidden="true"></span>
     {#if placing}
       <span>{placing.label}</span>
-      {#if placing.label !== "Door"}
+      {#if placing.label !== "Door" && placing.rotatable !== false}
         <button type="button" onclick={onrotateplacing}>Rotate 90° (R)</button>
       {/if}
       <span class="muted">{placing.hint}</span>
     {/if}
+  {:else if tool === "pipe"}
+    <span class="sep" aria-hidden="true"></span>
+    {@render mediumField(medium)}
+    <span class="muted">Click an element · Ctrl+click adds a bend point · click another element to connect</span>
   {:else if tool !== "pan"}
     <span class="sep" aria-hidden="true"></span>
     {#if TARGET_TOOLS.includes(tool)}

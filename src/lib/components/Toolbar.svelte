@@ -15,6 +15,9 @@
       hint: "Works like the pen in Illustrator: click to place a corner, click and drag to place a smooth point with curve handles. Shift keeps edges straight and handles at 45°. Enter or click the first point to close. Backspace removes the last point, Esc cancels. Choose Floor, Room or Wall in the options bar. A wall can stay open: press Enter or click the last point again." }
   ];
 
+  PRIMARY.push({ id: "pipe", label: "Pipe", key: "P", ready: true,
+    hint: "Click an element to start a pipe; it snaps to the nearest connection point along the element. Hold Ctrl and click to add bend points on the grid that the trace has to pass through. Click another element to connect. Backspace removes the last bend point, Esc cancels. Choose Supply, Return or Other in the options bar." });
+
   const SHOW_LEGACY = false;
 
   const LEGACY = [
@@ -186,6 +189,10 @@
         <path d="M4 18 Q 12 0 20 18"/>
         <circle cx="4" cy="18" r="2" fill="currentColor" stroke="none"/>
         <circle cx="20" cy="18" r="2" fill="currentColor" stroke="none"/>
+      {:else if entry.id === "pipe"}
+        <path d="M4 6 H11 V18 H20" stroke-width="2.6"/>
+        <rect x="2" y="3.5" width="4" height="5" rx="1" fill="currentColor" stroke="none"/>
+        <rect x="18" y="15.5" width="4" height="5" rx="1" fill="currentColor" stroke="none"/>
       {:else if entry.id === "line"}
         <path d="M5 7 L14 7 L14 17 L19 17"/>
         <circle cx="5" cy="7" r="2" fill="currentColor" stroke="none"/>

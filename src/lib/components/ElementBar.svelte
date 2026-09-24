@@ -1,6 +1,7 @@
 <script>
   import FurnitureShape from "./FurnitureShape.svelte";
   import { FURNITURE, ELEMENT_GROUPS, newFurniture } from "$lib/tools/furniture.js";
+  import { HYDRONIC_ELEMENTS } from "$lib/hydronic/elements.js";
 
   let { active = null, onpick, onclose, groups = ELEMENT_GROUPS, empty = "" } = $props();
 
@@ -9,7 +10,9 @@
 
   let elements = $derived(((groups.find((entry) => entry.id === group) ?? groups[0])?.items ?? []).map((type) => type === "door"
     ? { type, label: "Door" }
-    : { type, label: FURNITURE[type].label, item: newFurniture(type, 0, 0, 0) }));
+    : HYDRONIC_ELEMENTS[type]
+      ? { type, label: HYDRONIC_ELEMENTS[type].label, hydronic: HYDRONIC_ELEMENTS[type] }
+      : { type, label: FURNITURE[type].label, item: newFurniture(type, 0, 0, 0) }));
 
   function viewBox(item){
     const size = Math.max(item.width, item.height) + 12;
@@ -142,9 +145,15 @@
   <div class="tiles" role="toolbar" aria-label="{group} elements">
     {#each elements as element (element.type)}
       <button type="button" class:active={active === element.type} aria-pressed={active === element.type}
-              title="Place {element.label.toLowerCase()} · R rotates, Shift keeps placing, Esc stops"
+              title={element.hydronic
+                ? `Place ${element.label.toLowerCase()} · ${element.hydronic.inline ? "click on a pipe" : "click on the canvas"} · Shift keeps placing, Esc stops`
+                : `Place ${element.label.toLowerCase()} · R rotates, Shift keeps placing, Esc stops`}
               onclick={() => onpick(element.type)}>
-        {#if element.item}
+        {#if element.hydronic}
+          <svg viewBox="-4 -4 {element.hydronic.width + 8} {element.hydronic.height + 8}" aria-hidden="true">
+            <use href="#hyd-{element.type}" x="0" y="0" width={element.hydronic.width} height={element.hydronic.height}/>
+          </svg>
+        {:else if element.item}
           <svg viewBox={viewBox(element.item)} aria-hidden="true">
             <FurnitureShape item={element.item} width={Math.max(element.item.width, element.item.height) / 30}/>
           </svg>

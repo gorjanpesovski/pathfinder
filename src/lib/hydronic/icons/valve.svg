@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<svg height="32" version="1.2" width="56" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <metadata>
+  <atv:parameter behavior="optional" name="base" valuetype="address"/>
+  <atv:gridconfig enabled="true" gridstyle="lines" height="20" width="20"/>
+  <atv:snapconfig enabled="false" height="20" width="20"/>
+ </metadata>
+ <polygon fill="#ffffff" id="left" points="3,3 28,16 3,29" stroke="#1E293B" stroke-linejoin="round" stroke-width="3.5"/>
+ <polygon fill="#ffffff" id="right" points="53,3 28,16 53,29" stroke="#1E293B" stroke-linejoin="round" stroke-width="3.5"/>
+</svg>
