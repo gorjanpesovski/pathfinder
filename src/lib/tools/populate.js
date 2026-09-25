@@ -546,7 +546,6 @@ export function furnishStorage(room, style, random = Math.random){
   return items;
 }
 
-// export const FURNISHABLE = ["office", "kitchen", "wc", "storage"];
 export const FURNISHABLE = ["office", "meeting", "kitchen", "wc", "storage", "corridor", "technical", "server", "stairs"];
 
 export function furnishForCategory(room, style, random = Math.random){

@@ -2,16 +2,6 @@ export const DOCUMENT_FORMAT = "pathfinder";
 export const DOCUMENT_VERSION = 1;
 export const AUTOSAVE_KEY = "pathfinder.autosave";
 
-// export function serializeDocument({ app, apps, canvas }){
-//   return JSON.stringify({
-//     format: DOCUMENT_FORMAT,
-//     version: DOCUMENT_VERSION,
-//     savedAt: new Date().toISOString(),
-//     app,
-//     canvas,
-//     apps
-//   });
-// }
 export function serializeDocument({ app, apps, canvas, name = null }){
   return JSON.stringify({
     format: DOCUMENT_FORMAT,
@@ -29,7 +19,6 @@ export function parseDocument(text){
   if (!data || data.format !== DOCUMENT_FORMAT || typeof data.apps !== "object") throw new Error("This is not a Pathfinder drawing.");
   if (data.version > DOCUMENT_VERSION) throw new Error("This drawing was saved by a newer version of Pathfinder.");
   const apps = Object.fromEntries(Object.entries(data.apps).map(([id, shapes]) => [id, Array.isArray(shapes) ? shapes : []]));
-  // return { app: data.app, canvas: data.canvas ?? null, apps };
   return { app: data.app, canvas: data.canvas ?? null, apps, name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : null };
 }
 

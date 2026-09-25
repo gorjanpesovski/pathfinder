@@ -2,13 +2,8 @@
   import { ALIGN_ACTIONS } from "$lib/tools/align.js";
   import { ROOM_CATEGORIES } from "$lib/tools/categories.js";
   import { MIN_DOOR_WIDTH } from "$lib/tools/doors.js";
-  // import { PIPE_MEDIA, mediumOf } from "$lib/hydronic/elements.js";
-  import { PIPE_MEDIA, READOUT_MODES, mediumOf } from "$lib/hydronic/elements.js";
-  import BranchOptions from "./BranchOptions.svelte";
-  import { TANK_PROBES, hasTankProbes } from "$lib/hydronic/tank.js";
   import SelectionOptions from "./SelectionOptions.svelte";
   import MediumPicker from "./MediumPicker.svelte";
-  import { portal } from "$lib/actions/portal.js";
 
   let {
     tool,
@@ -43,7 +38,6 @@
     onreverse,
     onpipelayer,
     onresetsize,
-    onelementname,
     onlinewidth,
     onelbow,
     onsnap,
@@ -83,37 +77,14 @@
   };
 
   const MAX_WIDTH = 50;
+  const TARGET_TOOLS = ["room-rect", "room-poly", "curve"];
+
+  let keepRatio = $state(true);
 
   function readNumber(event, min, max){
     const value = Number(event.currentTarget.value);
     if (event.currentTarget.value === "" || !Number.isFinite(value)) return null;
     return Math.min(max, Math.max(min, Math.round(value)));
-  }
-
-  const TARGET_TOOLS = ["room-rect", "room-poly", "curve"];
-
-  let mediumMenu = $state(null);
-  let keepRatio = $state(true);
-
-  function readSize(event){
-    const value = Number(event.currentTarget.value);
-    return event.currentTarget.value === "" || !Number.isFinite(value) ? null : Math.min(4000, Math.max(4, Math.round(value * 10) / 10));
-  }
-
-  function openMedium(event){
-    const box = event.currentTarget.getBoundingClientRect();
-    mediumMenu = mediumMenu ? null : { x: box.left, y: box.bottom + 4 };
-  }
-
-  function cycleMedium(value, event){
-    const index = PIPE_MEDIA.findIndex((entry) => entry.id === mediumOf(value).id);
-    const step = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
-    if (step === 0) return;
-    onmedium(PIPE_MEDIA[(index + step + PIPE_MEDIA.length) % PIPE_MEDIA.length].id);
-  }
-
-  function closeMedium(event){
-    if (mediumMenu && !event.target.closest?.(".medium-menu, .medium-current")) mediumMenu = null;
   }
 
   function plural(count, word){
@@ -135,7 +106,6 @@
     border-bottom-right-radius: 8px;
     background: #ffffff;
     box-sizing: border-box;
-    /* overflow: hidden; */
     white-space: nowrap;
     font-size: 12px;
     color: #475569;
@@ -189,22 +159,6 @@
     accent-color: #2563eb;
   }
 
-  input[type="color"] {
-    width: 30px;
-    height: 26px;
-    padding: 1px 2px;
-    border: 1px solid #cbd5e1;
-    border-radius: 5px;
-    background: #ffffff;
-    cursor: pointer;
-  }
-
-  button.active {
-    background: #eff6ff;
-    color: #1d4ed8;
-    border-color: #93c5fd;
-  }
-
   input[type="checkbox"] {
     width: 14px;
     height: 14px;
@@ -219,8 +173,7 @@
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
   }
 
-  .unit,
-  .muted {
+  .unit {
     font-weight: 400;
     color: #94a3b8;
   }
@@ -266,92 +219,6 @@
     border-left: 1px solid #cbd5e1;
   }
 
-  .swatch {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    margin-right: 5px;
-    border-radius: 2px;
-    vertical-align: 0;
-  }
-
-  .swatches {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .swatches button,
-  .swatches button:hover:not(:disabled) {
-    width: 16px;
-    height: 16px;
-    padding: 0;
-    border: 2px solid #ffffff;
-    border-radius: 50%;
-    background: var(--swatch);
-    box-shadow: 0 0 0 1px #cbd5e1;
-  }
-
-  .swatches button:hover:not(:disabled) {
-    box-shadow: 0 0 0 1px #64748b;
-  }
-
-  .swatches button.active,
-  .swatches button.active:hover:not(:disabled) {
-    box-shadow: 0 0 0 2px #2563eb;
-  }
-
-  button.medium-current {
-    display: inline-flex;
-    align-items: center;
-    min-width: 170px;
-  }
-
-  .caret {
-    margin-left: auto;
-    padding-left: 8px;
-    font-size: 10px;
-    color: #94a3b8;
-  }
-
-  .medium-menu {
-    position: fixed;
-    z-index: 30;
-    display: flex;
-    flex-direction: column;
-    min-width: 190px;
-    padding: 4px;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    background: #ffffff;
-    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
-  }
-
-  .medium-menu button {
-    display: flex;
-    align-items: center;
-    height: 28px;
-    border: none;
-    border-radius: 5px;
-    text-align: left;
-  }
-
-  .medium-menu button.active {
-    background: #eff6ff;
-    color: #1d4ed8;
-  }
-
-  .medium-name {
-    display: inline-flex;
-    align-items: center;
-    min-width: 118px;
-  }
-
-  .segmented button.active {
-    background: #eff6ff;
-    color: #1d4ed8;
-  }
-
   button {
     height: 26px;
     padding: 0 10px;
@@ -370,64 +237,18 @@
     color: #1d4ed8;
   }
 
+  button.active,
+  .segmented button.active {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-color: #93c5fd;
+  }
+
   button:disabled {
     color: #cbd5e1;
     cursor: not-allowed;
   }
 </style>
-
-<!--
-{#snippet mediumField(value)}
-  <div class="segmented" role="group" aria-label="Pipe medium">
-    {#each PIPE_MEDIA as entry (entry.id)}
-      <button type="button" class:active={value === entry.id} aria-pressed={value === entry.id}
-              onclick={() => onmedium(entry.id)}>
-        <span class="swatch" style="background: {entry.color}"></span>{entry.label}
-      </button>
-    {/each}
-  </div>
-{/snippet}
--->
-
-<svelte:window onpointerdown={closeMedium} onkeydown={(e) => e.key === "Escape" && (mediumMenu = null)}/>
-
-{#snippet mediumField(value)}
-  <button type="button" class="medium-current" aria-haspopup="listbox" aria-expanded={!!mediumMenu}
-          title="Pipe type · scroll the mouse wheel to switch" onclick={openMedium} onwheel={(e) => cycleMedium(value, e)}>
-    <span class="swatch" style="background: {mediumOf(value).color}"></span>{mediumOf(value).label}<span class="caret" aria-hidden="true">▾</span>
-  </button>
-  {#if mediumMenu}
-    <div class="medium-menu" role="listbox" aria-label="Pipe type" use:portal style="left: {mediumMenu.x}px; top: {mediumMenu.y}px">
-      {#each PIPE_MEDIA as entry (entry.id)}
-        <button type="button" role="option" class:active={mediumOf(value).id === entry.id} aria-selected={mediumOf(value).id === entry.id}
-                onclick={() => { onmedium(entry.id); mediumMenu = null; }}>
-          <span class="swatch" style="background: {entry.color}"></span>{entry.label}
-        </button>
-      {/each}
-    </div>
-  {/if}
-{/snippet}
-
-<!--
-{#snippet mediumField(value)}
-  <div class="swatches" role="radiogroup" aria-label="Pipe medium">
-    {#each PIPE_MEDIA as entry (entry.id)}
-      <button type="button" role="radio" class:active={mediumOf(value).id === entry.id} aria-checked={mediumOf(value).id === entry.id}
-              aria-label={entry.label} title={entry.label} style="--swatch: {entry.color}"
-              onclick={() => onmedium(entry.id)}></button>
-    {/each}
-  </div>
-  <span class="medium-name"><span class="swatch" style="background: {mediumOf(value).color}"></span>{mediumOf(value).label}</span>
-{/snippet}
--->
-
-{#snippet pipeWidthField(value)}
-  <label title="Pipe thickness in px">
-    Width
-    <input type="number" min="1" max="40" step="1" value={value}
-           oninput={(e) => { const next = readNumber(e, 1, 40); if (next !== null) onpipewidth(next); }}>
-  </label>
-{/snippet}
 
 {#snippet alignIcon(id)}
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
@@ -447,11 +268,17 @@
   </svg>
 {/snippet}
 
-{#snippet snapField()}
-  <label>
-    <input type="checkbox" checked={snapToGrid} onchange={(e) => onsnap(e.currentTarget.checked)}>
-    Snap to grid
-  </label>
+{#snippet distributeButtons(disabled)}
+  <button type="button" {disabled} aria-label="Distribute horizontally" title="Distribute horizontally (Ctrl+Shift+3)" onclick={() => ondistribute("x")}>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+      <path d="M1.5 2 V14 M14.5 2 V14"/><rect x="6" y="4" width="4" height="8" rx="0.6"/>
+    </svg>
+  </button>
+  <button type="button" {disabled} aria-label="Distribute vertically" title="Distribute vertically (Ctrl+Shift+9)" onclick={() => ondistribute("y")}>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+      <path d="M2 1.5 H14 M2 14.5 H14"/><rect x="4" y="6" width="8" height="4" rx="0.6"/>
+    </svg>
+  </button>
 {/snippet}
 
 <div class="tool-options">
@@ -464,35 +291,10 @@
         {#each ALIGN_ACTIONS as action}
           <button type="button" disabled={!selection.canAlign} aria-label={action.label}
                   title="{action.label} to {selection.alignTarget} ({action.shortcut})" onclick={() => onalign(action.id)}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-              {#if action.id === "left"}
-                <path d="M2 1.5 V14.5"/><rect x="4" y="3.5" width="9" height="3" rx="0.6"/><rect x="4" y="9.5" width="5.5" height="3" rx="0.6"/>
-              {:else if action.id === "hcenter"}
-                <path d="M8 1.5 V14.5"/><rect x="3" y="3.5" width="10" height="3" rx="0.6"/><rect x="5" y="9.5" width="6" height="3" rx="0.6"/>
-              {:else if action.id === "right"}
-                <path d="M14 1.5 V14.5"/><rect x="3" y="3.5" width="9" height="3" rx="0.6"/><rect x="6.5" y="9.5" width="5.5" height="3" rx="0.6"/>
-              {:else if action.id === "top"}
-                <path d="M1.5 2 H14.5"/><rect x="3.5" y="4" width="3" height="9" rx="0.6"/><rect x="9.5" y="4" width="3" height="5.5" rx="0.6"/>
-              {:else if action.id === "vcenter"}
-                <path d="M1.5 8 H14.5"/><rect x="3.5" y="3" width="3" height="10" rx="0.6"/><rect x="9.5" y="5" width="3" height="6" rx="0.6"/>
-              {:else}
-                <path d="M1.5 14 H14.5"/><rect x="3.5" y="3" width="3" height="9" rx="0.6"/><rect x="9.5" y="6.5" width="3" height="5.5" rx="0.6"/>
-              {/if}
-            </svg>
+            {@render alignIcon(action.id)}
           </button>
         {/each}
-        <button type="button" disabled={!selection.canDistribute} aria-label="Distribute horizontally"
-                title="Distribute horizontally (Ctrl+Shift+3)" onclick={() => ondistribute("x")}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-            <path d="M1.5 2 V14 M14.5 2 V14"/><rect x="6" y="4" width="4" height="8" rx="0.6"/>
-          </svg>
-        </button>
-        <button type="button" disabled={!selection.canDistribute} aria-label="Distribute vertically"
-                title="Distribute vertically (Ctrl+Shift+9)" onclick={() => ondistribute("y")}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-            <path d="M2 1.5 H14 M2 14.5 H14"/><rect x="4" y="6" width="8" height="4" rx="0.6"/>
-          </svg>
-        </button>
+        {@render distributeButtons(!selection.canDistribute)}
         <button type="button" disabled={!selection.canGroup} aria-label="Group" title="Group (Ctrl+G)" onclick={ongroup}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
             <rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke-dasharray="2 2"/>
@@ -518,86 +320,18 @@
             {@render alignIcon(action.id)}
           </button>
         {/each}
-        <button type="button" disabled={fitting.count < 3} aria-label="Distribute horizontally"
-                title="Distribute horizontally (Ctrl+Shift+3)" onclick={() => ondistribute("x")}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-            <path d="M1.5 2 V14 M14.5 2 V14"/><rect x="6" y="4" width="4" height="8" rx="0.6"/>
-          </svg>
-        </button>
-        <button type="button" disabled={fitting.count < 3} aria-label="Distribute vertically"
-                title="Distribute vertically (Ctrl+Shift+9)" onclick={() => ondistribute("y")}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-            <path d="M2 1.5 H14 M2 14.5 H14"/><rect x="4" y="6" width="8" height="4" rx="0.6"/>
-          </svg>
-        </button>
+        {@render distributeButtons(fitting.count < 3)}
       </div>
       <span class="sep" aria-hidden="true"></span>
     {/if}
-    <!-- {#if fitting && fitting.count > 1} -->
     {#if groups}
       <SelectionOptions {groups} bind:keepRatio {onelementsize} {onelementrotate} {onresetsize} {onnamesize} {ontankprobe}
                         {onbranchparam} {onmedium} {onpipewidth} {onreverse} {onpipelayer} {onfittingreadout} {onreadoutreset}
                         {onfittingflip} {onfittingscale} {onfittingremove} {onfittingnamesize} {onedittext} {ontextstyle}/>
-    {:else if fitting && fitting.count > 1}
-      <span>{fitting.count} on pipes</span>
-      <div class="icon-group" role="group" aria-label="Align">
-        {#each ALIGN_ACTIONS as action}
-          <button type="button" aria-label={action.label} title="{action.label} ({action.shortcut})" onclick={() => onalign(action.id)}>
-            {@render alignIcon(action.id)}
-          </button>
-        {/each}
-        <button type="button" disabled={fitting.count < 3} aria-label="Distribute horizontally"
-                title="Distribute horizontally (Ctrl+Shift+3)" onclick={() => ondistribute("x")}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-            <path d="M1.5 2 V14 M14.5 2 V14"/><rect x="6" y="4" width="4" height="8" rx="0.6"/>
-          </svg>
-        </button>
-        <button type="button" disabled={fitting.count < 3} aria-label="Distribute vertically"
-                title="Distribute vertically (Ctrl+Shift+9)" onclick={() => ondistribute("y")}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-            <path d="M2 1.5 H14 M2 14.5 H14"/><rect x="4" y="6" width="8" height="4" rx="0.6"/>
-          </svg>
-        </button>
-      </div>
-      <span class="sep" aria-hidden="true"></span>
-      <label>
-        Size
-        <input type="range" min="10" max="200" step="5" value={Math.round(fitting.scale * 100)}
-               oninput={(e) => onfittingscale(Number(e.currentTarget.value) / 100)}>
-        <span class="unit">{Math.round(fitting.scale * 100)}%</span>
-      </label>
-      <button type="button" onclick={onfittingremove}>Remove</button>
-      <!-- <span class="muted">Each one moves only along its own pipe · Ctrl+click adds or removes</span> -->
-    {:else if fitting}
-      <span>{fitting.label}</span>
-      <!-- <button type="button" onclick={onfittingflip} title="Turn it around: reverses a pump or check valve, moves a valve actuator to the other side">Flip</button> -->
-      {#if fitting.measure}
-        <div class="segmented" role="group" aria-label="Readout">
-          {#each READOUT_MODES as mode (mode.id)}
-            <button type="button" class:active={fitting.readout === mode.id} aria-pressed={fitting.readout === mode.id}
-                    onclick={() => onfittingreadout(mode.id)}>{mode.id === "value" ? fitting.measure : mode.label}</button>
-          {/each}
-        </div>
-        {#if fitting.moved}
-          <button type="button" onclick={onreadoutreset} title="Let the readout pick a free side again">Auto position</button>
-        {/if}
-      {:else}
-        <button type="button" onclick={onfittingflip} title="Turn it around: reverses a pump or check valve, moves a valve actuator to the other side">Flip</button>
-      {/if}
-      <label>
-        Size
-        <input type="range" min="10" max="200" step="5" value={Math.round(fitting.scale * 100)}
-               oninput={(e) => onfittingscale(Number(e.currentTarget.value) / 100)}>
-        <span class="unit">{Math.round(fitting.scale * 100)}%</span>
-      </label>
-      <button type="button" onclick={onfittingremove}>Remove</button>
-      <!-- <span class="muted">Drag it along the pipe to move it</span> -->
-      <!-- <span class="muted">{fitting.measure && fitting.readout !== "none" ? "Drag it along the pipe · drag the readout to place it" : "Drag it along the pipe to move it"}</span> -->
     {:else if furniture}
       <span>{furniture.label} · {furniture.roomName}</span>
-      <button type="button" onclick={onfurniturerotate} title="Rotate 90°">Rotate 90°</button>
+      <button type="button" onclick={onfurniturerotate}>Rotate 90°</button>
       <button type="button" onclick={onfurnitureremove}>Remove</button>
-      <!-- <span class="muted">Drag to move it inside the room</span> -->
     {:else if door}
       <span>Door · {door.roomName}</span>
       <span>Hinge</span>
@@ -621,10 +355,7 @@
         <span class="unit">cm</span>
       </label>
       <button type="button" onclick={ondoorremove}>Remove door</button>
-      <!-- <span class="muted">Drag the door along the walls to move it</span> -->
-    {:else if !selection}
-      <!-- <span class="muted">Nothing selected · drag on empty space to select an area</span> -->
-    {:else if selection.points > 0}
+    {:else if selection?.points > 0}
       <span>{plural(selection.points, "corner")}</span>
       {#if selection.maxRadius > 0}
         <label>
@@ -636,25 +367,12 @@
           <span class="unit">cm</span>
         </label>
         <button type="button" disabled={selection.radius === 0} onclick={() => onradius(0)}>Square corner</button>
-      {:else}
-        <!-- <span class="muted">Curved corners can't be rounded</span> -->
-        <!-- <span class="muted">{selection.shape.open ? "Open wall corners can't be rounded" : "Curved corners can't be rounded"}</span> -->
       {/if}
-      <!-- <span class="muted">Delete removes the corner</span> -->
-    {:else if selection.edges > 0}
+    {:else if selection?.edges > 0}
       <span>{plural(selection.edges, "edge")}</span>
-      <!-- <span class="muted">Drag to push or pull · Alt+drag moves freely</span> -->
-    {:else if selection.count > 1}
+    {:else if selection?.count > 1}
       <span>{selection.grouped ? `Group · ${plural(selection.count, "shape")}` : `${plural(selection.count, "shape")} selected`}</span>
-      {#if selection.pipeCount > 0}
-        <span class="sep" aria-hidden="true"></span>
-        <span>{plural(selection.pipeCount, "pipe")}</span>
-        {@render mediumField(selection.pipeMedium)}
-        {@render pipeWidthField(selection.pipeWidth)}
-        <button type="button" onclick={onreverse} title="Reverse the flow direction of every selected pipe">Reverse flow</button>
-      {/if}
-      <!-- <span class="muted">Drag to move together · Delete removes them</span> -->
-    {:else}
+    {:else if selection}
       <span>{selection.kindLabel}</span>
       {#if selection.shape.kind === "room"}
         <label>
@@ -663,82 +381,6 @@
                  onchange={(e) => onname(e.currentTarget.value)}
                  onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}>
         </label>
-      {/if}
-      {#if selection.shape.kind === "pipe"}
-        {@render mediumField(selection.shape.medium)}
-        {@render pipeWidthField(selection.pipeWidth)}
-        <button type="button" onclick={onreverse} title="Reverse the flow direction">Reverse flow</button>
-        <div class="segmented" role="group" aria-label="Crossing order">
-          <button type="button" onclick={() => onpipelayer(false)} title="Pass under other pipes where they cross">Below</button>
-          <button type="button" onclick={() => onpipelayer(true)} title="Pass over other pipes where they cross">Above</button>
-        </div>
-        <!-- <span class="muted">Drag the square handles to move bend points · Alt+click removes one</span> -->
-        <!-- <span class="muted">Drag a corner or an edge to reshape · Alt+click a corner removes it</span> -->
-      {/if}
-      {#if selection.shape.kind === "text"}
-        <button type="button" onclick={onedittext} title="Edit the text (double-click also works)">Edit text</button>
-        <label>
-          Size
-          <input type="number" min="6" max="200" step="1" value={selection.shape.fontSize}
-                 oninput={(e) => { const next = readNumber(e, 6, 200); if (next !== null) ontextstyle("fontSize", next); }}>
-        </label>
-        <label>
-          Color
-          <input type="color" value={selection.shape.color} oninput={(e) => ontextstyle("color", e.currentTarget.value.toUpperCase())}>
-        </label>
-        <button type="button" class:active={selection.shape.bold} aria-pressed={!!selection.shape.bold}
-                onclick={() => ontextstyle("bold", !selection.shape.bold)} title="Bold"><b>B</b></button>
-      {/if}
-      {#if selection.shape.kind === "equipment"}
-        <label>
-          Name
-          <input type="text" value={selection.shape.name ?? ""}
-                 onchange={(e) => onelementname(e.currentTarget.value)}
-                 onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}>
-        </label>
-        {#if selection.shape.type === "manifold"}
-          {@render mediumField(selection.shape.medium)}
-        {/if}
-        {#if selection.shape.type === "branch"}
-          <BranchOptions element={selection.shape} onchange={onbranchparam}/>
-        {/if}
-        <label title="Width in px">
-          W
-          <input type="number" min="4" step="1" value={Math.round(selection.shape.width * 10) / 10}
-                 onchange={(e) => { const next = readSize(e); if (next !== null) onelementsize("width", next, keepRatio); }}
-                 onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}>
-        </label>
-        <button type="button" class:active={keepRatio} aria-pressed={keepRatio} onclick={() => keepRatio = !keepRatio}
-                title={keepRatio ? "Proportions locked: changing one side changes the other" : "Proportions free"}>
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
-            <path d="M6.5 9.5 L9.5 6.5"/>
-            <path d="M7 4.5 L8.3 3.2 a2.5 2.5 0 0 1 3.5 3.5 L10.5 8"/>
-            {#if keepRatio}
-              <path d="M9 11.5 L7.7 12.8 a2.5 2.5 0 0 1 -3.5 -3.5 L5.5 8"/>
-            {:else}
-              <path d="M9 11.5 L7.7 12.8 a2.5 2.5 0 0 1 -3.5 -3.5" stroke-dasharray="1.5 1.5"/>
-            {/if}
-          </svg>
-        </button>
-        <label title="Height in px">
-          H
-          <input type="number" min="4" step="1" value={Math.round(selection.shape.height * 10) / 10}
-                 onchange={(e) => { const next = readSize(e); if (next !== null) onelementsize("height", next, keepRatio); }}
-                 onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}>
-        </label>
-        {#if hasTankProbes(selection.shape)}
-          <span>Probes</span>
-          <div class="segmented" role="group" aria-label="Temperature probes in the tank">
-            {#each TANK_PROBES as probe (probe.id)}
-              <button type="button" class:active={!!selection.shape.probes?.[probe.id]} aria-pressed={!!selection.shape.probes?.[probe.id]}
-                      onclick={() => ontankprobe(probe.id)}>{probe.label}</button>
-            {/each}
-          </div>
-        {/if}
-        <button type="button" onclick={onelementrotate} title="Rotate 90° clockwise (R)">Rotate 90°</button>
-        <button type="button" onclick={onresetsize}>Reset size</button>
-        <!-- <span class="muted">Drag a corner to scale · Shift frees the aspect ratio</span> -->
-        <!-- <span class="muted">{selection.shape.type === "manifold" ? "Drag a corner to change the length" : "Drag a corner to scale · Shift frees the aspect ratio"}</span> -->
       {/if}
       {#if selection.legacy}
         <label>
@@ -755,7 +397,6 @@
           <span class="unit">{Math.round(selection.shape.opacity * 100)}%</span>
         </label>
         <button type="button" onclick={onfitimage}>Fit to display</button>
-        <!-- <span class="muted">Drag a corner to scale · Shift frees the aspect ratio</span> -->
       {/if}
     {/if}
     {#if selection && selection.roomCount > 0 && selection.points === 0 && selection.edges === 0}
@@ -787,25 +428,22 @@
       {/if}
     {/if}
   {:else if tool === "place"}
-    <span class="sep" aria-hidden="true"></span>
     {#if placing}
+      <span class="sep" aria-hidden="true"></span>
       <span>{placing.label}</span>
       {#if placing.label !== "Door" && placing.rotatable !== false}
         <button type="button" onclick={onrotateplacing}>Rotate 90° (R)</button>
       {/if}
-      <!-- <span class="muted">{placing.hint}</span> -->
     {/if}
   {:else if tool === "pipe"}
     <span class="sep" aria-hidden="true"></span>
-    <!-- {@render mediumField(medium)} -->
     <MediumPicker value={medium} onchange={onmedium}/>
-    {@render pipeWidthField(pipewidth)}
-    <!-- <span class="muted">Click an element · Ctrl+click adds a bend point · click another element to connect</span> -->
-    <!-- <span class="muted">Click an element or empty space to start · Ctrl+click adds a bend point · click an element, a pipe or empty space to finish</span> -->
-  {:else if tool === "text"}
-    <span class="sep" aria-hidden="true"></span>
-    <!-- <span class="muted">Click to place text · Enter confirms, Shift+Enter adds a line · double-click a text to edit it</span> -->
-  {:else if tool !== "pan"}
+    <label>
+      Width
+      <input type="number" min="1" max="40" step="1" value={pipewidth}
+             oninput={(e) => { const next = readNumber(e, 1, 40); if (next !== null) onpipewidth(next); }}>
+    </label>
+  {:else if tool !== "pan" && tool !== "text"}
     <span class="sep" aria-hidden="true"></span>
     {#if TARGET_TOOLS.includes(tool)}
       <span>Creates</span>
@@ -815,7 +453,6 @@
         <button type="button" class:active={target === "room"} aria-pressed={target === "room"}
                 onclick={() => ontarget("room")}>Room</button>
         <button type="button" class:active={target === "wall"} aria-pressed={target === "wall"}
-                title="Decorative wall · Enter or clicking the last corner again leaves it open"
                 onclick={() => ontarget("wall")}>Wall</button>
       </div>
     {/if}
@@ -836,6 +473,9 @@
         </select>
       </label>
     {/if}
-    {@render snapField()}
+    <label>
+      <input type="checkbox" checked={snapToGrid} onchange={(e) => onsnap(e.currentTarget.checked)}>
+      Snap to grid
+    </label>
   {/if}
 </div>

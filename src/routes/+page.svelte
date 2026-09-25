@@ -18,7 +18,7 @@
   import { newText, refitText, describeText, textToSvg } from "$lib/tools/text.js";
   import PenPreview from "$lib/components/PenPreview.svelte";
   import { samePoint, rectPoints, constrainOrtho, nearestVertex, wouldCross, closingCrosses, removeCollinear, polygonSelfIntersects, polygonBounds, maxCornerRadius, distance, pointInPolygon } from "$lib/tools/polygon.js";
-  import { isRoomTool, isPolygonTool, isRoomShape, roomKindLabel, nextRoomName, describeRoom, snapVertices, snapToEdges, labelPoint, layered, roomsToSvg, VERTEX_SNAP_PX, ROOM_STYLE, thermostatRect, thermostatFit, thermostatGlobalScale } from "$lib/tools/rooms.js";
+  import { isRoomTool, isPolygonTool, isRoomShape, roomKindLabel, nextRoomName, describeRoom, snapVertices, snapToEdges, labelPoint, layered, roomsToSvg, VERTEX_SNAP_PX, ROOM_STYLE, thermostatFit, thermostatGlobalScale } from "$lib/tools/rooms.js";
   import { hasCurves, outlinePoints, segmentCurved } from "$lib/tools/path.js";
   import { History } from "$lib/history.svelte.js";
   import { alignOffsets, distributeOffsets, contains, ALIGN_ACTIONS, DISTRIBUTE_ACTIONS } from "$lib/tools/align.js";
@@ -28,7 +28,7 @@
   import ImageLayer from "$lib/components/ImageLayer.svelte";
   import ImageFrame from "$lib/components/ImageFrame.svelte";
   import { floorClosure } from "$lib/tools/floorClose.js";
-  import { furnishOffice, furnishForCategory, FURNISHABLE, usableRect, wallSides } from "$lib/tools/populate.js";
+  import { furnishForCategory, FURNISHABLE, usableRect, wallSides } from "$lib/tools/populate.js";
   import { FURNITURE, furnitureFits, newFurniture } from "$lib/tools/furniture.js";
   import ElementBar from "$lib/components/ElementBar.svelte";
   import PlacementGhost from "$lib/components/PlacementGhost.svelte";
@@ -37,21 +37,19 @@
   import AppSwitcher from "$lib/components/AppSwitcher.svelte";
   import CanvasNotice from "$lib/components/CanvasNotice.svelte";
   import { WALL_STYLE, describeWall, openEnds } from "$lib/tools/walls.js";
-  // import { APPS, appById } from "$lib/apps.js";
   import { APPS, appById, GENERAL_TOOLS } from "$lib/apps.js";
   import HydronicLayer from "$lib/components/HydronicLayer.svelte";
   import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, isHydronicType, isInlineType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
   import { branchDefaults, alignBranch, snapBranch, branchRiders, isBranch } from "$lib/hydronic/branch.js";
   import { readoutLayout, readoutSpec } from "$lib/hydronic/readout.js";
-  import { findPort, endpointPose, manhattanRoute, pipeRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, findPipePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
-  // import { hydronicToSvg, orientAngle } from "$lib/hydronic/export.js";
-  import { hydronicToSvg, orientAngle, fittingPose } from "$lib/hydronic/export.js";
+  import { findPort, endpointPose, manhattanRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, findPipePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
+  import { hydronicToSvg } from "$lib/hydronic/export.js";
+  import { orientAngle, fittingPose } from "$lib/hydronic/geometry.js";
   import { isFreeEnd, portStep } from "$lib/hydronic/route.js";
   import { findValvePort } from "$lib/hydronic/valvePorts.js";
-  import { serializeDocument, parseDocument, highestId, loadAutosave, saveAutosave, documentFileName } from "$lib/document.js";
+  import { serializeDocument, parseDocument, highestId, loadAutosave, saveAutosave } from "$lib/document.js";
   import { rotationOf, isTurned, footprint, turnPort } from "$lib/hydronic/frame.js";
   import { fittingBox, fittingTargets } from "$lib/hydronic/fittingAlign.js";
-  // import { HYDRONIC_SPRITE, ICON_SIZES } from "$lib/hydronic/iconSprite.js";
   import { HYDRONIC_SPRITE, ICON_SIZES, ICON_SOURCES } from "$lib/hydronic/iconSprite.js";
   import { hydronicToPgd } from "$lib/hydronic/pgd.js";
   import SaveDialog from "$lib/components/SaveDialog.svelte";
@@ -69,16 +67,7 @@
   import { shapeBox, translateShape, clampDelta, dragPointer, unionBox } from "$lib/tools/move.js";
   import { atviseDocument } from "$lib/export/atvise.js";
 
-  const GEAR_SIZE = 512;
-  const GEAR_PATH = "M256 0c-14.1 0-27.9 1.1-41.4 3.3l-9.9 47.2c-5.1 1.6-10.1 3.4-15 5.4L153.4 26.2c-24.7 11-47.3 25.9-67 43.9l24.4 41.6c-3.6 3.8-7 7.8-10.3 11.9L57.6 111c-15.5 21.4-27.6 45.4-35.5 71.2l38.6 29.2c-1 5.2-1.8 10.5-2.4 15.8L11 241.8c-0.7 4.7-1 9.4-1 14.2s0.3 9.5 1 14.2l47.3 14.6c0.6 5.3 1.4 10.6 2.4 15.8l-38.6 29.2c7.9 25.8 20 49.8 35.5 71.2l42.9-12.6c3.3 4.1 6.7 8.1 10.3 11.9l-24.4 41.6c19.7 18 42.3 32.9 67 43.9l36.3-29.7c4.9 2 9.9 3.8 15 5.4l9.9 47.2c13.5 2.2 27.3 3.3 41.4 3.3s27.9-1.1 41.4-3.3l9.9-47.2c5.1-1.6 10.1-3.4 15-5.4l36.3 29.7c24.7-11 47.3-25.9 67-43.9l-24.4-41.6c3.6-3.8 7-7.8 10.3-11.9l42.9 12.6c15.5-21.4 27.6-45.4 35.5-71.2l-38.6-29.2c1-5.2 1.8-10.5 2.4-15.8l47.3-14.6c0.7-4.7 1-9.4 1-14.2s-0.3-9.5-1-14.2l-47.3-14.6c-0.6-5.3-1.4-10.6-2.4-15.8l38.6-29.2c-7.9-25.8-20-49.8-35.5-71.2l-42.9 12.6c-3.3-4.1-6.7-8.1-10.3-11.9l24.4-41.6c-19.7-18-42.3-32.9-67-43.9l-36.3 29.7c-4.9-2-9.9-3.8-15-5.4l-9.9-47.2C283.9 1.1 270.1 0 256 0zm0 160a96 96 0 1 1 0 192 96 96 0 0 1 0-192z";
-
   const FA_GEAR_PATH = "M495.9 166.6c3.2 8.7 .5 18.4-6.4 24.6l-43.3 39.4c1.1 8.3 1.7 16.8 1.7 25.4s-.6 17.1-1.7 25.4l43.3 39.4c6.9 6.2 9.6 15.9 6.4 24.6c-4.4 11.9-9.7 23.3-15.8 34.3l-4.7 8.1c-6.6 11-14 21.4-22.1 31.2c-5.9 7.2-15.7 9.6-24.5 6.8l-55.7-17.7c-13.4 10.3-28.2 18.9-44 25.4l-12.5 57.1c-2 9.1-9 16.3-18.2 17.8c-13.8 2.3-28 3.5-42.5 3.5s-28.7-1.2-42.5-3.5c-9.2-1.5-16.2-8.7-18.2-17.8l-12.5-57.1c-15.8-6.5-30.6-15.1-44-25.4L83.1 425.9c-8.8 2.8-18.6 .3-24.5-6.8c-8.1-9.8-15.5-20.2-22.1-31.2l-4.7-8.1c-6.1-11-11.4-22.4-15.8-34.3c-3.2-8.7-.5-18.4 6.4-24.6l43.3-39.4C64.6 273.1 64 264.6 64 256s.6-17.1 1.7-25.4L22.4 191.2c-6.9-6.2-9.6-15.9-6.4-24.6c4.4-11.9 9.7-23.3 15.8-34.3l4.7-8.1c6.6-11 14-21.4 22.1-31.2c5.9-7.2 15.7-9.6 24.5-6.8l55.7 17.7c13.4-10.3 28.2-18.9 44-25.4l12.5-57.1c2-9.1 9-16.3 18.2-17.8C227.3 1.2 241.5 0 256 0s28.7 1.2 42.5 3.5c9.2 1.5 16.2 8.7 18.2 17.8l12.5 57.1c15.8 6.5 30.6 15.1 44 25.4l55.7-17.7c8.8-2.8 18.6-.3 24.5 6.8c8.1 9.8 15.5 20.2 22.1 31.2l4.7 8.1c6.1 11 11.4 22.4 15.8 34.3zM256 336a80 80 0 1 0 0-160 80 80 0 1 0 0 160z";
-
-  const TOOLS = [
-    { id: "select", label: "Select", hint: "Pick a shape, then Delete to remove it" },
-    { id: "line", label: "Line", hint: "Click two points for a Manhattan trace" },
-    { id: "rect", label: "Rectangle", hint: "Click two opposite corners" }
-  ];
 
   const ELBOWS = [
     { id: "h", label: "Horizontal first" },
@@ -149,7 +138,6 @@
   let majorSize = $derived(gridSize * Math.max(2, majorEvery));
   let showMinorGrid = $derived(showGrid && gridSize >= 6);
   let drawing = $derived(tool !== "select" && tool !== "pan");
-  let activeHint = $derived(TOOLS.find((entry) => entry.id === tool)?.hint ?? "");
 
   function clamp(value, max){
     return Math.min(max, Math.max(0, value));
@@ -378,9 +366,6 @@
   let selectedRoom = $derived(shapes.find((shape) => shape.id === selectedId && shape.kind === "room"));
   let activePoints = $derived(selectedPoints.filter((key) => selectionIds.includes(key.id) && shapeById(key.id)?.points?.[key.index]));
   let activeEdges = $derived(selectedEdges.filter((key) => selectionIds.includes(key.id) && shapeById(key.id)?.points?.[key.index]));
-  // let editableShapes = $derived(tool === "select"
-  //   ? selectedShapes.filter((shape) => ["floor", "room", "curve"].includes(shape.kind) && (!shape.groupId || selectionIds.length === 1))
-  //   : []);
   let editableShapes = $derived(tool === "select"
     ? selectedShapes.filter((shape) => ["floor", "room", "curve", "wall"].includes(shape.kind) && (!shape.groupId || selectionIds.length === 1))
     : []);
@@ -482,8 +467,6 @@
   let selection = $derived.by(() => {
     if (selectionIds.length === 0) return null;
     const shape = selectedShape ?? selectedShapes[0];
-    // const kindLabel = shape.kind === "line" ? "Trace" : shape.kind === "rect" ? "Rectangle" : roomKindLabel(shape.kind);
-    // const kindLabel = hydronicLabel(shape) ?? (shape.kind === "line" ? "Trace" : shape.kind === "rect" ? "Rectangle" : roomKindLabel(shape.kind));
     const kindLabel = shape.kind === "text" ? "Text" : hydronicLabel(shape) ?? (shape.kind === "line" ? "Trace" : shape.kind === "rect" ? "Rectangle" : roomKindLabel(shape.kind));
     const pipes = selectedShapes.filter((entry) => entry.kind === "pipe");
     const corners = activePoints
@@ -500,8 +483,6 @@
       radius: corners.length ? corners[0].shape.radii?.[corners[0].index] ?? 0 : 0,
       maxRadius: limits.length ? Math.min(...limits) : 0,
       canAlign: selectedPointCount >= 2 || selectionIds.length >= 1,
-      // canDistribute: selectedPointCount >= 3 || (selectedPointCount < 2 && unitCount >= 3),
-      // alignTarget: selectedPointCount >= 2 ? "each other" : unitCount === 1 ? "the display" : "the selection",
       canDistribute: selectedPointCount >= 3 || (selectedPointCount < 2 && unitCount + fittingGroup.length >= 3),
       alignTarget: selectedPointCount >= 2 ? "each other" : unitCount === 1 && fittingGroup.length === 0 ? "the display" : "the selection",
       grouped: selectionIds.length > 1 && unitCount === 1,
@@ -684,15 +665,11 @@
     } else {
       selectedIds = selectionIds;
       selectedId = shape.id;
-      // clearSubSelection();
       clearShapeSubSelection();
     }
 
     const start = toCanvas(event);
     if (!start) return true;
-    // const group = selectionIds.map(shapeById).map((entry) => ({ shape: entry, original: $state.snapshot(entry) }));
-    // const box = unionBox(group.map((entry) => shapeBox(entry.original)));
-    // const group = [...selectionIds, ...ridingPipes(shapes, selectionIds)].map(shapeById).map((entry) => ({ shape: entry, original: $state.snapshot(entry) }));
     const carried = [...selectionIds, ...branchRiders(shapes, selectionIds)];
     const group = [...carried, ...ridingPipes(shapes, carried)].map(shapeById).map((entry) => ({ shape: entry, original: $state.snapshot(entry) }));
     const solids = group.filter((entry) => entry.shape.kind !== "pipe");
@@ -712,16 +689,9 @@
       onmove: (next) => {
         const point = toCanvas(next);
         if (!point) return;
-        // const delta = clampDelta(box,
-        //   Math.round((point.x - start.x) / step) * step,
-        //   Math.round((point.y - start.y) / step) * step,
-        //   canvasWidth, canvasHeight);
-        // const dx = Math.round((point.x - start.x) / step) * step;
-        // const dy = Math.round((point.y - start.y) / step) * step;
         const still = Math.hypot(point.x - start.x, point.y - start.y) * viewport.zoom < 3;
         const dx = still ? 0 : centre ? round2(Math.round((centre.x + point.x - start.x) / step) * step - centre.x) : Math.round((point.x - start.x) / step) * step;
         const dy = still ? 0 : centre ? round2(Math.round((centre.y + point.y - start.y) / step) * step - centre.y) : Math.round((point.y - start.y) / step) * step;
-        // const delta = box ? clampDelta(box, dx, dy, canvasWidth, canvasHeight) : { dx, dy };
         let delta = box ? clampDelta(box, dx, dy, canvasWidth, canvasHeight) : { dx, dy };
         if (lonelyBranch) {
           const shifted = { ...lonelyBranch.original, ...translateShape(lonelyBranch.original, delta.dx, delta.dy) };
@@ -733,7 +703,6 @@
       },
       onend: () => {
         history.endGesture();
-        // if (!moved && !additive && wasSelected && selectionIds.length > 1) selectShape(shape.id);
         if (!moved && !additive && wasSelected && (selectionIds.length > 1 || fittingGroup.length > 0)) selectShape(shape.id);
       }
     });
@@ -1157,7 +1126,6 @@
       const host = target ? byId.get(target.pipeId) : null;
       if (!host) return;
       const id = nextId++;
-      // host.fittings = [...(host.fittings ?? []), { ...structuredClone(item.fitting), id, t: target.t }];
       host.fittings = [...(host.fittings ?? []), { ...structuredClone(item.fitting), id, t: target.t, name: nextFittingName(item.fitting.type, shapes) }];
       placed.push({ pipeId: host.id, fittingId: id });
     });
@@ -1230,7 +1198,6 @@
 
   function handleCut(event){
     handleCopy(event);
-    // if (event.defaultPrevented) deleteSelection();
     if (!event.defaultPrevented) return;
     if (clipboardFurniture && activeFurniture) removeFurniture();
     else if (clipboardFittings && activeFitting) removeFitting();
@@ -1269,11 +1236,8 @@
       created.push(copy);
     }
 
-    // const linked = linkPastedPipes(created, idMap);
     const linked = linkPastedPipes(created, idMap, offset);
     if (tool !== "select") pickTool("select");
-    // shapes.push(...created);
-    // selectedIds = created.map((shape) => shape.id);
     shapes.push(...linked);
     selectedIds = linked.map((shape) => shape.id);
     selectedId = selectedIds[selectedIds.length - 1] ?? null;
@@ -1504,7 +1468,6 @@
     fileNoticeTimer = setTimeout(() => fileNotice = null, 2400);
   }
 
-  // let notice = $derived(doorsPlaced !== null
   let notice = $derived(fileNotice ?? (doorsPlaced !== null
     ? doorsPlaced === 0 ? "Every room already has a door" : `Placed ${doorsPlaced} door${doorsPlaced === 1 ? "" : "s"}`
     : furnishedRooms !== null
@@ -1641,15 +1604,8 @@
     return { kind: "furniture", room, item, valid: !!room && furnitureFits(room, item) };
   });
 
-  // let placingOptions = $derived(tool === "place" && placing ? {
-  //   label: placing.type === "door" ? "Door" : FURNITURE[placing.type].label,
-  //   hint: placing.type === "door"
-  //     ? "Click near a wall to place the door on it · Shift keeps placing · Esc stops"
-  //     : "Click inside a room to place it · snaps flush to walls · Shift keeps placing · Esc stops"
-  // } : null);
   let placingOptions = $derived(tool === "place" && placing ? {
     label: placing.type === "door" ? "Door" : (FURNITURE[placing.type] ?? HYDRONIC_ELEMENTS[placing.type]).label,
-    // rotatable: !isHydronicType(placing.type),
     rotatable: !isHydronicType(placing.type) || !isInlineType(placing.type),
     hint: placing.type === "door"
       ? "Click near a wall to place the door on it · Shift keeps placing · Esc stops"
@@ -1681,40 +1637,16 @@
   }
 
   let pipeDraft = $state(null);
-  // let pipeMedium = $state("supply");
   let pipeMedium = $state(DEFAULT_MEDIUM);
   let hydronicLibrary = $state(HYDRONIC_STYLE.library);
   let freshPipes = $state([]);
   let selectedFitting = $state(null);
   let extraFittings = $state([]);
-  // let hydronicStyle = $derived({ ...HYDRONIC_STYLE, library: hydronicLibrary });
-  // let hydronicStyle = $derived({ ...HYDRONIC_STYLE, library: hydronicLibrary, background: canvasFill, native: ICON_SIZES });
   let hydronicStyle = $derived({ ...HYDRONIC_STYLE, library: hydronicLibrary, background: canvasFill, native: ICON_SIZES, bounds: { width: canvasWidth, height: canvasHeight } });
   let shapeIndex = $derived(new Map(shapes.map((shape) => [shape.id, shape])));
-  // let pipeRoutes = $derived(new Map(shapes
-  //   .filter((shape) => shape.kind === "pipe")
-  //   .map((pipe) => [pipe.id, pipeRoute(pipe, shapeIndex)])
-  //   .filter(([, route]) => route)));
-  // let portTarget = $derived(tool === "pipe" && cursor ? findPort(cursor, shapes, Math.max(20, 16 / viewport.zoom)) : null);
   let pipeRoutes = $derived(computeRoutes(shapes));
   let snapRadius = $derived(Math.max(20, 16 / viewport.zoom));
-  // let portTarget = $derived(tool === "pipe" && cursor
-  //   ? findPort(cursor, shapes, snapRadius) ?? findPipePoint(cursor, pipeRoutes, snapRadius, pipeDraft?.rewire?.pipeId ?? null)
-  //   : null);
   let pipeTargeting = $derived(tool === "pipe" || !!pipeDraft?.rewire);
-  // let portTarget = $derived(pipeTargeting && cursor
-  //   ? findPort(cursor, shapes, snapRadius) ?? findPipePoint(cursor, pipeRoutes, snapRadius, pipeDraft?.rewire?.pipeId ?? null)
-  //   : null);
-  // let portTarget = $derived(pipeTargeting && cursor
-  //   ? findPort(cursor, shapes, snapRadius)
-  //     ?? findValvePort(cursor, shapes, pipeRoutes, snapRadius, pipeDraft?.rewire?.pipeId ?? null)
-  //     ?? findPipePoint(cursor, pipeRoutes, snapRadius, pipeDraft?.rewire?.pipeId ?? null)
-  //   : null);
-  // let portTarget = $derived(pipeTargeting && cursor
-  //   ? findPort(cursor, shapes, snapRadius)
-  //     ?? findValvePort(cursor, shapes, pipeRoutes, snapRadius, pipeDraft?.rewire?.pipeId ?? null)
-  //     ?? findPipePoint(cursor, pipeRoutes, snapRadius, pipeDraft?.rewire?.pipeId ?? null, snapToGrid ? gridSize : 0)
-  //   : null);
   let pipeAnchor = $derived.by(() => {
     if (!pipeTargeting || !pipeDraft) return null;
     const last = pipeDraft.points[pipeDraft.points.length - 1];
@@ -1729,42 +1661,15 @@
       ?? findPipePoint(pipeCursor, pipeRoutes, snapRadius, pipeDraft?.rewire?.pipeId ?? null, pipeAim.aligned || !snapToGrid ? 0 : gridSize)
     : null);
 
-  // let attachment = $derived.by(() => {
-  //   if (tool !== "pipe" || pipeDraft || !cursor) return null;
-  //   const radius = Math.max(12, 14 / viewport.zoom);
-  //   let best = null;
-  //   for (const [pipeId, route] of pipeRoutes) {
-  //     for (const [end, point] of [["from", route[0]], ["to", route[route.length - 1]]]) {
-  //       const gap = Math.hypot(point.x - cursor.x, point.y - cursor.y);
-  //       if (gap <= radius && (!best || gap < best.gap)) best = { pipeId, end, point, gap };
-  //     }
-  //   }
-  //   return best;
-  // });
-  const attachment = null;
-
-  function samePort(a, b){
-    return !!a && !!b && a.id === b.id && a.side === b.side && a.offset === b.offset;
-  }
-
   let pipePreview = $derived.by(() => {
-    // if (tool !== "pipe" || !pipeDraft || !cursor) return null;
     if (!pipeTargeting || !pipeDraft || !cursor) return null;
-    // const start = endpointPose(pipeDraft.from, shapeIndex);
     const start = endpointPose(pipeDraft.from, shapeIndex, (id) => pipeRoutes.get(id), pipeDraft.points[0] ?? cursor);
     if (!start) return null;
-    // const end = portTarget && !samePort(portTarget, pipeDraft.from)
-    //   ? { point: portTarget.point, normal: portTarget.normal }
-    //   : { point: cursor, normal: null };
     const endPose = portTarget && !sameEnd(endOf(portTarget), pipeDraft.from)
       ? endpointPose(endOf(portTarget), shapeIndex, (id) => pipeRoutes.get(id), pipeDraft.points[pipeDraft.points.length - 1] ?? start.point)
       : null;
-    // const end = endPose ?? { point: cursor, normal: null };
     const end = endPose ?? { point: pipeCursor, normal: null };
-    // return { route: manhattanRoute(start, pipeDraft.points, end), points: pipeDraft.points, medium: pipeMedium };
-    // return { route: manhattanRoute(start, pipeDraft.points, end), points: pipeDraft.points, medium: pipeMedium, from: pipeDraft.from, to: endPose ? endOf(portTarget) : null };
     const rewired = pipeDraft.rewire ? shapeById(pipeDraft.rewire.pipeId) : null;
-    // return { route: manhattanRoute(start, pipeDraft.points, end), points: pipeDraft.points, medium: rewired?.medium ?? pipeMedium, width: rewired?.width ?? pipeThickness, from: pipeDraft.from, to: endPose ? endOf(portTarget) : null };
     const medium = rewired?.medium ?? junctionMedium(pipeDraft.from, endPose ? endOf(portTarget) : null, shapeIndex) ?? pipeMedium;
     return { route: manhattanRoute(start, pipeDraft.points, end), points: pipeDraft.points, medium, width: rewired?.width ?? pipeThickness, from: pipeDraft.from, to: endPose ? endOf(portTarget) : null };
   });
@@ -1777,18 +1682,6 @@
     if (prefersReducedMotion.current) return;
     freshPipes = [...freshPipes, id];
     setTimeout(() => freshPipes = freshPipes.filter((entry) => entry !== id), 1200);
-  }
-
-  function startRewire(found){
-    const pipe = shapeById(found.pipeId);
-    if (!pipe) return;
-    const fixed = found.end === "from" ? pipe.to : pipe.from;
-    const points = $state.snapshot(pipe.points ?? []);
-    pipeDraft = {
-      from: $state.snapshot(fixed),
-      points: found.end === "from" ? points.reverse() : points,
-      rewire: { pipeId: pipe.id, end: found.end }
-    };
   }
 
   function finishRewire(snapshot, end){
@@ -1806,21 +1699,13 @@
   }
 
   function pipeClick(event){
-    // const target = portTarget;
-    // const target = portTarget ?? (cursor ? { free: true, x: cursor.x, y: cursor.y, point: cursor } : null);
     const target = portTarget ?? (pipeCursor ? { free: true, x: pipeCursor.x, y: pipeCursor.y, point: pipeCursor } : null);
-    if (!pipeDraft && attachment) {
-      startRewire(attachment);
-      return;
-    }
     if (!pipeDraft) {
-      // if (target) pipeDraft = { from: { id: target.id, side: target.side, offset: target.offset }, points: [] };
       if (target) pipeDraft = { from: endOf(target), points: [] };
       return;
     }
     if (event.ctrlKey || event.metaKey) {
       const last = pipeDraft.points[pipeDraft.points.length - 1];
-      // if (cursor && !(last && samePoint(last, cursor))) pipeDraft.points.push({ x: cursor.x, y: cursor.y });
       if (pipeCursor && !(last && samePoint(last, pipeCursor))) pipeDraft.points.push({ x: pipeCursor.x, y: pipeCursor.y });
       return;
     }
@@ -1829,7 +1714,6 @@
       pipeDraft = null;
       return;
     }
-    // if (!target || samePort(target, pipeDraft.from)) return;
     if (!target || sameEnd(endOf(target), pipeDraft.from)) return;
     if (target.pipe !== undefined && pipeDraft.from.pipe === target.pipe) return;
     const snapshot = $state.snapshot(pipeDraft);
@@ -1842,10 +1726,8 @@
       id,
       kind: "pipe",
       from: snapshot.from,
-      // to: { id: target.id, side: target.side, offset: target.offset },
       to: endOf(target),
       points: snapshot.points,
-      // medium: pipeMedium,
       medium: junctionMedium(snapshot.from, endOf(target), shapeIndex) ?? pipeMedium,
       width: pipeThickness,
       fittings: []
@@ -1932,28 +1814,6 @@
     }
   }
 
-  // function setElementSize(dimension, value, keepRatio){
-  //   const element = selectedShape?.kind === "equipment" && !selectedShape.locked ? selectedShape : null;
-  //   if (!element || !(value >= 4)) return;
-  //   const original = { x: element.x, y: element.y, width: element.width, height: element.height };
-  //   const entries = attachedEnds(element);
-  //   const cx = original.x + original.width / 2;
-  //   const cy = original.y + original.height / 2;
-  //   const other = dimension === "width" ? "height" : "width";
-  //   element[dimension] = value;
-  //   if (keepRatio && !HYDRONIC_ELEMENTS[element.type]?.fixedHeight) element[other] = Math.round(value * original[other] / original[dimension] * 100) / 100;
-  //   element.x = cx - element.width / 2;
-  //   element.y = cy - element.height / 2;
-  //   editKey = `size-${element.id}`;
-  //   remapEnds(element, entries, original);
-  // }
-
-  // function toggleTankProbe(id){
-  //   const element = selectedShape?.kind === "equipment" ? selectedShape : null;
-  //   if (!element) return;
-  //   element.probes = { ...(element.probes ?? {}), [id]: !element.probes?.[id] };
-  // }
-
   function selectedElements(){
     return selectedShapes.filter((shape) => shape.kind === "equipment" && !shape.locked && HYDRONIC_ELEMENTS[shape.type]);
   }
@@ -1969,8 +1829,6 @@
       const other = dimension === "width" ? "height" : "width";
       element[dimension] = value;
       if (keepRatio && !HYDRONIC_ELEMENTS[element.type]?.fixedHeight) element[other] = Math.round(value * original[other] / original[dimension] * 100) / 100;
-      // element.x = cx - element.width / 2;
-      // element.y = cy - element.height / 2;
       element.x = centreFor(element, cx) - element.width / 2;
       element.y = centreFor(element, cy) - element.height / 2;
       remapEnds(element, entries, original);
@@ -1992,7 +1850,6 @@
 
   function setMedium(value){
     pipeMedium = value;
-    // for (const shape of selectedShapes) if (shape.kind === "pipe") shape.medium = value;
     for (const shape of selectedShapes) if (shape.kind === "pipe" || HYDRONIC_ELEMENTS[shape.type]?.bar) shape.medium = value;
   }
 
@@ -2003,10 +1860,6 @@
     return pipe && fitting && !pipe.locked ? { pipe, fitting } : null;
   });
 
-  // let fittingOptions = $derived(activeFitting ? {
-  //   label: HYDRONIC_ELEMENTS[activeFitting.fitting.type]?.label ?? activeFitting.fitting.type,
-  //   scale: activeFitting.fitting.scale ?? 1
-  // } : null);
   let fittingGroup = $derived.by(() => {
     if (!activeFitting) return [];
     const seen = new Set();
@@ -2036,8 +1889,6 @@
 
   function setFittingReadout(value){
     if (!activeFitting) return;
-    // activeFitting.fitting.readout = value;
-    // if (value === "none") delete activeFitting.fitting.readoutOffset;
     for (const { fitting } of fittingGroup) {
       if (!readoutSpec(fitting.type)) continue;
       fitting.readout = value;
@@ -2046,15 +1897,9 @@
   }
 
   function resetReadoutPosition(){
-    // if (activeFitting) delete activeFitting.fitting.readoutOffset;
     for (const { fitting } of fittingGroup) delete fitting.readoutOffset;
   }
 
-  // function setBranchParam(name, value){
-  //   const element = selectedShape && isBranch(selectedShape) ? selectedShape : null;
-  //   if (!element) return;
-  //   element.params = { ...branchDefaults(), ...$state.snapshot(element.params ?? {}), [name]: value };
-  // }
   function setBranchParam(name, value){
     for (const element of selectedElements()) {
       if (!isBranch(element)) continue;
@@ -2086,7 +1931,6 @@
   function setFittingScale(value){
     if (!activeFitting) return;
     editKey = "fittingScale";
-    // activeFitting.fitting.scale = value;
     for (const { fitting } of fittingGroup) fitting.scale = value;
   }
 
@@ -2098,7 +1942,6 @@
       pipe.to = from;
       pipe.points = $state.snapshot(pipe.points ?? []).reverse();
       pipe.fittings = (pipe.fittings ?? []).map((fitting) => ({ ...$state.snapshot(fitting), t: round4(1 - fitting.t) }));
-      // flashPipe(pipe.id);
     }
   }
 
@@ -2125,7 +1968,6 @@
         const end = entry[key];
         if (!end || end.id !== element.id) continue;
         const horizontal = end.side === "top" || end.side === "bottom";
-        // entry.pipe[key] = { ...end, offset: scaledOffset(end.offset, horizontal ? original.width : original.height, horizontal ? element.width : element.height) };
         entry.pipe[key] = { ...end, offset: scaledOffset(end.offset, horizontal ? original.width : original.height, horizontal ? element.width : element.height, portStep(element)) };
       }
     }
@@ -2145,20 +1987,11 @@
       onmove: (next) => {
         const point = toCanvas(next);
         if (!point) return;
-        // const width = size(Math.abs(point.x - anchor.x));
-        // const height = next.shiftKey ? size(Math.abs(point.y - anchor.y)) : size(width / aspect);
-        // const height = HYDRONIC_ELEMENTS[element.type]?.fixedHeight ? original.height : next.shiftKey ? size(Math.abs(point.y - anchor.y)) : size(width / aspect);
         const fixed = HYDRONIC_ELEMENTS[element.type]?.fixedHeight;
         const width = fixed && isTurned(element) ? original.width : size(Math.abs(point.x - anchor.x));
         const height = fixed
           ? (isTurned(element) ? size(Math.abs(point.y - anchor.y)) : original.height)
           : next.shiftKey ? size(Math.abs(point.y - anchor.y)) : size(width / aspect);
-        // Object.assign(element, {
-        //   x: left ? anchor.x - width : anchor.x,
-        //   y: top ? anchor.y - height : anchor.y,
-        //   width,
-        //   height
-        // });
         const x = left ? anchor.x - width : anchor.x;
         const y = top ? anchor.y - height : anchor.y;
         Object.assign(element, {
@@ -2177,12 +2010,6 @@
     return snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value);
   }
 
-  function setElementName(value){
-    const element = selectedShape?.kind === "equipment" ? selectedShape : null;
-    if (!element) return;
-    element.name = value.trim() || nextElementName(element.type, shapes.filter((shape) => shape !== element));
-  }
-
   function beginPipeEndDrag(event, pipe, end){
     const original = $state.snapshot(pipe[end]);
     const fixed = $state.snapshot(end === "from" ? pipe.to : pipe.from);
@@ -2194,7 +2021,6 @@
     let moved = false;
     selectedId = null;
     clearSubSelection();
-    // pipeDraft = { from: fixed, points: end === "from" ? [...points].reverse() : points, rewire: { pipeId: pipe.id, end } };
     pipeDraft = { from: fixed, points: trimLastStretch(end === "from" ? [...points].reverse() : points), rewire: { pipeId: pipe.id, end } };
     cursor = snapPoint(start);
 
@@ -2208,39 +2034,23 @@
       },
       onend: () => {
         const target = moved ? portTarget : null;
-        // const spot = cursor ? { x: cursor.x, y: cursor.y } : null;
         const spot = pipeCursor ? { x: pipeCursor.x, y: pipeCursor.y } : null;
         const snapshot = $state.snapshot(pipeDraft);
         pipeDraft = null;
         cursor = null;
         if (!snapshot) return;
         if (!moved) {
-          // if (!junction) removeShape(pipe.id);
           if (!junction && !free) removeShape(pipe.id);
           return;
         }
         const valid = target && !sameEnd(endOf(target), snapshot.from) && !(target.pipe !== undefined && target.pipe === snapshot.from.pipe);
         if (valid) finishRewire(snapshot, endOf(target));
-        // else if (!junction) removeShape(pipe.id);
         else if (!junction && spot && !sameEnd(spot, snapshot.from)) finishRewire(snapshot, spot);
         else if (!junction) removeShape(pipe.id);
       }
     });
   }
 
-  // function resetElementSize(){
-  //   const element = selectedShape?.kind === "equipment" ? selectedShape : null;
-  //   const spec = element ? HYDRONIC_ELEMENTS[element.type] : null;
-  //   if (!spec) return;
-  //   const original = { width: element.width, height: element.height };
-  //   const entries = attachedEnds(element);
-  //   // element.width = spec.width;
-  //   // element.height = spec.height;
-  //   const size = footprint(spec.width, spec.height, rotationOf(element));
-  //   element.width = size.width;
-  //   element.height = size.height;
-  //   remapEnds(element, entries, original);
-  // }
   function resetElementSize(){
     for (const element of selectedElements()) {
       const spec = HYDRONIC_ELEMENTS[element.type];
@@ -2318,8 +2128,6 @@
     const inside = current.some((entry) => sameFitting(entry, key));
     if (event.ctrlKey || event.metaKey || event.shiftKey) {
       const next = inside ? current.filter((entry) => !sameFitting(entry, key)) : [...current, key];
-      // selectedId = null;
-      // clearSubSelection();
       clearShapeSubSelection();
       selectedFitting = null;
       extraFittings = [];
@@ -2329,7 +2137,6 @@
       }
       return;
     }
-    // if (inside && current.length > 1) {
     if (inside && (current.length > 1 || selectionIds.length > 0)) {
       beginFittingGroupDrag(event, key, current.filter((entry) => !sameFitting(entry, key)));
       return;
@@ -2338,8 +2145,6 @@
   }
 
   function beginFittingGroupDrag(event, key, rest){
-    // selectedId = null;
-    // clearSubSelection();
     clearShapeSubSelection();
     selectedFitting = key;
     extraFittings = rest;
@@ -2397,8 +2202,6 @@
       element.rotation = (rotationOf(element) + 90) % 360;
       element.width = original.height;
       element.height = original.width;
-      // element.x = cx - element.width / 2;
-      // element.y = cy - element.height / 2;
       element.x = centreFor(element, cx) - element.width / 2;
       element.y = centreFor(element, cy) - element.height / 2;
       for (const entry of entries) {
@@ -2415,7 +2218,6 @@
     selectedFitting = { pipeId: pipe.id, fittingId };
     const fitting = pipe.fittings?.find((entry) => entry.id === fittingId);
     if (!fitting) return;
-    // const size = HYDRONIC_ELEMENTS[fitting.type]?.width ?? 0;
     const size = (HYDRONIC_ELEMENTS[fitting.type]?.width ?? 0) * (fitting.scale ?? 1);
 
     history.beginGesture();
@@ -2431,19 +2233,10 @@
     });
   }
 
-  // function flipFitting(){
-  //   if (activeFitting) activeFitting.fitting.flip = !activeFitting.fitting.flip;
-  // }
   function flipFitting(){
     for (const { fitting } of fittingGroup) if (!readoutSpec(fitting.type)) fitting.flip = !fitting.flip;
   }
 
-  // function removeFitting(){
-  //   if (!activeFitting) return;
-  //   const { pipe, fitting } = activeFitting;
-  //   pipe.fittings = pipe.fittings.filter((entry) => entry.id !== fitting.id);
-  //   selectedFitting = null;
-  // }
   function removeFitting(){
     if (!activeFitting) return;
     for (const { pipe, fitting } of fittingGroup) pipe.fittings = pipe.fittings.filter((entry) => entry.id !== fitting.id);
@@ -2481,25 +2274,10 @@
         type,
         pipe: best.pipe,
         fitting: { type, t: round4(best.hit.t), flip: false },
-        // pose: { x: best.hit.x, y: best.hit.y, rotation: best.hit.angle },
         pose: { x: best.hit.x, y: best.hit.y, rotation: orientAngle(type, best.hit.angle) },
         valid: true
       };
     }
-    // const element = {
-    //   type,
-    //   x: snapValue(point.x - spec.width / 2, canvasWidth - spec.width),
-    //   y: snapValue(point.y - spec.height / 2, canvasHeight - spec.height),
-    //   width: spec.width,
-    //   height: spec.height
-    // };
-    // const element = {
-    //   type,
-    //   x: snapValue(point.x, canvasWidth) - spec.width / 2,
-    //   y: snapValue(point.y, canvasHeight) - spec.height / 2,
-    //   width: spec.width,
-    //   height: spec.height
-    // };
     const rotation = placing?.rotation ?? 0;
     const size = footprint(spec.width, spec.height, rotation);
     const element = {
@@ -2521,9 +2299,7 @@
 
   function placeHydronic(target, keep){
     const id = nextId++;
-    // if (target.kind === "equipment") shapes.push({ id, kind: "equipment", ...target.element });
     if (target.kind === "equipment") shapes.push({ id, kind: "equipment", ...target.element, name: nextElementName(target.element.type, shapes) });
-    // else target.pipe.fittings = [...(target.pipe.fittings ?? []), { id, ...target.fitting }];
     else target.pipe.fittings = [...(target.pipe.fittings ?? []), { id, ...target.fitting, name: nextFittingName(target.fitting.type, shapes) }];
     if (keep) return;
     pickTool("select");
@@ -2575,7 +2351,6 @@
     }
     if (ctrl && key === "s") {
       event.preventDefault();
-      // saveDrawing(event.shiftKey);
       if (event.shiftKey || !fileHandle) openSaveDialog();
       else saveDrawing(false);
       return true;
@@ -2607,7 +2382,6 @@
       return true;
     }
     if (event.key === "Escape") {
-      // if (tool === "place") pickTool("select");
       if (tool !== "select") pickTool("select");
       clearSubSelection();
       renamingId = null;
@@ -2616,7 +2390,6 @@
     if (event.key === "Delete" || event.key === "Backspace") {
       if (activeFitting) {
         event.preventDefault();
-        // removeFitting();
         const mixed = selectionIds.length > 0;
         removeFitting();
         if (mixed) deleteSelection();
@@ -2726,9 +2499,6 @@
 
     if (draft.kind === "room-rect") {
       const points = rectPoints(draft.start, point);
-      // if (points) shapes.push(draft.target === "floor"
-      //   ? { id: nextId++, kind: "floor", points }
-      //   : { id: nextId++, kind: "room", name: nextRoomName(shapes), points });
       if (points) shapes.push(draft.target === "wall"
         ? { id: nextId++, kind: "wall", points }
         : draft.target === "floor"
@@ -2740,13 +2510,11 @@
 
     const last = draft.points[draft.points.length - 1];
     if (samePoint(point, last) || samePoint(point, draft.start)) {
-      // if (draft.points.length >= 3) finishPolygon();
       if (draft.target === "wall" && samePoint(point, last) && !samePoint(point, draft.start) && draft.points.length >= 2) finishPolygon(null, true);
       else if (draft.points.length >= 3) finishPolygon();
       return;
     }
 
-    // if (draft.kind !== "floor" && draft.target !== "floor") {
     if (draft.kind !== "floor" && draft.target !== "floor" && draft.target !== "wall") {
       const closure = floorClosure($state.snapshot(draft.points), point, floorOutlines);
       if (closure) {
@@ -2770,8 +2538,6 @@
   });
 
   function finishPolygon(closed = null, open = false){
-    // if (!closed && (!draft?.points || draft.points.length < 3 || closingCrosses(draft.points))) return;
-    // const points = removeCollinear(closed ?? $state.snapshot(draft.points));
     if (!closed && (!draft?.points || draft.points.length < (open ? 2 : 3) || (!open && closingCrosses(draft.points)))) return;
     const points = open ? $state.snapshot(draft.points) : removeCollinear(closed ?? $state.snapshot(draft.points));
     if (open) {
@@ -2785,7 +2551,6 @@
     }
     draft = null;
   }
-
 
   function penDown(event, point){
     cursor = point;
@@ -2802,12 +2567,10 @@
       return;
     }
     if (samePoint(point, last)) {
-      // finishPen();
       finishPen(null, draft.target === "wall");
       return;
     }
 
-    // if (draft.target !== "floor") {
     if (draft.target !== "floor" && draft.target !== "wall") {
       const closure = floorClosure($state.snapshot(draft.points), point, floorOutlines);
       if (closure) {
@@ -2848,12 +2611,9 @@
     if (!draft || draft.kind !== "pen") return;
     const snapshot = $state.snapshot(draft);
     const points = closed ?? snapshot.points;
-    // const handles = closed ? [...snapshot.handles, ...closed.slice(snapshot.handles.length).map(() => null)] : snapshot.handles;
     const handles = closed ? [...snapshot.handles, ...closed.slice(snapshot.handles.length).map(() => null)] : open ? openEnds(snapshot.handles) : snapshot.handles;
     const curved = handles.some(Boolean);
-    // if (points.length < (curved ? 2 : 3)) return;
     if (points.length < (curved || open ? 2 : 3)) return;
-    // const shape = { id: nextId++, kind: draft.target === "floor" ? "floor" : "room", points };
     const shape = { id: nextId++, kind: draft.target === "floor" ? "floor" : draft.target === "wall" ? "wall" : "room", points };
     if (open) shape.open = true;
     if (curved) shape.handles = handles;
@@ -2867,8 +2627,6 @@
 
     if (event.key === "Enter") {
       event.preventDefault();
-      // if (draft.kind === "pen") finishPen();
-      // else finishPolygon();
       if (draft.kind === "pen") finishPen(null, draft.target === "wall");
       else finishPolygon(null, draft.target === "wall");
       return true;
@@ -2905,8 +2663,6 @@
   }
 
   function undo(){
-    // shapes.pop();
-    // selectedId = null;
     restore(history.undo());
   }
 
@@ -2934,7 +2690,6 @@
   }
 
   function currentDocument(){
-    // return serializeDocument({ app, apps: currentApps(), canvas: { width: canvasWidth, height: canvasHeight, fill: canvasFill } });
     return serializeDocument({ app, apps: currentApps(), canvas: { width: canvasWidth, height: canvasHeight, fill: canvasFill }, name: documentName });
   }
 
@@ -2950,11 +2705,9 @@
     editingTextId = null;
     documents = {};
     const next = APPS.some((entry) => entry.id === doc.app) ? doc.app : app;
-    // for (const [id, list] of Object.entries(doc.apps)) if (id !== next) documents[id] = { shapes: list, history: null };
     for (const [id, list] of Object.entries(doc.apps)) if (id !== next) documents[id] = { shapes: nameFittings(list), history: null };
     app = next;
     history.load(null);
-    // shapes = doc.apps[next] ?? [];
     shapes = nameFittings(doc.apps[next] ?? []);
     if (doc.canvas) {
       if (doc.canvas.width > 0) canvasWidth = doc.canvas.width;
@@ -2978,30 +2731,6 @@
   let fileHandle = null;
   const FILE_TYPES = [{ description: "Pathfinder drawing", accept: { "application/json": [".json"] } }];
 
-  // async function saveDrawing(saveAs = false){
-  //   const text = currentDocument();
-  //   try {
-  //     if (typeof window.showSaveFilePicker === "function") {
-  //       if (!fileHandle || saveAs) fileHandle = await window.showSaveFilePicker({ suggestedName: documentFileName(), types: FILE_TYPES });
-  //       const writable = await fileHandle.createWritable();
-  //       await writable.write(text);
-  //       await writable.close();
-  //       showFileNotice(`Saved to ${fileHandle.name}`);
-  //     } else {
-  //       const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
-  //       const link = document.createElement("a");
-  //       link.href = url;
-  //       link.download = documentFileName();
-  //       document.body.append(link);
-  //       link.click();
-  //       link.remove();
-  //       setTimeout(() => URL.revokeObjectURL(url), 1000);
-  //       showFileNotice("Drawing downloaded");
-  //     }
-  //   } catch (error) {
-  //     if (error?.name !== "AbortError") showFileNotice(`Could not save: ${error.message}`);
-  //   }
-  // }
   async function saveDrawing(saveAs = false, name = documentName){
     const fileName = fileNameFor(name);
     try {
@@ -3124,10 +2853,7 @@
 
     if (event.ctrlKey || event.metaKey || event.altKey) return;
 
-    // const shortcut = { s: "select", h: "pan", f: "floor", b: "room-rect", p: "room-poly", c: "curve", l: "line", d: "rect" }[event.key.toLowerCase()];
-    // const shortcut = { s: "select", h: "pan", r: "room-rect", p: "room-poly", c: "curve" }[event.key.toLowerCase()];
     const shortcut = (currentApp.shortcuts ?? { s: "select", h: "pan" })[event.key.toLowerCase()];
-    // if (shortcut) pickTool(shortcut);
     if (shortcut && currentApp.tools.includes(shortcut)) pickTool(shortcut);
   }
 
@@ -3172,19 +2898,6 @@
     return next;
   }
 
-  function downloadPgd(){
-    const result = hydronicToPgd(shapes, { ...hydronicStyle, iconSources: ICON_SOURCES }, { width: canvasWidth, height: canvasHeight, name: "Page1" });
-    const blob = zipFiles([{ name: result.fileName, data: result.page }, ...result.images]);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "pathfinder-pgd.zip";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
   let pgdCopied = $state(false);
   let pgdTimer;
 
@@ -3218,7 +2931,6 @@
 
   function buildSvg(){
     const texts = shapes.filter((shape) => shape.kind === "text").map(textToSvg);
-    // if (app === "hydronic") return atviseDocument(canvasWidth, canvasHeight, hydronicToSvg(shapes, hydronicStyle));
     if (app === "hydronic") return atviseDocument(canvasWidth, canvasHeight, [hydronicToSvg(shapes, hydronicStyle), ...texts].filter(Boolean).join("\n"));
     const body = [roomsToSvg(shapes, roomStyle, canvasFill), ...layered(shapes).filter((shape) => !isRoomShape(shape) && shape.kind !== "image" && shape.kind !== "wall").map((shape) => {
       if (shape.kind === "curve") return curveToSvg(shape, lineColor);
@@ -3231,19 +2943,6 @@
 
     return atviseDocument(canvasWidth, canvasHeight, body);
 
-    /*
-    return atviseDocument(canvasWidth, canvasHeight,
-      `<rect atv:refpx="${canvasWidth / 2}" atv:refpy="${canvasHeight / 2}" fill="${canvasFill}" height="${canvasHeight}" id="background" width="${canvasWidth}" x="0" y="0"/>
-  ${body}`);
-    */
-
-    /*
-    return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}" width="${canvasWidth}" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext">
-  <rect fill="${canvasFill}" height="${canvasHeight}" id="background" width="${canvasWidth}" x="0" y="0"/>
-  ${body}
-</svg>`;
-    */
   }
 
   let copySuccess = $state(false);
@@ -3265,7 +2964,6 @@
   :global(body) {
     height: 100dvh;
     width: 100vw;
-    /* font-family: 'Segoe UI', Arial, sans-serif; */
     font-family: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
     margin: 0;
     padding: 0;
@@ -3305,11 +3003,6 @@
     font-weight: 600;
     color: #1E293B;
 
-    .subtitle{
-        font-size: 12px;
-        color: #475569;
-        font-weight: 500;
-    }
   }
 
   .logo-section .title {
@@ -3333,38 +3026,6 @@
     gap: 10px;
     margin-left: auto;
     margin-right: 10px;
-  }
-
-  button.header-action {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font: inherit;
-    font-size: 14px;
-    font-weight: 600;
-    color: #334155;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  }
-
-  button.header-action svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  button.header-action:hover:not(:disabled) {
-    background: #eff6ff;
-    border-color: #93c5fd;
-    color: #1d4ed8;
-  }
-
-  button.header-action:disabled {
-    color: #cbd5e1;
-    cursor: not-allowed;
   }
 
   button.header-export {
@@ -3423,7 +3084,6 @@
     color: #cbd5e1;
   }
 
-  button.header-action:focus-visible,
   button.header-export:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
@@ -3514,15 +3174,6 @@
     box-sizing: border-box;
   }
 
-  /*
-  h2 {
-    font-size: 14px;
-    font-weight: 600;
-    margin: 0;
-    color: #334155;
-  }
-  */
-
   .app-layout {
     display: grid;
     grid-template-columns: 52px minmax(0, 1fr) auto;
@@ -3553,7 +3204,6 @@
 
   .viewer-header {
     display: flex;
-    /* align-items: center; */
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
@@ -3709,8 +3359,7 @@
   }
 
   .field-row > .input-group,
-  .field-row > input[type="text"],
-  .field-row > select {
+  .field-row > input[type="text"] {
     flex: 1 1 0;
     min-width: 0;
   }
@@ -3779,58 +3428,6 @@
 
   .field-hint {
     font-weight: 400;
-    font-size: 12px;
-    color: #94a3b8;
-  }
-
-  .toolset {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-  }
-
-  button.tool {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 4px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    background-color: #ffffff;
-    color: #475569;
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  }
-
-  button.tool:hover {
-    border-color: #93c5fd;
-    background-color: #eff6ff;
-    color: #1d4ed8;
-  }
-
-  button.tool.active {
-    border-color: #2563eb;
-    background-color: #eff6ff;
-    color: #1d4ed8;
-    box-shadow: inset 0 0 0 1px #2563eb;
-  }
-
-  button.tool:focus-visible {
-    outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
-  }
-
-  button.tool .glyph {
-    width: 26px;
-    height: 26px;
-  }
-
-  .tool-hint {
     font-size: 12px;
     color: #94a3b8;
   }
@@ -4132,8 +3729,7 @@
   .selection-section input[type="text"],
   .selection-section select,
   .display-settings-panel input[type="text"],
-  .display-settings-panel input[type="number"],
-  .display-settings-panel select {
+  .display-settings-panel input[type="number"] {
     width: 100%;
     height: 38px;
     padding: 8px 12px;
@@ -4164,32 +3760,6 @@
     min-height: 0;
   }
 
-  button.configure {
-    flex: 0 0 auto;
-    padding: 12px 16px;
-    background-color: #2563eb;
-    color: #ffffff;
-    border: none;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    margin-top: 8px;
-    transition: background-color 0.15s ease;
-  }
-
-  button.configure:hover:not(:disabled) {
-    background-color: #1d4ed8;
-  }
-
-  button.configure:disabled {
-    background-color: #cbd5e1;
-    cursor: not-allowed;
-  }
-
-  button.configure.copied {
-    background-color: #16a34a;
-  }
 </style>
 
 <title>Pathfinder</title>
@@ -4204,49 +3774,13 @@
     <img class="logo" src="{base}/logo.svg" alt="Pathfinder logo">
     <div class="title">
       <div class="title" title="Grid Trace Editor {__APP_VERSION__} · commit {__APP_COMMIT__}">Pathfinder</div>
-      <!-- <div class="subtitle" title="commit {__APP_COMMIT__}">Grid Trace Editor {__APP_VERSION__}</div> -->
     </div>
   </div>
 
   <AppSwitcher apps={APPS} current={app} onswitch={switchApp}/>
 
   <div class="header-actions">
-    <!--
-    <button class="header-action" type="button" onclick={placeDoors}
-            disabled={!shapes.some((shape) => shape.kind === "room")}
-            title="Place a door on every room that has none yet">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3 21 H21"/>
-        <path d="M6 21 V5 H13"/>
-        <path d="M6 5 L14 8 V21"/>
-        <circle cx="11.5" cy="13.5" r="0.9" fill="currentColor" stroke="none"/>
-      </svg>
-      {doorsPlaced === null ? "Place doors" : doorsPlaced === 0 ? "No new doors" : `Placed ${doorsPlaced} door${doorsPlaced === 1 ? "" : "s"}`}
-    </button>
-    <button class="header-action" type="button" onclick={furnishOffices}
-            disabled={!shapes.some((shape) => shape.kind === "room" && FURNISHABLE.includes(shape.category))}
-            title="Furnish every Office, Kitchen, WC and Storage room that has no furniture yet">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="5" width="12" height="7" rx="1"/>
-        <rect x="16" y="5" width="5" height="7" rx="1"/>
-        <rect x="6.5" y="14.5" width="5" height="5" rx="1.5"/>
-      </svg>
-      {furnishedRooms === null ? "Furnish rooms" : furnishedRooms === 0 ? "Nothing to furnish" : `Furnished ${furnishedRooms} room${furnishedRooms === 1 ? "" : "s"}`}
-    </button>
-    -->
-    <!--
-    {#if app === "hydronic"}
-      <button class="header-export secondary" type="button" onclick={downloadPgd} disabled={shapes.length === 0}
-              title="Download a pGD touch page (page1.jmx) with its images as a zip">
-        Export pGD
-      </button>
-    {/if}
-    -->
     <button class="header-export secondary" type="button" onclick={openDrawing} title="Open a saved drawing (Ctrl+O)">Open</button>
-    <!-- <button class="header-export secondary" type="button" onclick={() => saveDrawing(false)}
-            title="Save the drawing of all three apps to a file (Ctrl+S, Ctrl+Shift+S saves as a new file). It is also kept in this browser automatically.">Save</button> -->
     <button class="header-export secondary" type="button" bind:this={saveButton} aria-haspopup="dialog" aria-expanded={!!saveDialog}
             onclick={() => saveDialog ? saveDialog = null : openSaveDialog()}>Save</button>
     {#if saveDialog}
@@ -4254,7 +3788,6 @@
                   onsave={confirmSave} oncancel={() => saveDialog = null}/>
     {/if}
     <span class="header-sep" aria-hidden="true"></span>
-    <!-- {#if app === "hydronic"} -->
     {#if currentApp.exports.includes("pgd")}
       <button class="header-export secondary" type="button" onclick={downloadPgdImages} disabled={shapes.length === 0}
               title="Download the images this page uses, to unzip into the project's images folder">
@@ -4276,12 +3809,6 @@
             aria-expanded={showDisplaySettings} aria-controls="display-settings-panel"
             aria-label="Settings" title="Settings"
             onclick={() => showDisplaySettings = !showDisplaySettings}>
-      <!--
-      <svg class="display-settings-icon" viewBox="0 0 {GEAR_SIZE} {GEAR_SIZE}" fill="currentColor" aria-hidden="true">
-        <path d={GEAR_PATH}/>
-      </svg>
-      Display Settings
-      -->
       <svg class="display-settings-icon" viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
         <path d={FA_GEAR_PATH}/>
       </svg>
@@ -4471,7 +3998,6 @@
   </div>
 </div>
 
-
 <div class="app-layout">
   <Toolbar {tool} onpick={pickTool} onimage={openImagePicker} showHints={showToolHints}
            {elementsOpen} ontoggleelements={() => elementsOpen = !elementsOpen}
@@ -4483,33 +4009,6 @@
          onchange={(e) => { readImage(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }}>
 
   <div class="selection-section" class:collapsed={!sidebarOpen} id="settings-panel">
-    <!--
-    <fieldset id="select-tool">
-      <legend>Toolset</legend>
-      <div class="toolset">
-        {#each TOOLS as entry}
-          <button class="tool" class:active={tool === entry.id} type="button"
-                  aria-pressed={tool === entry.id} title={entry.hint}
-                  onclick={() => pickTool(entry.id)}>
-            <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              {#if entry.id === "select"}
-                <path d="M6 3 L6 18 L10 14 L13 21 L15.5 20 L12.5 13 L18 13 Z" fill="currentColor" stroke="none"/>
-              {:else if entry.id === "line"}
-                <path d="M5 7 L14 7 L14 17 L19 17"/>
-                <circle cx="5" cy="7" r="2" fill="currentColor" stroke="none"/>
-                <circle cx="19" cy="17" r="2" fill="currentColor" stroke="none"/>
-              {:else}
-                <rect x="4" y="6" width="16" height="12" rx="1"/>
-              {/if}
-            </svg>
-            {entry.label}
-          </button>
-        {/each}
-      </div>
-      <span class="tool-hint">{activeHint}</span>
-    </fieldset>
-    -->
 
     {#if selectedRoom}
       <fieldset id="room-properties">
@@ -4576,7 +4075,6 @@
       {:else}
         {#each shapes as shape (shape.id)}
           <div class="shape-row" class:selected={selectionIds.includes(shape.id)} class:locked-row={shape.locked} transition:addRow>
-            <!-- <span class="kind">{shape.kind === "line" ? "Trace" : shape.kind === "rect" ? "Rect" : roomKindLabel(shape.kind)}</span> -->
             <span class="kind">{shape.kind === "text" ? "Text" : shape.kind === "line" ? "Trace" : shape.kind === "rect" ? "Rect" : roomKindLabel(shape.kind)}</span>
             {#if shape.groupId}
               <span class="group-tag" title="Part of a group">G</span>
@@ -4606,17 +4104,10 @@
 
     <div class="spacer"></div>
 
-    <!--
-    <button class="configure" class:copied={copySuccess} type="button"
-            onclick={handleExport} disabled={shapes.length === 0}>
-      {copySuccess ? "Copied to Clipboard" : "Copy SVG"}
-    </button>
-    -->
   </div>
 
   <div class="viewer-section">
     <div class="viewer-header">
-      <!-- <h2>Live Preview</h2> -->
       <ToolOptions {tool} {elbow} elbows={ELBOWS} {selection} {lineWidth} {snapToGrid} target={shapeTarget}
                    onlinewidth={(value) => lineWidth = value} onelbow={(value) => elbow = value}
                    onsnap={(value) => snapToGrid = value} ontarget={(value) => targetChoice = value}
@@ -4631,7 +4122,7 @@
                    pipewidth={pipeThickness} onpipewidth={setPipeWidth} onedittext={editSelectedText} ontextstyle={setTextStyle}
                    onfittingflip={flipFitting} onfittingremove={removeFitting}
                    onfittingscale={setFittingScale} onreverse={reversePipes} onpipelayer={pipeLayer}
-                   onresetsize={resetElementSize} onelementname={setElementName}
+                   onresetsize={resetElementSize}
                    onfittingreadout={setFittingReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam}
                    onelementrotate={rotateElements} onelementsize={setElementSize} ontankprobe={toggleTankProbe}
                    groups={selectionGroups} onnamesize={setNameSize} onfittingnamesize={setFittingNameSize}
@@ -4701,7 +4192,7 @@
                        selectedIds={selectionIds} fresh={freshPipes} preview={pipePreview} target={portTarget}
                        selectedFitting={activeFitting ? { pipeId: activeFitting.pipe.id, fittingId: activeFitting.fitting.id } : null}
                        selectedFittings={fittingGroup.map((entry) => ({ pipeId: entry.pipe.id, fittingId: entry.fitting.id }))}
-                       {placement} style={hydronicStyle} {attachment} hidden={pipeDraft?.rewire?.pipeId ?? null}
+                       {placement} style={hydronicStyle} hidden={pipeDraft?.rewire?.pipeId ?? null}
                        showPorts={!!pipeDraft?.rewire} readouts={readoutBoxes} renaming={renamingElementId} renamingFitting={renamingFitting} guide={pipeAim.guide}/>
 
         <TextLayer {shapes} selectedIds={selectionIds} interactive={tool === "select"} zoom={viewport.zoom} hidden={editingTextId}/>
@@ -4764,7 +4255,6 @@
                     width={2} interactive={tool === "select"}/>
 
         {#if draft?.kind === "pen"}
-          <!-- <PenPreview {draft} {cursor} zoom={viewport.zoom} closure={floorPreview} color={draft.target === "floor" ? floorStroke : roomStroke}/> -->
           <PenPreview {draft} {cursor} zoom={viewport.zoom} closure={floorPreview} color={draft.target === "wall" ? wallStroke : draft.target === "floor" ? floorStroke : roomStroke}/>
         {/if}
 

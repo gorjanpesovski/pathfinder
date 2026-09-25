@@ -1,4 +1,4 @@
-import { fittingPose, fittingSize } from "./export.js";
+import { fittingPose, fittingSize } from "./geometry.js";
 import { projectOnRoute } from "./route.js";
 
 export function fittingBox(route, fitting){

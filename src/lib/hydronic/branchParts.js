@@ -43,11 +43,6 @@ function mix(hex, opacity){
 
 export function branchParts(element){
   const spec = HYDRONIC_ELEMENTS[element.type];
-  // const sx = element.width / spec.width;
-  // const sy = element.height / spec.height;
-  // const s = Math.min(sx, sy);
-  // const X = (value) => element.x + value * sx;
-  // const Y = (value) => element.y + value * sy;
   const upright = uprightSize(element);
   const turn = rotationOf(element);
   const sx = upright.width / spec.width;
@@ -62,12 +57,6 @@ export function branchParts(element){
   const pipeX = (which) => (which === "return" ? G.returnX : G.supplyX);
   const parts = [];
 
-  // const vertical = (x, top, bottom, width, color) => parts.push({ kind: "bar", x: X(x) - width * sx / 2, y: Y(top), width: width * sx, height: (bottom - top) * sy, color });
-  // const horizontal = (y, left, right, height, color) => parts.push({ kind: "bar", x: X(left), y: Y(y) - height * sy / 2, width: (right - left) * sx, height: height * sy, color });
-  // const icon = (type, cx, cy, width, height, rotation = 0) => parts.push({ kind: "icon", type, cx: X(cx), cy: Y(cy), width: width * s, height: height * s, rotation });
-  // const image = (name, cx, cy) => parts.push({ kind: "image", name, cx: X(cx), cy: Y(cy), width: BRANCH_IMAGES[name].width * s, height: BRANCH_IMAGES[name].height * s });
-  // const numeric = (cx, cy, unit, decimals) => parts.push({ kind: "numeric", x: X(cx - 40), y: Y(cy - 20), width: 80 * sx, height: 40 * sy, unit, decimals });
-  // const text = (value, x, baseline, size, options = {}) => parts.push({ kind: "text", text: value, x: X(x), baseline: Y(baseline), size: size * s, bold: false, color: INK, align: "center", ...options });
   const rect = (left, top, width, height, color) => {
     const a = at(left, top);
     const b = at(left + width, top + height);
@@ -85,7 +74,6 @@ export function branchParts(element){
   };
   const numeric = (cx, cy, unit, decimals) => {
     const centre = at(cx, cy);
-    // parts.push({ kind: "numeric", x: centre.x - 40 * s, y: centre.y - 20 * s, width: 80 * s, height: 40 * s, unit, decimals });
     parts.push({ kind: "numeric", x: centre.x - 50 * s, y: centre.y - 20 * s, width: 100 * s, height: 40 * s, unit, decimals });
   };
   const text = (value, x, baseline, size, options = {}) => {

@@ -43,31 +43,6 @@ function crossings(polygon, axis, value){
   return hits;
 }
 
-/*
-export function contactPoint(element, port){
-  const pose = portPose(element, port);
-  const spec = HYDRONIC_ELEMENTS[element.type];
-  const outline = OUTLINES[element.type];
-  if (!spec || !outline) return pose.point;
-  const sx = element.width / spec.width;
-  const sy = element.height / spec.height;
-  const polygon = outline.map(([x, y]) => [x * sx, y * sy]);
-  const local = { x: pose.point.x - element.x, y: pose.point.y - element.y };
-  const vertical = port.side === "top" || port.side === "bottom";
-  const hits = crossings(polygon, vertical ? "x" : "y", vertical ? local.x : local.y);
-  if (!hits.length) return pose.point;
-  const depth = {
-    top: Math.min(...hits),
-    bottom: Math.max(...hits),
-    left: Math.min(...hits),
-    right: Math.max(...hits)
-  }[port.side];
-  return vertical
-    ? { x: pose.point.x, y: round(element.y + depth) }
-    : { x: round(element.x + depth), y: pose.point.y };
-}
-*/
-
 const NORMALS = { top: { x: 0, y: -1 }, bottom: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
 
 export function contactPoint(element, port){

@@ -30,8 +30,6 @@ export const FURNITURE = {
   stairs: { label: "Staircase", width: 120, depth: 300 }
 };
 
-export const ELEMENT_LIBRARY = ["door", "desk", "chair", "drawer", "shelf", "cabinet", "sofa", "plant", "roundTable", "meetingTable"];
-
 export const ELEMENT_GROUPS = [
   { id: "general", label: "General", items: ["door", "plant", "sofa", "whiteboard", "bench"] },
   { id: "office", label: "Office", items: ["desk", "chair", "drawer", "shelf", "cabinet"] },
@@ -130,18 +128,6 @@ export function furnitureParts(item){
       }
       return parts;
     }
-
-    /*
-    case "meetingTable": {
-      const parts = [];
-      for (const along of [-65, 0, 65]) {
-        parts.push(...chairParts(along, -80, 180));
-        parts.push(...chairParts(along, 80, 0));
-      }
-      parts.push({ tag: "rect", attrs: { x: -100, y: -50, width: 200, height: 100, rx: 6 } });
-      return parts;
-    }
-    */
 
     case "meetingTable": {
       const parts = [];

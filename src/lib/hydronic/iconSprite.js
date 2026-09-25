@@ -16,7 +16,6 @@ function buildSymbol(name, source){
     .replace(/\sid="([^"]*)"/g, ` id="hyd-${name}__$1"`)
     .replace(/url\(#([^)]*)\)/g, `url(#hyd-${name}__$1)`);
 
-  // return `<symbol id="hyd-${name}" viewBox="0 0 ${width} ${height}">${body}</symbol>`;
   return `<symbol id="hyd-${name}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${body}</symbol>`;
 }
 

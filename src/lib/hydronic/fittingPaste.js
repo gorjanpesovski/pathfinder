@@ -1,6 +1,6 @@
 import { HYDRONIC_ELEMENTS } from "./elements.js";
 import { projectOnRoute, routeLength, routePoint } from "./route.js";
-import { fittingPose } from "./export.js";
+import { fittingPose } from "./geometry.js";
 
 function sizeOf(fitting){
   return (HYDRONIC_ELEMENTS[fitting.type]?.width ?? 0) * (fitting.scale ?? 1);

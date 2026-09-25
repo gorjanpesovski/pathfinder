@@ -22,7 +22,6 @@
 
   let preview = $derived.by(() => {
     if (!draft || !cursor) return null;
-    // const color = draft.kind === "floor" || draft.target === "floor" ? style.floorStroke : style.roomStroke;
     const color = draft.target === "wall" ? style.wallStroke : draft.kind === "floor" || draft.target === "floor" ? style.floorStroke : style.roomStroke;
 
     if (draft.kind === "room-rect") {
@@ -125,7 +124,6 @@
             font-size={10.5 * px} fill={roomColors(shape, style).stroke} stroke-width={3 * px}>{categoryLabel(shape.category)}</text>
     {/if}
   {/each}
-
 
   {#if closure}
     <path d={polygonPath(closure.points)} fill={style.roomStroke} fill-opacity="0.12" stroke={style.roomStroke}

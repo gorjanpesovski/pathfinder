@@ -166,10 +166,6 @@ function round(value){
   return Math.round(value * 100) / 100;
 }
 
-export function shapeStrokeWidth(shape, style = ROOM_STYLE){
-  return shape.kind === "floor" ? style.floorWidth : style.roomWidth;
-}
-
 function reference(shape){
   const center = boundsCenter(outlinePoints(shape));
   return { "atv:refpx": round(center.x), "atv:refpy": round(center.y) };

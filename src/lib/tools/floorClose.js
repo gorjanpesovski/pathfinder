@@ -44,10 +44,6 @@ function walk(outline, stops, perimeter, from, to, forward){
     .map((entry) => ({ x: entry.vertex.x, y: entry.vertex.y }));
 }
 
-export function isOnOutline(point, outlines){
-  return outlines.some((outline) => locate(point, outline) !== null);
-}
-
 export function floorClosure(points, end, outlines){
   if (points.length < 1) return null;
   const start = points[0];

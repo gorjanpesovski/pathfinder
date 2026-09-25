@@ -220,12 +220,6 @@
 {/snippet}
 
 <nav class="toolbar" aria-label="Tools">
-  <!-- {#each PRIMARY.filter((entry) => !entry.hidden) as entry (entry.id)} -->
-  <!--
-  {#each PRIMARY.filter((entry) => !entry.hidden && (!tools || tools.includes(entry.id))) as entry (entry.id)}
-    {@render toolButton(entry)}
-  {/each}
-  -->
   {#if general}
     {#each general.map((id) => PRIMARY.find((entry) => entry.id === id)).filter((entry) => entry && !entry.hidden) as entry (entry.id)}
       {@render toolButton(entry)}

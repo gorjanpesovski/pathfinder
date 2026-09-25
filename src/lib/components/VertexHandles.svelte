@@ -10,7 +10,6 @@
 
   let px = $derived(1 / zoom);
   let size = $derived(10 * px);
-  // let closed = $derived(shape.kind === "floor" || shape.kind === "room");
   let closed = $derived(shape.kind === "floor" || shape.kind === "room" || shape.kind === "wall");
   let edgeIndexes = $derived(shape.points.map((_, index) => index).slice(0, shape.open ? -1 : undefined));
 

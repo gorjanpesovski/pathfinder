@@ -1,4 +1,3 @@
-// import { PORT_STEP } from "./elements.js";
 import { PORT_STEP, HYDRONIC_ELEMENTS } from "./elements.js";
 
 const NORMALS = {
@@ -14,24 +13,6 @@ const TURN = 1.5;
 function round(value){
   return Math.round(value * 100) / 100;
 }
-
-/*
-function offsets(size){
-  const list = [];
-  for (let offset = PORT_STEP; offset < size - PORT_STEP / 2; offset += PORT_STEP) list.push(offset);
-  if (list.length === 0) list.push(size / 2);
-  return list;
-}
-*/
-
-/*
-function offsets(size){
-  const middle = size / 2;
-  const list = [middle];
-  for (let step = PORT_STEP; middle - step >= PORT_STEP - 0.001; step += PORT_STEP) list.push(middle - step, middle + step);
-  return list.sort((a, b) => a - b);
-}
-*/
 
 function offsets(size, spacing = PORT_STEP){
   const middle = size / 2;
@@ -63,20 +44,10 @@ export function elementPorts(element){
   if (HYDRONIC_ELEMENTS[element.type]?.noPorts) return [];
   const ports = [];
   const spacing = portStep(element);
-  // for (const offset of offsets(element.width)) ports.push({ side: "top", offset }, { side: "bottom", offset });
-  // for (const offset of offsets(element.height)) ports.push({ side: "left", offset }, { side: "right", offset });
   for (const offset of offsets(element.width, spacing)) ports.push({ side: "top", offset }, { side: "bottom", offset });
   for (const offset of offsets(element.height, spacing)) ports.push({ side: "left", offset }, { side: "right", offset });
   return ports.map((port) => ({ ...port, ...portPose(element, port) }));
 }
-
-/*
-export function endpointPose(end, byId){
-  const element = end ? byId.get(end.id) : null;
-  if (!element || element.kind !== "equipment") return null;
-  return portPose(element, end);
-}
-*/
 
 export function isFreeEnd(end){
   return !!end && end.pipe === undefined && end.id === undefined && Number.isFinite(end.x) && Number.isFinite(end.y);
@@ -88,7 +59,6 @@ export function endpointPose(end, byId, hostRoute = null, toward = null){
   if (end.pipe !== undefined) {
     const route = hostRoute?.(end.pipe);
     if (!route) return null;
-    // const hit = projectOnRoute(route, end, 0);
     const host = end.fitting !== undefined ? byId.get(end.pipe) : null;
     const valve = host?.fittings?.find((entry) => entry.id === end.fitting);
     const hit = projectOnRoute(route, valve ? routePoint(route, valve.t) : end, 0);
@@ -136,27 +106,6 @@ function axisOf(vector){
 function flip(axis){
   return axis === "h" ? "v" : "h";
 }
-
-/*
-function leg(from, to, first, endAxis){
-  if (from.x === to.x || from.y === to.y) return [to];
-  if (endAxis && endAxis === first) {
-    if (first === "h") {
-      const x = round(Math.round((from.x + to.x) / 2 / PORT_STEP) * PORT_STEP);
-      return [{ x, y: from.y }, { x, y: to.y }, to];
-    }
-    const y = round(Math.round((from.y + to.y) / 2 / PORT_STEP) * PORT_STEP);
-    return [{ x: from.x, y }, { x: to.x, y }, to];
-  }
-  return first === "h" ? [{ x: to.x, y: from.y }, to] : [{ x: from.x, y: to.y }, to];
-}
-
-function lastMove(from, segment){
-  const to = segment[segment.length - 1];
-  const before = segment.length > 1 ? segment[segment.length - 2] : from;
-  return { x: Math.sign(to.x - before.x), y: Math.sign(to.y - before.y) };
-}
-*/
 
 function simplify(points){
   const unique = points.filter((point, index) => index === 0 || point.x !== points[index - 1].x || point.y !== points[index - 1].y);
@@ -253,15 +202,6 @@ export function manhattanRoute(start, waypoints = [], end = null){
   return simplify(points.map((point) => ({ x: round(point.x), y: round(point.y) })));
 }
 
-/*
-export function pipeRoute(pipe, byId){
-  const start = endpointPose(pipe.from, byId);
-  const end = endpointPose(pipe.to, byId);
-  if (!start || !end) return null;
-  return manhattanRoute(start, pipe.points ?? [], end);
-}
-*/
-
 export function pipeRoute(pipe, byId, hostRoute = null){
   const points = pipe.points ?? [];
   const start = endpointPose(pipe.from, byId, hostRoute, points[0] ?? rawPoint(pipe.to, byId));
@@ -297,9 +237,6 @@ export function findPipePoint(point, routes, radius, exclude = null, step = PORT
     const hit = projectOnRoute(route, point, 0);
     if (!hit || hit.gap > radius) continue;
     const horizontal = hit.angle === 0 || Math.abs(hit.angle) === 180;
-    // const snapped = horizontal
-    //   ? { x: Math.round(hit.x / PORT_STEP) * PORT_STEP, y: hit.y }
-    //   : { x: hit.x, y: Math.round(hit.y / PORT_STEP) * PORT_STEP };
     const snapped = !(step > 0)
       ? { x: hit.x, y: hit.y }
       : horizontal
@@ -308,7 +245,6 @@ export function findPipePoint(point, routes, radius, exclude = null, step = PORT
     const again = projectOnRoute(route, snapped, 0);
     const spot = { x: again.x, y: again.y };
     const ends = [route[0], route[route.length - 1]];
-    // if (ends.some((end) => Math.hypot(end.x - spot.x, end.y - spot.y) < PORT_STEP)) continue;
     const clearance = Math.min(step > 0 ? step : 1, PORT_STEP);
     if (ends.some((end) => Math.hypot(end.x - spot.x, end.y - spot.y) < clearance)) continue;
     if (!best || hit.gap < best.gap) best = { pipe: id, x: spot.x, y: spot.y, point: spot, normal: null, gap: hit.gap };
@@ -426,7 +362,6 @@ export function dragEdge(path, index, delta){
 }
 
 export function scaledOffset(offset, oldSize, newSize, spacing = PORT_STEP){
-  // const list = offsets(newSize);
   const list = offsets(newSize, spacing);
   const target = offset * newSize / oldSize;
   return list.reduce((best, entry) => Math.abs(entry - target) < Math.abs(best - target) ? entry : best, list[0]);
@@ -487,19 +422,10 @@ export function projectOnRoute(points, point, size = 0){
   return best;
 }
 
-/*
-export function pruneDangling(shapes){
-  const elements = new Set(shapes.filter((shape) => shape.kind === "equipment").map((shape) => shape.id));
-  const dangling = shapes.some((shape) => shape.kind === "pipe" && (!elements.has(shape.from?.id) || !elements.has(shape.to?.id)));
-  return dangling ? shapes.filter((shape) => shape.kind !== "pipe" || (elements.has(shape.from?.id) && elements.has(shape.to?.id))) : shapes;
-}
-*/
-
 export function pruneDangling(shapes){
   let current = shapes;
   for (;;) {
     const kinds = new Map(current.map((shape) => [shape.id, shape.kind]));
-    // const valid = (end) => !!end && (end.pipe !== undefined ? kinds.get(end.pipe) === "pipe" : kinds.get(end.id) === "equipment");
     const valid = (end) => isFreeEnd(end) || (!!end && (end.pipe !== undefined ? kinds.get(end.pipe) === "pipe" : kinds.get(end.id) === "equipment"));
     const next = current.filter((shape) => shape.kind !== "pipe" || (valid(shape.from) && valid(shape.to)));
     if (next.length === current.length) return current;
@@ -512,18 +438,6 @@ export function ridingPipes(shapes, ids){
     .filter((shape) => shape.kind === "pipe" && !ids.includes(shape.id) && ids.includes(shape.from?.id) && ids.includes(shape.to?.id))
     .map((shape) => shape.id);
 }
-
-/*
-export function linkPastedPipes(created, idMap){
-  return created.filter((shape) => {
-    if (shape.kind !== "pipe") return true;
-    if (!idMap.has(shape.from?.id) || !idMap.has(shape.to?.id)) return false;
-    shape.from = { ...shape.from, id: idMap.get(shape.from.id) };
-    shape.to = { ...shape.to, id: idMap.get(shape.to.id) };
-    return true;
-  });
-}
-*/
 
 export function linkPastedPipes(created, idMap, offset = 0){
   const relink = (end) => {

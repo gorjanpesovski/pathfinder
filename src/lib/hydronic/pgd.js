@@ -1,16 +1,8 @@
 import { escapeXml } from "../export/atvise.js";
-import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, mediumOf } from "./elements.js";
-import { computeRoutes } from "./route.js";
-import { fittingPose, fittingSize, pipeDecorations, pipeWidthOf } from "./export.js";
-import { touchRoute } from "./outline.js";
-import { branchGaps, isBar, isBranch } from "./branch.js";
-import { branchParts, BRANCH_IMAGES } from "./branchParts.js";
-import { readoutLayout, readoutRowBoxes, READOUT } from "./readout.js";
-import { rotationOf, uprightSize } from "./frame.js";
+import { HYDRONIC_STYLE } from "./elements.js";
+import { BRANCH_IMAGES } from "./branchParts.js";
 import { textLines, TEXT_LINE } from "../tools/text.js";
-import { tankParts } from "./tank.js";
-import { elementLabel } from "./label.js";
-import { fittingLabel } from "./fittingLabel.js";
+import { buildScene, showsIn } from "./scene.js";
 
 export const PGD_VERSION = { ver: "020900744", v: "02.09.00.744" };
 
@@ -194,107 +186,50 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
 
   shape(0, 0, width, height, style.background ?? "#FFFFFF");
 
-  const routes = computeRoutes(shapes);
-  const byId = new Map(shapes.map((entry) => [entry.id, entry]));
-  const pipes = shapes.filter((entry) => entry.kind === "pipe" && routes.has(entry.id)).map((pipe) => ({ pipe, route: routes.get(pipe.id) }));
-  const { crossings, junctions, arrows } = pipeDecorations(pipes, style);
-  const pipeWidth = style.pipeWidth;
-  const gap = style.gapSize;
-
-  for (const { pipe, route } of pipes) {
-    for (const crossing of crossings.filter((entry) => entry.upper === pipe.id)) {
-      // shape(crossing.x - gap / 2, crossing.y - gap / 2, gap, gap, style.background ?? "#FFFFFF");
-      const side = crossing.size ?? gap;
-      shape(crossing.x - side / 2, crossing.y - side / 2, side, side, style.background ?? "#FFFFFF");
-    }
-    const drawn = touchRoute(route, pipe, byId);
-    const color = mediumOf(pipe.medium).color;
-    const pipeWidth = pipeWidthOf(pipe, style);
-    for (let index = 1; index < drawn.length; index += 1) {
-      const a = drawn[index - 1];
-      const b = drawn[index];
-      const left = Math.min(a.x, b.x) - pipeWidth / 2;
-      const top = Math.min(a.y, b.y) - pipeWidth / 2;
-      shape(left, top, Math.abs(b.x - a.x) + pipeWidth, Math.abs(b.y - a.y) + pipeWidth, color);
-    }
-  }
-
-  for (const { pipe } of pipes) {
-    const color = mediumOf(pipe.medium).color;
-    const name = `pf_arrow_${color.replace("#", "").toLowerCase()}`;
-    for (const mark of arrows.get(pipe.id) ?? []) {
-      // image(name, arrowSvg(color, style.arrowSize), mark.x, mark.y, style.arrowSize, style.arrowSize, mark.angle, { fill: rgb(color) });
-      const size = mark.size ?? style.arrowSize;
-      image(name, arrowSvg(color, style.arrowSize), mark.x, mark.y, size, size, mark.angle, { fill: rgb(color) });
-    }
-  }
-
-  for (const junction of junctions) {
-    // const size = (style.junctionRadius + style.junctionWidth) * 2;
-    const size = ((junction.radius ?? style.junctionRadius) + (junction.stroke ?? style.junctionWidth)) * 2;
-    image("pf_junction", junctionSvg(style), junction.x, junction.y, size, size);
-  }
-
-  const equipment = shapes.filter((entry) => entry.kind === "equipment" && HYDRONIC_ELEMENTS[entry.type]);
-  for (const bar of equipment.filter(isBar)) shape(bar.x, bar.y, bar.width, bar.height, mediumOf(bar.medium).color);
-  for (const entry of branchGaps(shapes, gap)) shape(entry.x, entry.y, entry.width, entry.height, style.background ?? "#FFFFFF");
-
   const iconImage = (type, cx, cy, w, h, rotation = 0) => {
     const source = icons[type];
     if (!source) return;
     image(`pf_${type}`, cleanIcon(source), cx, cy, w, h, rotation);
   };
 
-  for (const element of equipment) {
-    if (isBar(element)) continue;
-    if (isBranch(element)) {
-      for (const part of branchParts(element)) {
-        if (part.kind === "bar") shape(part.x, part.y, part.width, part.height, part.color);
-        else if (part.kind === "icon") iconImage(part.type, part.cx, part.cy, part.width, part.height, part.rotation);
-        else if (part.kind === "image") image(`pf_branch_${part.name}`, `<?xml version="1.0" encoding="UTF-8"?>\n${BRANCH_IMAGES[part.name].svg}\n`, part.cx, part.cy, part.width, part.height);
-        else if (part.kind === "numeric") numeric(part.x, part.y, part.width, part.height, part.unit, part.decimals);
-        else if (part.kind === "text") {
-          const boxHeight = part.size * 1.4;
-          const top = part.baseline - part.size * 1.05;
-          if (part.align === "center") label(part.text, part.x - 160 * part.size / 22, top, 320 * part.size / 22, boxHeight, part.size, part);
-          else label(part.text, part.x, top, 60 * part.size / 18, boxHeight, part.size, part);
-        }
-      }
-      continue;
-    }
-    // iconImage(element.type, element.x + element.width / 2, element.y + element.height / 2, element.width, element.height);
-    iconImage(element.type, element.x + element.width / 2, element.y + element.height / 2, uprightSize(element).width, uprightSize(element).height, rotationOf(element));
-    for (const part of tankParts(element)) {
-      if (part.kind === "icon") iconImage(part.type, part.cx, part.cy, part.width, part.height, part.rotation);
-      else numeric(part.x, part.y, part.width, part.height, part.unit, part.decimals);
-    }
-    if (element.name && !HYDRONIC_ELEMENTS[element.type].ownLabel) {
-      // label(element.name, element.x - 20, element.y + element.height + 4, element.width + 40, 18, 13, { align: "center" });
-      const caption = elementLabel(element);
-      label(element.name, element.x - 20, caption.top, element.width + 40, caption.height, caption.size, { align: "center" });
-    }
-  }
+  const caption = (item) => label(item.text, item.box.x, item.box.y, item.box.width, item.box.height, item.size, { align: item.anchor === "middle" ? "center" : undefined, bold: item.bold, color: item.color });
 
-  for (const { pipe, route } of pipes) {
-    for (const fitting of pipe.fittings ?? []) {
-      if (!HYDRONIC_ELEMENTS[fitting.type]) continue;
-      const pose = fittingPose(route, fitting);
-      const size = fittingSize(fitting);
-      iconImage(fitting.type, pose.x, pose.y, size.width, size.height, pose.rotation);
-      if (fitting.name) {
-        const caption = fittingLabel(route, fitting);
-        const width = 160 * caption.size / 13;
-        if (caption.anchor === "middle") label(fitting.name, caption.x - width / 2, caption.top, width, caption.height, caption.size, { align: "center" });
-        else label(fitting.name, caption.x, caption.top, width, caption.height, caption.size);
-      }
+  const branchPart = (part) => {
+    if (part.kind === "bar") shape(part.x, part.y, part.width, part.height, part.color);
+    else if (part.kind === "icon") iconImage(part.type, part.cx, part.cy, part.width, part.height, part.rotation);
+    else if (part.kind === "image") image(`pf_branch_${part.name}`, `<?xml version="1.0" encoding="UTF-8"?>\n${BRANCH_IMAGES[part.name].svg}\n`, part.cx, part.cy, part.width, part.height);
+    else if (part.kind === "numeric") numeric(part.x, part.y, part.width, part.height, part.unit, part.decimals);
+    else if (part.kind === "text") {
+      const boxHeight = part.size * 1.4;
+      const top = part.baseline - part.size * 1.05;
+      if (part.align === "center") label(part.text, part.x - 160 * part.size / 22, top, 320 * part.size / 22, boxHeight, part.size, part);
+      else label(part.text, part.x, top, 60 * part.size / 18, boxHeight, part.size, part);
     }
-  }
+  };
 
-  for (const [, box] of readoutLayout(shapes, routes, style.bounds ?? { width, height })) {
-    for (const row of readoutRowBoxes(box)) {
-      label(row.label, row.labelX, row.box.y, (READOUT.labelWidth - 2) * row.scale, row.box.height, 18 * row.scale, { bold: true });
-      numeric(row.box.x, row.box.y, row.box.width, row.box.height, row.unit, 1);
-    }
+  const RENDER = {
+    gap: (item) => shape(item.x, item.y, item.width, item.height, style.background ?? "#FFFFFF"),
+    bar: (item) => shape(item.x, item.y, item.width, item.height, item.color),
+    pipe: (item) => {
+      for (let index = 1; index < item.points.length; index += 1) {
+        const a = item.points[index - 1];
+        const b = item.points[index];
+        shape(Math.min(a.x, b.x) - item.width / 2, Math.min(a.y, b.y) - item.width / 2, Math.abs(b.x - a.x) + item.width, Math.abs(b.y - a.y) + item.width, item.color);
+      }
+    },
+    arrow: (item) => image(`pf_arrow_${item.color.replace("#", "").toLowerCase()}`, arrowSvg(item.color, style.arrowSize), item.mark.x, item.mark.y, item.size, item.size, item.mark.angle, { fill: rgb(item.color) }),
+    junction: (item) => {
+      const size = (item.radius + item.stroke) * 2;
+      image("pf_junction", junctionSvg(style), item.x, item.y, size, size);
+    },
+    icon: (item) => iconImage(item.type, item.cx, item.cy, item.width, item.height, item.rotation),
+    branch: (item) => item.parts.forEach(branchPart),
+    field: (item) => numeric(item.x, item.y, item.width, item.height, item.unit, item.decimals),
+    label: caption
+  };
+
+  for (const item of buildScene(shapes, { ...style, bounds: style.bounds ?? { width, height } })) {
+    if (showsIn(item, "pgd")) RENDER[item.kind](item);
   }
 
   for (const text of shapes.filter((entry) => entry.kind === "text")) {

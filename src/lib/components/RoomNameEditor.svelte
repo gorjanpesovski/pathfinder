@@ -1,5 +1,4 @@
 <script>
-  // let { x, y, value, oncommit, oncancel } = $props();
   let { x, y, value, oncommit, oncancel, label = "Room name" } = $props();
 
   let input;

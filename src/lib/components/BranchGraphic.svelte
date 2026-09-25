@@ -49,7 +49,6 @@
   <text x={cx} y={cy + 5.5} text-anchor="middle" font-family={FONT} font-size="16" fill={INK}>{text}</text>
 {/snippet}
 
-<!-- <g transform="translate({element.x} {element.y}) scale({element.width / spec.width} {element.height / spec.height})"> -->
 <g transform="translate({element.x + element.width / 2} {element.y + element.height / 2}) rotate({rotationOf(element)}) translate({-upright.width / 2} {-upright.height / 2}) scale({upright.width / spec.width} {upright.height / spec.height})">
   {#if params.bypass}
     <line x1={G.supplyX} y1="442.787" x2={G.returnX} y2="442.787" stroke={colors.supply} stroke-width="4"/>

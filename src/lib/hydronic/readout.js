@@ -1,10 +1,9 @@
 import { HYDRONIC_ELEMENTS } from "./elements.js";
 import { routePoint } from "./route.js";
-import { fittingPose, fittingSize } from "./export.js";
+import { fittingPose, fittingSize } from "./geometry.js";
 
 export const READOUT = {
   labelWidth: 28,
-  // boxWidth: 80,
   boxWidth: 100,
   rowHeight: 40,
   rowGap: 4,
@@ -21,19 +20,10 @@ export function readoutRows(fitting){
   if (!spec || mode === "none") return [];
   const setpoint = { kind: "setpoint", label: "S:", unit: spec.unit };
   const value = { kind: "value", label: spec.label, unit: spec.unit };
-  // if (mode === "setpoint") return [setpoint];
-  // if (mode === "value") return [value];
   if (mode === "setpoint") return [{ ...setpoint, label: "" }];
   if (mode === "value") return [{ ...value, label: "" }];
   return [setpoint, value];
 }
-
-// export function readoutExtent(rows){
-//   return {
-//     width: READOUT.labelWidth + READOUT.boxWidth,
-//     height: rows.length * READOUT.rowHeight + Math.max(0, rows.length - 1) * READOUT.rowGap
-//   };
-// }
 
 function labelSpace(rows){
   return rows.some((row) => row.label) ? READOUT.labelWidth : 0;
@@ -41,7 +31,6 @@ function labelSpace(rows){
 
 export function readoutExtent(rows, scale = 1){
   return {
-    // width: (READOUT.labelWidth + READOUT.boxWidth) * scale,
     width: (labelSpace(rows) + READOUT.boxWidth) * scale,
     height: (rows.length * READOUT.rowHeight + Math.max(0, rows.length - 1) * READOUT.rowGap) * scale
   };
@@ -107,7 +96,6 @@ export function readoutLayout(shapes, routes, bounds = null){
       if (!rows.length) continue;
       const pose = fittingPose(route, fitting);
       const size = fittingSize(fitting);
-      // const extent = readoutExtent(rows);
       const scale = fitting.scale ?? 1;
       const extent = readoutExtent(rows, scale);
       let box;
@@ -129,7 +117,6 @@ export function readoutLayout(shapes, routes, bounds = null){
         });
         box = best;
       }
-      // const placed = { x: box.x, y: box.y, width: box.width, height: box.height, side: box.side, rows, pose, pipeId: pipe.id };
       const placed = { x: box.x, y: box.y, width: box.width, height: box.height, side: box.side, rows, pose, pipeId: pipe.id, scale };
       boxes.set(fitting.id, placed);
       obstacles.push(placed);
@@ -137,20 +124,6 @@ export function readoutLayout(shapes, routes, bounds = null){
   }
   return boxes;
 }
-
-/*
-export function readoutRowBoxes(box){
-  return box.rows.map((row, index) => {
-    const y = box.y + index * (READOUT.rowHeight + READOUT.rowGap);
-    return {
-      ...row,
-      labelX: box.x + 2,
-      textY: y + READOUT.rowHeight / 2 + 6.5,
-      box: { x: box.x + READOUT.labelWidth, y, width: READOUT.boxWidth, height: READOUT.rowHeight }
-    };
-  });
-}
-*/
 
 export function readoutRowBoxes(box){
   const scale = box.scale ?? 1;
@@ -161,7 +134,6 @@ export function readoutRowBoxes(box){
       scale,
       labelX: box.x + 2 * scale,
       textY: y + (READOUT.rowHeight / 2 + 6.5) * scale,
-      // box: { x: box.x + READOUT.labelWidth * scale, y, width: READOUT.boxWidth * scale, height: READOUT.rowHeight * scale }
       box: { x: box.x + labelSpace(box.rows) * scale, y, width: READOUT.boxWidth * scale, height: READOUT.rowHeight * scale }
     };
   });

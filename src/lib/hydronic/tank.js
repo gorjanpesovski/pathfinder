@@ -24,10 +24,6 @@ export function tankParts(element){
   const parts = [];
   for (const probe of TANK_PROBES) {
     if (!element.probes[probe.id]) continue;
-    // const icon = toCanvasPoint(element, PROBE_X * sx, probe.y * sy);
-    // const field = toCanvasPoint(element, FIELD_X * sx, probe.y * sy);
-    // parts.push({ kind: "icon", type: "tempProbe", probe: probe.id, cx: icon.x, cy: icon.y, width: 28 * s, height: 28 * s, rotation: 0 });
-    // parts.push({ kind: "numeric", probe: probe.id, x: field.x - 40 * s, y: field.y - 20 * s, width: 80 * s, height: 40 * s, unit: "°C", decimals: 1 });
     const field = toCanvasPoint(element, spec.width / 2 * sx, probe.y * sy);
     parts.push({ kind: "numeric", probe: probe.id, x: field.x - 50 * s, y: field.y - 20 * s, width: 100 * s, height: 40 * s, unit: "°C", decimals: 1 });
   }
