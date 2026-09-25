@@ -4,8 +4,13 @@ import { pipeRoute, routePoint, computeRoutes, pipeCrossings, arrowMarks, arrowP
 import { touchRoute } from "./outline.js";
 import { branchArgs, branchGaps } from "./branch.js";
 import { readoutLayout, readoutRowBoxes } from "./readout.js";
+import { rotationOf, uprightSize } from "./frame.js";
+import { tankParts } from "./tank.js";
 
-const IN_OUT_VALUE = "SYSTEM.LIBRARY.ATVISE.OBJECTDISPLAYS.Default.Number.in_out_value";
+// const IN_OUT_VALUE = "SYSTEM.LIBRARY.ATVISE.OBJECTDISPLAYS.Default.Number.in_out_value";
+const IN_OUT_VALUE = "SYSTEM.LIBRARY.ATVISE.OBJECTDISPLAYS.Advanced.in_out_value";
+const IN_OUT_NATIVE = { width: 100, height: 40 };
+const IN_OUT_FONT = 20;
 
 const IN_OUT_OVERWRITES = [
   '<atv:overwrite id="input_label" transform="matrix(2,0,0,0.75,0,0)" x="73" y="24.499"/>',
@@ -109,6 +114,44 @@ export function fittingSize(fitting){
   return { width: spec.width * scale, height: spec.height * scale };
 }
 
+export function pipeWidthOf(pipe, style = HYDRONIC_STYLE){
+  return pipe?.width ?? style.pipeWidth;
+}
+
+export function pipeScale(pipe, style = HYDRONIC_STYLE){
+  return pipeWidthOf(pipe, style) / style.pipeWidth;
+}
+
+export function pipeDecorations(pipes, style = HYDRONIC_STYLE){
+  const crossings = pipeCrossings(pipes.map(({ pipe, route }) => ({ id: pipe.id, route })));
+  const byId = new Map(pipes.map(({ pipe }) => [pipe.id, pipe]));
+  const margin = style.gapSize - style.pipeWidth;
+  for (const crossing of crossings) {
+    crossing.size = Math.max(pipeWidthOf(byId.get(crossing.upper), style), pipeWidthOf(byId.get(crossing.lower), style)) + margin;
+  }
+  const junctions = [];
+  for (const { pipe, route } of pipes) {
+    const k = pipeScale(pipe, style);
+    const extra = { radius: style.junctionRadius * k, stroke: style.junctionWidth * k };
+    // if (pipe.from?.pipe !== undefined) junctions.push({ pipeId: pipe.id, host: pipe.from.pipe, x: route[0].x, y: route[0].y, ...extra });
+    // if (pipe.to?.pipe !== undefined) junctions.push({ pipeId: pipe.id, host: pipe.to.pipe, x: route[route.length - 1].x, y: route[route.length - 1].y, ...extra });
+    if (pipe.from?.pipe !== undefined && pipe.from.fitting === undefined) junctions.push({ pipeId: pipe.id, host: pipe.from.pipe, x: route[0].x, y: route[0].y, ...extra });
+    if (pipe.to?.pipe !== undefined && pipe.to.fitting === undefined) junctions.push({ pipeId: pipe.id, host: pipe.to.pipe, x: route[route.length - 1].x, y: route[route.length - 1].y, ...extra });
+  }
+  const arrows = new Map();
+  for (const { pipe, route } of pipes) {
+    const size = style.arrowSize * pipeScale(pipe, style);
+    const avoid = [
+      ...(pipe.fittings ?? []).filter((fitting) => HYDRONIC_ELEMENTS[fitting.type]).map((fitting) => fittingPose(route, fitting)),
+      ...crossings.filter((crossing) => crossing.upper === pipe.id || crossing.lower === pipe.id),
+      ...junctions.filter((junction) => junction.host === pipe.id || junction.pipeId === pipe.id)
+    ];
+    arrows.set(pipe.id, arrowMarks(route, avoid, size * 1.8, Math.max(40, 100 * pipeScale(pipe, style))).map((mark) => ({ ...mark, size })));
+  }
+  return { crossings, junctions, arrows };
+}
+
+/*
 export function pipeDecorations(pipes, style = HYDRONIC_STYLE){
   const crossings = pipeCrossings(pipes.map(({ pipe, route }) => ({ id: pipe.id, route })));
   const junctions = [];
@@ -127,6 +170,7 @@ export function pipeDecorations(pipes, style = HYDRONIC_STYLE){
   }
   return { crossings, junctions, arrows };
 }
+*/
 
 function scaledReference(type, cx, cy, rotation, id, style, width, height, args = {}){
   const spec = HYDRONIC_ELEMENTS[type];
@@ -134,13 +178,18 @@ function scaledReference(type, cx, cy, rotation, id, style, width, height, args 
   const native = spec.native ?? style.native?.[type] ?? { width: spec.width, height: spec.height };
   const sx = width / native.width;
   const sy = spec.inline ? sx : height / native.height;
+  const lift = native.axisY === undefined ? 0 : (native.axisY - native.height / 2) * sy;
+  const turn = rotation * Math.PI / 180;
+  const centreX = cx + Math.sin(turn) * lift;
+  const centreY = cy - Math.cos(turn) * lift;
   return svgElement("svg", {
     "atv:refpx": round(cx),
     "atv:refpy": round(cy),
     height: native.height,
     id,
     // transform: elementMatrix(cx, cy, native.width, native.height, rotation, width / native.width, height / native.height),
-    transform: elementMatrix(cx, cy, native.width, native.height, rotation, sx, sy),
+    // transform: elementMatrix(cx, cy, native.width, native.height, rotation, sx, sy),
+    transform: elementMatrix(centreX, centreY, native.width, native.height, rotation, sx, sy),
     width: native.width,
     x: 0,
     y: 0,
@@ -172,13 +221,35 @@ function barRect(element){
 function readoutElements(fittingId, box){
   return readoutRowBoxes(box).flatMap((row) => {
     const id = `readout_${fittingId}_${row.kind}`;
+    const field = valueField(id, row.box.x, row.box.y, row.box.width, row.box.height, row.unit, 1);
+    if (!row.label) return [field];
+    return [
+      svgElement("text", {
+        "atv:refpx": round(row.labelX + 10),
+        "atv:refpy": round(row.box.y + row.box.height / 2),
+        fill: "#414142",
+        "font-family": "Roboto, Arial, sans-serif",
+        "font-size": round(18 * row.scale),
+        id: `${id}_label`,
+        x: round(row.labelX),
+        y: round(row.textY)
+      }, escapeXml(row.label)),
+      field
+    ];
+  });
+}
+
+/*
+function readoutElements(fittingId, box){
+  return readoutRowBoxes(box).flatMap((row) => {
+    const id = `readout_${fittingId}_${row.kind}`;
     const args = {
       postDecimal: 1,
       decimalFraction: 0,
       unit: `T{${row.unit}}`,
       editable: "No",
       fillNotEditable: "#ffffff",
-      fontSize: 18
+      fontSize: Math.round(18 * row.scale)
     };
     return [
       svgElement("text", {
@@ -186,7 +257,7 @@ function readoutElements(fittingId, box){
         "atv:refpy": round(row.box.y + row.box.height / 2),
         fill: "#414142",
         "font-family": "Roboto, Arial, sans-serif",
-        "font-size": 18,
+        "font-size": round(18 * row.scale),
         id: `${id}_label`,
         x: round(row.labelX),
         y: round(row.textY)
@@ -196,7 +267,8 @@ function readoutElements(fittingId, box){
         "atv:refpy": round(row.box.y + row.box.height / 2),
         height: 30,
         id,
-        transform: `matrix(0.5,0,0,1.3333,${round(row.box.x)},${round(row.box.y)})`,
+        // transform: `matrix(0.5,0,0,1.3333,${round(row.box.x)},${round(row.box.y)})`,
+        transform: `matrix(${round(0.5 * row.scale)},0,0,${round(1.3333 * row.scale)},${round(row.box.x)},${round(row.box.y)})`,
         width: 160,
         x: 0,
         y: 0,
@@ -204,6 +276,46 @@ function readoutElements(fittingId, box){
       }, Object.entries(args).map(([name, value]) => `<atv:argument name="${escapeXml(name)}" value="${escapeXml(value)}"/>`).join("") + IN_OUT_OVERWRITES)
     ];
   });
+}
+*/
+
+function valueField(id, x, y, width, height, unit, decimals){
+  const scale = height / IN_OUT_NATIVE.height;
+  const args = { postDecimal: decimals, decimalFraction: 0, unit: `T{${unit}}`, editable: "No", fillNotEditable: "#ffffff", fontSize: Math.max(8, Math.round(IN_OUT_FONT * scale)) };
+  return svgElement("svg", {
+    "atv:refpx": round(x + width / 2),
+    "atv:refpy": round(y + height / 2),
+    height: IN_OUT_NATIVE.height,
+    id,
+    transform: `matrix(${round(width / IN_OUT_NATIVE.width)},0,0,${round(height / IN_OUT_NATIVE.height)},${round(x)},${round(y)})`,
+    width: IN_OUT_NATIVE.width,
+    x: 0,
+    y: 0,
+    "xlink:href": IN_OUT_VALUE
+  }, Object.entries(args).map(([name, value]) => `<atv:argument name="${escapeXml(name)}" value="${escapeXml(value)}"/>`).join(""));
+}
+
+/*
+function valueField(id, x, y, width, height, unit, decimals){
+  const args = { postDecimal: decimals, decimalFraction: 0, unit: `T{${unit}}`, editable: "No", fillNotEditable: "#ffffff", fontSize: Math.max(8, Math.round(18 * height / 40)) };
+  return svgElement("svg", {
+    "atv:refpx": round(x + width / 2),
+    "atv:refpy": round(y + height / 2),
+    height: 30,
+    id,
+    transform: `matrix(${round(width / 160)},0,0,${round(height / 30)},${round(x)},${round(y)})`,
+    width: 160,
+    x: 0,
+    y: 0,
+    "xlink:href": IN_OUT_VALUE
+  }, Object.entries(args).map(([name, value]) => `<atv:argument name="${escapeXml(name)}" value="${escapeXml(value)}"/>`).join("") + IN_OUT_OVERWRITES);
+}
+*/
+
+function tankElements(element, style){
+  return tankParts(element).map((part) => part.kind === "icon"
+    ? scaledReference(part.type, part.cx, part.cy, 0, `${element.type}_${element.id}_probe_${part.probe}`, style, part.width, part.height)
+    : valueField(`${element.type}_${element.id}_probe_${part.probe}_value`, part.x, part.y, part.width, part.height, part.unit, part.decimals));
 }
 
 function bounds(route){
@@ -223,16 +335,21 @@ export function hydronicToSvg(shapes, style = HYDRONIC_STYLE){
 
   for (const { pipe, route } of pipes) {
     crossings.filter((crossing) => crossing.upper === pipe.id).forEach((crossing, index) => {
+      const side = crossing.size ?? gap;
       lines.push(svgElement("rect", {
         "atv:refpx": round(crossing.x),
         "atv:refpy": round(crossing.y),
         fill: style.background,
-        height: gap,
+        // height: gap,
+        height: round(side),
         id: `pipe_${pipe.id}_gap_${index + 1}`,
         "stroke-width": 0,
-        width: gap,
-        x: round(crossing.x - gap / 2),
-        y: round(crossing.y - gap / 2)
+        // width: gap,
+        // x: round(crossing.x - gap / 2),
+        // y: round(crossing.y - gap / 2)
+        width: round(side),
+        x: round(crossing.x - side / 2),
+        y: round(crossing.y - side / 2)
       }));
     });
     // const center = bounds(route);
@@ -247,7 +364,8 @@ export function hydronicToSvg(shapes, style = HYDRONIC_STYLE){
       points: drawn.map((point) => `${point.x},${point.y}`).join(" "),
       stroke: mediumOf(pipe.medium).color,
       "stroke-linejoin": "round",
-      "stroke-width": style.pipeWidth
+      // "stroke-width": style.pipeWidth
+      "stroke-width": pipeWidthOf(pipe, style)
     }));
   }
 
@@ -256,7 +374,8 @@ export function hydronicToSvg(shapes, style = HYDRONIC_STYLE){
     "atv:refpy": mark.y,
     fill: mediumOf(pipe.medium).color,
     id: `pipe_${pipe.id}_arrow_${index + 1}`,
-    points: arrowPoints(mark, style.arrowSize),
+    // points: arrowPoints(mark, style.arrowSize),
+    points: arrowPoints(mark, mark.size ?? style.arrowSize),
     "stroke-width": 0
   })));
 
@@ -267,9 +386,11 @@ export function hydronicToSvg(shapes, style = HYDRONIC_STYLE){
     cy: round(junction.y),
     fill: "#ffffff",
     id: `junction_${index + 1}`,
-    r: style.junctionRadius,
+    // r: style.junctionRadius,
+    r: round(junction.radius ?? style.junctionRadius),
     stroke: style.junctionStroke,
-    "stroke-width": style.junctionWidth
+    // "stroke-width": style.junctionWidth
+    "stroke-width": round(junction.stroke ?? style.junctionWidth)
   }));
 
   // const blocks = equipment.map((element) => scaledReference(element.type, element.x + element.width / 2, element.y + element.height / 2, 0, `${element.type}_${element.id}`, style, element.width, element.height));
@@ -278,7 +399,8 @@ export function hydronicToSvg(shapes, style = HYDRONIC_STYLE){
   const bars = layered.filter((element) => HYDRONIC_ELEMENTS[element.type].bar).length;
   const blocks = layered.map((element) => HYDRONIC_ELEMENTS[element.type].bar
     ? barRect(element)
-    : scaledReference(element.type, element.x + element.width / 2, element.y + element.height / 2, 0, `${element.type}_${element.id}`, style, element.width, element.height, elementArgs(element)));
+    // : scaledReference(element.type, element.x + element.width / 2, element.y + element.height / 2, 0, `${element.type}_${element.id}`, style, element.width, element.height, elementArgs(element)));
+    : scaledReference(element.type, element.x + element.width / 2, element.y + element.height / 2, rotationOf(element), `${element.type}_${element.id}`, style, uprightSize(element).width, uprightSize(element).height, elementArgs(element)));
 
   const fittings = pipes.flatMap(({ pipe, route }) => (pipe.fittings ?? [])
     .filter((fitting) => HYDRONIC_ELEMENTS[fitting.type])
@@ -302,6 +424,9 @@ export function hydronicToSvg(shapes, style = HYDRONIC_STYLE){
 
   const readouts = [...readoutLayout(shapes, routes, style.bounds ?? null)].flatMap(([fittingId, box]) => readoutElements(fittingId, box));
 
+  const probes = layered.flatMap((element) => tankElements(element, style));
+
   // return [...lines, ...marks, ...joints, ...blocks, ...fittings].join("\n");
-  return [...lines, ...marks, ...joints, ...blocks.slice(0, bars), ...gaps, ...blocks.slice(bars), ...fittings, ...readouts].join("\n");
+  // return [...lines, ...marks, ...joints, ...blocks.slice(0, bars), ...gaps, ...blocks.slice(bars), ...fittings, ...readouts].join("\n");
+  return [...lines, ...marks, ...joints, ...blocks.slice(0, bars), ...gaps, ...blocks.slice(bars), ...probes, ...fittings, ...readouts].join("\n");
 }

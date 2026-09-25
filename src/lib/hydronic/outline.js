@@ -1,5 +1,6 @@
 import { HYDRONIC_ELEMENTS } from "./elements.js";
 import { portPose } from "./route.js";
+import { rotationOf, rotateVector, uprightSize, toCanvasPoint, toLocalPoint } from "./frame.js";
 
 function arc(cx, cy, rx, ry, from, to, steps = 24){
   const list = [];
@@ -16,7 +17,9 @@ export const OUTLINES = {
   bufferTank: [
     ...arc(81.496, 51.374, 71.31, 50.89, Math.PI, Math.PI * 2),
     ...arc(81.496, 247.048, 71.31, 53.434, 0, Math.PI)
-  ]
+  ],
+  heatExchanger: [[0.5, 0.5], [100.5, 0.5], [100.5, 200.5], [0.5, 200.5]],
+  electricHeater: [[0.5, 0.5], [100.5, 0.5], [100.5, 220.5], [0.5, 220.5]]
 };
 
 function round(value){
@@ -40,6 +43,7 @@ function crossings(polygon, axis, value){
   return hits;
 }
 
+/*
 export function contactPoint(element, port){
   const pose = portPose(element, port);
   const spec = HYDRONIC_ELEMENTS[element.type];
@@ -61,6 +65,30 @@ export function contactPoint(element, port){
   return vertical
     ? { x: pose.point.x, y: round(element.y + depth) }
     : { x: round(element.x + depth), y: pose.point.y };
+}
+*/
+
+const NORMALS = { top: { x: 0, y: -1 }, bottom: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+
+export function contactPoint(element, port){
+  const pose = portPose(element, port);
+  const spec = HYDRONIC_ELEMENTS[element.type];
+  const outline = OUTLINES[element.type];
+  if (!spec || !outline) return pose.point;
+  const upright = uprightSize(element);
+  const sx = upright.width / spec.width;
+  const sy = upright.height / spec.height;
+  const polygon = outline.map(([x, y]) => [x * sx, y * sy]);
+  const local = toLocalPoint(element, pose.point.x, pose.point.y);
+  const inward = rotateVector({ x: -NORMALS[port.side].x, y: -NORMALS[port.side].y }, -rotationOf(element));
+  const vertical = Math.abs(inward.y) > 0.5;
+  const hits = crossings(polygon, vertical ? "x" : "y", vertical ? local.x : local.y);
+  if (!hits.length) return pose.point;
+  const depth = (vertical ? inward.y : inward.x) > 0 ? Math.min(...hits) : Math.max(...hits);
+  const point = vertical ? toCanvasPoint(element, local.x, depth) : toCanvasPoint(element, depth, local.y);
+  return port.side === "top" || port.side === "bottom"
+    ? { x: pose.point.x, y: round(point.y) }
+    : { x: round(point.x), y: pose.point.y };
 }
 
 function endContact(end, byId){

@@ -33,3 +33,5 @@ export const ICON_SIZES = Object.fromEntries(Object.entries(modules).map(([path,
     height: Number(rootTag.match(/\sheight="([\d.]+)"/)[1])
   }];
 }));
+
+export const ICON_SOURCES = Object.fromEntries(Object.entries(modules).map(([path, source]) => [path.match(/([^/]+)\.svg$/)[1], source]));

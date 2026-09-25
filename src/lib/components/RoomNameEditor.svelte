@@ -1,5 +1,6 @@
 <script>
-  let { x, y, value, oncommit, oncancel } = $props();
+  // let { x, y, value, oncommit, oncancel } = $props();
+  let { x, y, value, oncommit, oncancel, label = "Room name" } = $props();
 
   let input;
   let ready = false;
@@ -58,7 +59,7 @@
   }
 </style>
 
-<input bind:this={input} type="text" {value} aria-label="Room name"
+<input bind:this={input} type="text" {value} aria-label={label}
        style="left: {x}px; top: {y}px"
        onkeydown={handleKey} onblur={commit}
        onpointerdown={(event) => event.stopPropagation()}>

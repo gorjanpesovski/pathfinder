@@ -1,4 +1,5 @@
 import { HYDRONIC_ELEMENTS } from "./elements.js";
+import { rotationOf, rotateVector, uprightSize, toCanvasPoint } from "./frame.js";
 
 export const BRANCH_GEOMETRY = {
   supplyX: 154.118,
@@ -70,6 +71,7 @@ function scale(element){
   return { sx: element.width / spec.width, sy: element.height / spec.height };
 }
 
+/*
 export function branchAnchors(element){
   const { sx, sy } = scale(element);
   return {
@@ -133,6 +135,110 @@ export function branchGaps(shapes, size){
         if (x <= bar.x || x >= bar.x + bar.width) continue;
         if (bar.y <= top || bar.y + bar.height >= bottom - 0.5) continue;
         gaps.push({ branchId: branch.id, barId: bar.id, x: x - size / 2, y: bar.y, width: size, height: bar.height });
+      }
+    }
+  }
+  return gaps;
+}
+*/
+
+const DOWN = { x: 0, y: 1 };
+
+function legPoint(element, x, y){
+  const spec = HYDRONIC_ELEMENTS[element.type];
+  const upright = uprightSize(element);
+  return toCanvasPoint(element, x * upright.width / spec.width, y * upright.height / spec.height);
+}
+
+export function branchAnchors(element){
+  const direction = rotateVector(DOWN, rotationOf(element));
+  return {
+    supply: { ...legPoint(element, BRANCH_GEOMETRY.supplyX, BRANCH_GEOMETRY.supplyBottom), direction },
+    return: { ...legPoint(element, BRANCH_GEOMETRY.returnX, BRANCH_GEOMETRY.returnBottom), direction }
+  };
+}
+
+function barEdge(bar, direction){
+  if (direction.y > 0.5) return { axis: "y", value: bar.y };
+  if (direction.y < -0.5) return { axis: "y", value: bar.y + bar.height };
+  if (direction.x > 0.5) return { axis: "x", value: bar.x };
+  return { axis: "x", value: bar.x + bar.width };
+}
+
+function onBar(point, bar, radius){
+  const edge = barEdge(bar, point.direction ?? DOWN);
+  const across = edge.axis === "y"
+    ? point.x >= bar.x && point.x <= bar.x + bar.width
+    : point.y >= bar.y && point.y <= bar.y + bar.height;
+  return across && Math.abs(point[edge.axis] - edge.value) <= radius;
+}
+
+export function snapBranch(element, shapes, radius){
+  const anchors = branchAnchors(element);
+  let best = null;
+  for (const bar of shapes) {
+    if (!isBar(bar) || bar.id === element.id) continue;
+    for (const key of ["supply", "return"]) {
+      const anchor = anchors[key];
+      if (!onBar(anchor, bar, radius)) continue;
+      const edge = barEdge(bar, anchor.direction);
+      const shift = edge.value - anchor[edge.axis];
+      const score = Math.abs(shift) + (key === "supply" ? 0 : 0.01);
+      if (!best || score < best.score) best = { axis: edge.axis, shift, score };
+    }
+  }
+  const settle = (value) => Math.round(value * 1000) / 1000;
+  if (!best) return { x: element.x, y: element.y };
+  return best.axis === "x"
+    ? { x: settle(element.x + best.shift), y: element.y }
+    : { x: element.x, y: settle(element.y + best.shift) };
+}
+
+export function alignBranch(element, snap){
+  const supply = legPoint(element, BRANCH_GEOMETRY.supplyX, BRANCH_GEOMETRY.supplyBottom);
+  const direction = rotateVector(DOWN, rotationOf(element));
+  const settle = (value) => Math.round(value * 1000) / 1000;
+  return Math.abs(direction.y) > 0.5
+    ? { ...element, x: settle(element.x + snap(supply.x) - supply.x) }
+    : { ...element, y: settle(element.y + snap(supply.y) - supply.y) };
+}
+
+export function branchRiders(shapes, ids){
+  const bars = shapes.filter((shape) => ids.includes(shape.id) && isBar(shape));
+  if (!bars.length) return [];
+  return shapes
+    .filter((shape) => isBranch(shape) && !ids.includes(shape.id))
+    .filter((shape) => {
+      const anchors = branchAnchors(shape);
+      return bars.some((bar) => onBar(anchors.supply, bar, 1) || onBar(anchors.return, bar, 1));
+    })
+    .map((shape) => shape.id);
+}
+
+export function branchGaps(shapes, size){
+  const gaps = [];
+  const bars = shapes.filter(isBar);
+  for (const branch of shapes.filter(isBranch)) {
+    const legs = [
+      [BRANCH_GEOMETRY.supplyX, BRANCH_GEOMETRY.supplyTop, BRANCH_GEOMETRY.supplyBottom],
+      [BRANCH_GEOMETRY.returnX, BRANCH_GEOMETRY.returnTop, BRANCH_GEOMETRY.returnBottom]
+    ];
+    for (const [legX, legTop, legBottom] of legs) {
+      const a = legPoint(branch, legX, legTop);
+      const b = legPoint(branch, legX, legBottom);
+      const upright = Math.abs(a.x - b.x) < 0.5;
+      const low = upright ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const high = upright ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      for (const bar of bars) {
+        if (upright) {
+          if (a.x <= bar.x || a.x >= bar.x + bar.width) continue;
+          if (bar.y <= low + 0.5 || bar.y + bar.height >= high - 0.5) continue;
+          gaps.push({ branchId: branch.id, barId: bar.id, x: a.x - size / 2, y: bar.y, width: size, height: bar.height });
+        } else {
+          if (a.y <= bar.y || a.y >= bar.y + bar.height) continue;
+          if (bar.x <= low + 0.5 || bar.x + bar.width >= high - 0.5) continue;
+          gaps.push({ branchId: branch.id, barId: bar.id, x: bar.x, y: a.y - size / 2, width: bar.width, height: size });
+        }
       }
     }
   }

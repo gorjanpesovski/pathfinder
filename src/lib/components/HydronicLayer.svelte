@@ -3,11 +3,15 @@
 <script>
   import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, mediumOf } from "$lib/hydronic/elements.js";
   import { elementPorts, routePath, routeLength, editablePath, arrowPoints } from "$lib/hydronic/route.js";
-  import { fittingPose, fittingSize, pipeDecorations } from "$lib/hydronic/export.js";
+  import { fittingPose, fittingSize, pipeDecorations, pipeWidthOf } from "$lib/hydronic/export.js";
   import { contactPoint, touchRoute } from "$lib/hydronic/outline.js";
   import { BRANCH_GEOMETRY, branchGaps } from "$lib/hydronic/branch.js";
   import { readoutRowBoxes } from "$lib/hydronic/readout.js";
   import BranchGraphic from "./BranchGraphic.svelte";
+  import { rotationOf, uprightSize, localRect } from "$lib/hydronic/frame.js";
+  import { tankParts } from "$lib/hydronic/tank.js";
+  import { elementLabel } from "$lib/hydronic/label.js";
+  import { fittingLabel } from "$lib/hydronic/fittingLabel.js";
 
   let {
     shapes,
@@ -17,6 +21,7 @@
     interactive,
     selectedIds = [],
     selectedFitting = null,
+    selectedFittings = [],
     fresh = [],
     preview = null,
     target = null,
@@ -25,6 +30,9 @@
     attachment = null,
     showPorts = false,
     readouts = new Map(),
+    renaming = null,
+    renamingFitting = null,
+    guide = null,
     style = HYDRONIC_STYLE
   } = $props();
 
@@ -45,6 +53,13 @@
   let bars = $derived(equipment.filter((element) => HYDRONIC_ELEMENTS[element.type].bar));
   let others = $derived(equipment.filter((element) => !HYDRONIC_ELEMENTS[element.type].bar));
   let crossingGaps = $derived(branchGaps(shapes, style.gapSize));
+
+  function hitArea(element){
+    const spec = HYDRONIC_ELEMENTS[element.type];
+    if (!spec.branch) return { x: element.x, y: element.y, width: element.width, height: element.height };
+    const upright = uprightSize(element);
+    return localRect(element, 0, 0, upright.width, BRANCH_GEOMETRY.hitHeight * upright.height / spec.height);
+  }
 
   function hitHeight(element){
     const spec = HYDRONIC_ELEMENTS[element.type];
@@ -196,7 +211,11 @@
   {:else if HYDRONIC_ELEMENTS[element.type]?.branch}
     <BranchGraphic {element}/>
   {:else}
-    <use href="#hyd-{element.type}" x={element.x} y={element.y} width={element.width} height={element.height}/>
+    <!-- <use href="#hyd-{element.type}" x={element.x} y={element.y} width={element.width} height={element.height}/> -->
+    {@const upright = uprightSize(element)}
+    <use href="#hyd-{element.type}" x={element.x + element.width / 2 - upright.width / 2} y={element.y + element.height / 2 - upright.height / 2}
+         width={upright.width} height={upright.height}
+         transform="rotate({rotationOf(element)} {element.x + element.width / 2} {element.y + element.height / 2})"/>
   {/if}
 {/snippet}
 
@@ -206,7 +225,11 @@
     <rect x={element.x - 3 * px} y={element.y - 3 * px} width={element.width + 6 * px} height={element.height + 6 * px}
           fill="none" stroke={HIGHLIGHT} stroke-width="2" rx={3 * px} vector-effect="non-scaling-stroke" pointer-events="none"/>
   {/if}
-  <rect class:hit={interactive && !element.locked} x={element.x} y={element.y} width={element.width} height={hitHeight(element)}
+  <!-- <rect class:hit={interactive && !element.locked} x={element.x} y={element.y} width={element.width} height={hitHeight(element)}
+        fill="transparent" pointer-events={interactive && !element.locked ? "all" : "none"}
+        data-shape-id={element.id} role="presentation"/> -->
+  {@const area = hitArea(element)}
+  <rect class:hit={interactive && !element.locked} x={area.x} y={area.y} width={area.width} height={area.height}
         fill="transparent" pointer-events={interactive && !element.locked ? "all" : "none"}
         data-shape-id={element.id} role="presentation"/>
 {/snippet}
@@ -220,14 +243,14 @@
     {@const color = mediumOf(pipe.medium).color}
     {@const isFresh = fresh.includes(pipe.id)}
     {#each gapsFor(pipe.id) as crossing}
-      <rect x={crossing.x - style.gapSize / 2} y={crossing.y - style.gapSize / 2} width={style.gapSize} height={style.gapSize}
+      <rect x={crossing.x - crossing.size / 2} y={crossing.y - crossing.size / 2} width={crossing.size} height={crossing.size}
             fill={style.background} pointer-events="none"/>
     {/each}
-    <path class="pipe" class:fresh={isFresh} {d} fill="none" stroke={color} stroke-width={style.pipeWidth}
+    <path class="pipe" class:fresh={isFresh} {d} fill="none" stroke={color} stroke-width={pipeWidthOf(pipe, style)}
           stroke-linecap="round" stroke-linejoin="round" pointer-events="none"
           style="--len: {length}px; --dur: {duration(length)}s"/>
     {#if isFresh}
-      <path class="pulse" {d} fill="none" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width={style.pipeWidth * 0.55}
+      <path class="pulse" {d} fill="none" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width={pipeWidthOf(pipe, style) * 0.55}
             stroke-linecap="round" stroke-linejoin="round" pointer-events="none"
             style="--len: {length}px; --dur: {duration(length)}s"/>
     {/if}
@@ -236,7 +259,7 @@
             vector-effect="non-scaling-stroke" pointer-events="none"/>
     {/if}
     <path class:hit={interactive && !pipe.locked} {d} fill="none" stroke="transparent"
-          stroke-width={Math.max(style.pipeWidth + 4, 14 * px)} stroke-linejoin="round"
+          stroke-width={Math.max(pipeWidthOf(pipe, style) + 4, 14 * px)} stroke-linejoin="round"
           pointer-events={interactive && !pipe.locked ? "stroke" : "none"}
           data-shape-id={pipe.id} role="presentation"/>
   {/each}
@@ -245,14 +268,14 @@
     {@const color = mediumOf(pipe.medium).color}
     {@const length = routeLength(routes.get(pipe.id))}
     {#each decorations.arrows.get(pipe.id) ?? [] as mark}
-      <polygon class="arrow" class:fresh={fresh.includes(pipe.id)} points={arrowPoints(mark, style.arrowSize)} fill={color}
+      <polygon class="arrow" class:fresh={fresh.includes(pipe.id)} points={arrowPoints(mark, mark.size ?? style.arrowSize)} fill={color}
                pointer-events="none" style="--dur: {Math.min(0.9, 0.35 + length / 2500)}s"/>
     {/each}
   {/each}
 
   {#each decorations.junctions as junction}
-    <circle cx={junction.x} cy={junction.y} r={style.junctionRadius} fill="#FFFFFF" stroke={style.junctionStroke}
-            stroke-width={style.junctionWidth} pointer-events="none"/>
+    <circle cx={junction.x} cy={junction.y} r={junction.radius ?? style.junctionRadius} fill="#FFFFFF" stroke={style.junctionStroke}
+            stroke-width={junction.stroke ?? style.junctionWidth} pointer-events="none"/>
   {/each}
 
   <!--
@@ -278,13 +301,34 @@
     {@render item(element)}
   {/each}
 
+  {#each others as element (element.id)}
+    {#each tankParts(element) as part}
+      {#if part.kind === "icon"}
+        <use href="#hyd-{part.type}" x={part.cx - part.width / 2} y={part.cy - part.height / 2} width={part.width} height={part.height} pointer-events="none"/>
+      {:else}
+        <rect x={part.x} y={part.y} width={part.width} height={part.height} rx={2 * part.height / 40} fill="#FFFFFF" stroke="#94A3B8"
+              stroke-width="1.5" pointer-events="none"/>
+        <!-- <text x={part.x + part.width / 2} y={part.y + part.height / 2 + 5.5 * part.height / 40} text-anchor="middle"
+              font-family="Roboto, 'IBM Plex Sans', sans-serif" font-size={16 * part.height / 40} fill="#414142" pointer-events="none">--.- {part.unit}</text> -->
+        <text x={part.x + part.width / 2} y={part.y + part.height / 2 + 7 * part.height / 40} text-anchor="middle"
+              font-family="Roboto, 'IBM Plex Sans', sans-serif" font-size={20 * part.height / 40} fill="#414142" pointer-events="none">--.- {part.unit}</text>
+      {/if}
+    {/each}
+  {/each}
+
   {#each equipment as element (element.id)}
     {#if element.name}
       {@const inside = HYDRONIC_ELEMENTS[element.type]?.caption === "inside"}
       {#if !HYDRONIC_ELEMENTS[element.type]?.bar && !HYDRONIC_ELEMENTS[element.type]?.ownLabel}
-      <text class="label" x={element.x + element.width / 2} y={inside ? element.y + 24 : element.y + element.height + 18}
+      <!-- <text class="label" x={element.x + element.width / 2} y={inside ? element.y + 24 : element.y + element.height + 18}
             text-anchor="middle" font-family="Roboto, 'IBM Plex Sans', sans-serif" font-size="13" fill="#1E293B"
-            pointer-events="none">{element.name}</text>
+            pointer-events="none">{element.name}</text> -->
+      {@const label = elementLabel(element)}
+      <text class="label" class:hit={interactive && !element.locked} x={label.x} y={label.y}
+            text-anchor="middle" font-family="Roboto, 'IBM Plex Sans', sans-serif" font-size={label.size} fill="#1E293B"
+            visibility={renaming === element.id ? "hidden" : "visible"}
+            pointer-events={interactive && !element.locked && renaming !== element.id ? "all" : "none"}
+            data-shape-id={element.id} data-element-label="" role="presentation">{element.name}</text>
       {/if}
     {/if}
   {/each}
@@ -293,7 +337,8 @@
     {#each pipe.fittings ?? [] as fitting (fitting.id)}
       {@const spec = HYDRONIC_ELEMENTS[fitting.type] && fittingSize(fitting)}
       {@const pose = fittingPose(routes.get(pipe.id), fitting)}
-      {@const active = selectedFitting?.pipeId === pipe.id && selectedFitting?.fittingId === fitting.id}
+      <!-- {@const active = selectedFitting?.pipeId === pipe.id && selectedFitting?.fittingId === fitting.id} -->
+      {@const active = (selectedFitting?.pipeId === pipe.id && selectedFitting?.fittingId === fitting.id) || selectedFittings.some((entry) => entry.pipeId === pipe.id && entry.fittingId === fitting.id)}
       {#if spec}
         <g transform="translate({pose.x} {pose.y}) rotate({pose.rotation})">
           <use href="#hyd-{fitting.type}" x={-spec.width / 2} y={-spec.height / 2} width={spec.width} height={spec.height} pointer-events="none"/>
@@ -306,17 +351,35 @@
     {/each}
   {/each}
 
+  {#each pipes as pipe (pipe.id)}
+    {#each pipe.fittings ?? [] as fitting (fitting.id)}
+      {#if fitting.name && HYDRONIC_ELEMENTS[fitting.type]}
+        {@const label = fittingLabel(routes.get(pipe.id), fitting)}
+        {@const renamed = renamingFitting?.pipeId === pipe.id && renamingFitting?.fittingId === fitting.id}
+        <text class="label" class:hit={interactive && !pipe.locked} x={label.x} y={label.y} text-anchor={label.anchor}
+              font-family="Roboto, 'IBM Plex Sans', sans-serif" font-size={label.size} fill="#1E293B"
+              visibility={renamed ? "hidden" : "visible"} pointer-events={interactive && !pipe.locked && !renamed ? "all" : "none"}
+              data-shape-id={pipe.id} data-fitting-id={fitting.id} data-fitting-label="" role="presentation">{fitting.name}</text>
+      {/if}
+    {/each}
+  {/each}
+
   {#each [...readouts] as [fittingId, box] (fittingId)}
     {@const pipe = byId.get(box.pipeId)}
-    {@const active = selectedFitting?.pipeId === box.pipeId && selectedFitting?.fittingId === fittingId}
+    <!-- {@const active = selectedFitting?.pipeId === box.pipeId && selectedFitting?.fittingId === fittingId} -->
+    {@const active = (selectedFitting?.pipeId === box.pipeId && selectedFitting?.fittingId === fittingId) || selectedFittings.some((entry) => entry.pipeId === box.pipeId && entry.fittingId === fittingId)}
     <g class="readout">
       {#each readoutRowBoxes(box) as row}
-        <text x={row.labelX} y={row.textY} font-family="Roboto, 'IBM Plex Sans', sans-serif" font-size="18" fill="#414142"
+        {#if row.label}
+        <text x={row.labelX} y={row.textY} font-family="Roboto, 'IBM Plex Sans', sans-serif" font-size={18 * row.scale} fill="#414142"
               pointer-events="none">{row.label}</text>
+        {/if}
         <rect x={row.box.x} y={row.box.y} width={row.box.width} height={row.box.height} rx="2" fill="#FFFFFF" stroke="#94A3B8"
               stroke-width="1.5" pointer-events="none"/>
-        <text x={row.box.x + row.box.width / 2} y={row.textY - 1} text-anchor="middle" font-family="Roboto, 'IBM Plex Sans', sans-serif"
-              font-size="16" fill="#414142" pointer-events="none">--.- {row.unit}</text>
+        <!-- <text x={row.box.x + row.box.width / 2} y={row.textY - row.scale} text-anchor="middle" font-family="Roboto, 'IBM Plex Sans', sans-serif"
+              font-size={16 * row.scale} fill="#414142" pointer-events="none">--.- {row.unit}</text> -->
+        <text x={row.box.x + row.box.width / 2} y={row.textY} text-anchor="middle" font-family="Roboto, 'IBM Plex Sans', sans-serif"
+              font-size={20 * row.scale} fill="#414142" pointer-events="none">--.- {row.unit}</text>
       {/each}
       <rect class="readout-hit" x={box.x - 3} y={box.y - 3} width={box.width + 6} height={box.height + 6} rx="3"
             fill="transparent" stroke={active ? HIGHLIGHT : "none"} stroke-width="1.5" stroke-dasharray="4 3"
@@ -333,11 +396,15 @@
       {@const route = drawn.get(pipe.id)}
       {#each [["from", route[0]], ["to", route[route.length - 1]]] as [end, point]}
         {@const junction = pipe[end]?.pipe !== undefined}
+        {@const loose = pipe[end]?.pipe === undefined && pipe[end]?.id === undefined}
         <g class="pipe-end">
           <g class="end-mark" pointer-events="none">
             {#if junction}
               <circle cx={point.x} cy={point.y} r={style.junctionRadius + 3 * px} fill="none" stroke={PORT}
                       stroke-width="2" vector-effect="non-scaling-stroke"/>
+            {:else if loose}
+              <rect x={point.x - 5 * px} y={point.y - 5 * px} width={10 * px} height={10 * px} rx={1.5 * px} fill="#FFFFFF" stroke={PORT}
+                    stroke-width="2" vector-effect="non-scaling-stroke"/>
             {:else}
               <circle cx={point.x} cy={point.y} r={9 * px} fill="#FFFFFF" stroke="#DC2626" stroke-width="2" vector-effect="non-scaling-stroke"/>
               <path d="M {point.x - 3.5 * px} {point.y - 3.5 * px} L {point.x + 3.5 * px} {point.y + 3.5 * px} M {point.x + 3.5 * px} {point.y - 3.5 * px} L {point.x - 3.5 * px} {point.y + 3.5 * px}"
@@ -346,7 +413,8 @@
           </g>
           <circle class="end-hit" cx={point.x} cy={point.y} r={Math.max(9 * px, junction ? style.junctionRadius : 0)} fill="transparent"
                   pointer-events={pipe.locked ? "none" : "all"} data-shape-id={pipe.id} data-pipe-end={end} role="presentation">
-            <title>{junction ? "Drag to move the junction along the pipe" : "Drag to reconnect · click to detach the pipe"}</title>
+            <!-- <title>{junction ? "Drag to move the junction along the pipe" : "Drag to reconnect · click to detach the pipe"}</title> -->
+            <title>{junction ? "Drag to move the junction along the pipe" : loose ? "Drag to move the end · drop it on an element or a pipe to connect" : "Drag to reconnect or pull loose · click to detach the pipe"}</title>
           </circle>
         </g>
       {/each}
@@ -426,6 +494,11 @@
     </g>
   {/if}
 
+  {#if guide}
+    <line x1={guide.x1} y1={guide.y1} x2={guide.x2} y2={guide.y2} stroke={PORT} stroke-width="1.5" stroke-dasharray="5 4"
+          vector-effect="non-scaling-stroke" pointer-events="none"/>
+  {/if}
+
   {#if preview}
     {@const previewRoute = touchRoute(preview.route, preview, byId)}
     <g pointer-events="none">
@@ -433,7 +506,7 @@
             stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
       <path d={routePath(preview.route)} fill="none" stroke={mediumOf(preview.medium).color} stroke-width="1.5"
             stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/> -->
-      <path d={routePath(previewRoute)} fill="none" stroke={mediumOf(preview.medium).color} stroke-width={style.pipeWidth}
+      <path d={routePath(previewRoute)} fill="none" stroke={mediumOf(preview.medium).color} stroke-width={preview.width ?? style.pipeWidth}
             stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
       <path d={routePath(previewRoute)} fill="none" stroke={mediumOf(preview.medium).color} stroke-width="1.5"
             stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>

@@ -1,5 +1,6 @@
 <script>
   import { BRANCH_LABELS, BRANCH_CONFIG, branchParams } from "$lib/hydronic/branch.js";
+  import { portal } from "$lib/actions/portal.js";
 
   let { element, onchange } = $props();
 
@@ -136,7 +137,7 @@
 </button>
 
 {#if menu}
-  <div class="branch-menu" role="dialog" aria-label="Branch settings" style="left: {menu.x}px; top: {menu.y}px">
+  <div class="branch-menu" role="dialog" aria-label="Branch settings" use:portal style="left: {menu.x}px; top: {menu.y}px">
     <h3>Labels</h3>
     {#each BRANCH_LABELS as field (field.name)}
       <label class="field">

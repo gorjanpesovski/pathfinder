@@ -9,6 +9,12 @@ export function translateShape(shape, dx, dy){
   if (shape.points) {
     const moved = { points: shape.points.map((point) => ({ x: point.x + dx, y: point.y + dy })) };
     if (shape.furniture) moved.furniture = shape.furniture.map((item) => ({ ...item, cx: item.cx + dx, cy: item.cy + dy }));
+    if (shape.kind === "pipe") {
+      for (const end of ["from", "to"]) {
+        const point = shape[end];
+        if (point && point.id === undefined && point.pipe === undefined) moved[end] = { x: point.x + dx, y: point.y + dy };
+      }
+    }
     return moved;
   }
   return { x: shape.x + dx, y: shape.y + dy };

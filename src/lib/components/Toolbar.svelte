@@ -1,6 +1,6 @@
 <script>
   let { tool, onpick, onimage, elementsOpen = false, ontoggleelements, showHints = true,
-        tools = null, automations = false, canplacedoors = false, canfurnish = false, onplacedoors, onfurnish } = $props();
+        tools = null, general = null, special = null, automations = false, canplacedoors = false, canfurnish = false, onplacedoors, onfurnish } = $props();
 
   const PRIMARY = [
     { id: "select", label: "Select", key: "S", ready: true,
@@ -17,6 +17,9 @@
 
   PRIMARY.push({ id: "pipe", label: "Pipe", key: "P", ready: true,
     hint: "Click an element to start a pipe; it snaps to the nearest connection point along the element. Hold Ctrl and click to add bend points on the grid that the trace has to pass through. Click another element to connect. Backspace removes the last bend point, Esc cancels. Choose Supply, Return or Other in the options bar." });
+
+  PRIMARY.push({ id: "text", label: "Text", key: "T", ready: true,
+    hint: "Click to place a text and type. Enter confirms, Shift+Enter adds a line, Esc cancels. Double-click a text to edit it; size, colour and bold are in the options bar." });
 
   const SHOW_LEGACY = false;
 
@@ -193,6 +196,10 @@
         <path d="M4 6 H11 V18 H20" stroke-width="2.6"/>
         <rect x="2" y="3.5" width="4" height="5" rx="1" fill="currentColor" stroke="none"/>
         <rect x="18" y="15.5" width="4" height="5" rx="1" fill="currentColor" stroke="none"/>
+      {:else if entry.id === "text"}
+        <path d="M5 7 V4.5 H19 V7"/>
+        <path d="M12 4.5 V19.5"/>
+        <path d="M9 19.5 H15"/>
       {:else if entry.id === "line"}
         <path d="M5 7 L14 7 L14 17 L19 17"/>
         <circle cx="5" cy="7" r="2" fill="currentColor" stroke="none"/>
@@ -214,9 +221,26 @@
 
 <nav class="toolbar" aria-label="Tools">
   <!-- {#each PRIMARY.filter((entry) => !entry.hidden) as entry (entry.id)} -->
+  <!--
   {#each PRIMARY.filter((entry) => !entry.hidden && (!tools || tools.includes(entry.id))) as entry (entry.id)}
     {@render toolButton(entry)}
   {/each}
+  -->
+  {#if general}
+    {#each general.map((id) => PRIMARY.find((entry) => entry.id === id)).filter((entry) => entry && !entry.hidden) as entry (entry.id)}
+      {@render toolButton(entry)}
+    {/each}
+    {#if special?.length}
+      <div class="divider" role="separator"></div>
+      {#each special.map((id) => PRIMARY.find((entry) => entry.id === id)).filter((entry) => entry && !entry.hidden) as entry (entry.id)}
+        {@render toolButton(entry)}
+      {/each}
+    {/if}
+  {:else}
+    {#each PRIMARY.filter((entry) => !entry.hidden && (!tools || tools.includes(entry.id))) as entry (entry.id)}
+      {@render toolButton(entry)}
+    {/each}
+  {/if}
   <div class="divider" role="separator"></div>
   <button type="button" aria-label="Reference image" onclick={onimage}>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
