@@ -1,7 +1,8 @@
 <script>
   import { base } from "$app/paths";
   import { IO_KINDS, DATA_TYPES, ioKind, pointVariables, allVariables, manifestXml, importManifest, nextChannel, cleanChannel, cleanName, hasAlarm, alarmsTxt, DI_USES, diUse, ROLES, roleOf, branchInputs, pointBase } from "$lib/io/patterns.js";
-  import { fbdBlocks, branchBlocks, clipboardPackage, FBD_FORMATS } from "$lib/io/fbd.js";
+  import { fbdBlocks, clipboardPackage, FBD_FORMATS } from "$lib/io/fbd.js";
+  import { branchSolution, branchVariables, solutionLibraries, SOLUTION_FORMATS } from "$lib/io/solution.js";
   import { updateWorksheet, displayLabel, pouName, MASK_COLUMNS } from "$lib/io/mask.js";
   import { portal } from "$lib/actions/portal.js";
 
@@ -192,13 +193,24 @@
   }
 
   async function copyBranch(row){
-    await copyPackage(() => branchBlocks(row.template, row.io.names), `Copied the ${row.branch.label} POU · paste it into an empty POU named ${pouName(row.branch)} in c.strategy`);
+    await copyPackage(() => branchSolution(row.template, pouName(row.branch), row.io.names),
+      `Copied the POU ${pouName(row.branch)} · paste it on Programs in c.strategy, then use Copy variables for this branch`, SOLUTION_FORMATS);
   }
 
-  async function copyPackage(make, message){
+  async function copyBranchVariables(row){
+    try {
+      const list = await branchVariables(row.template);
+      await navigator.clipboard.writeText(manifestXml(list));
+      onnotice?.(`Copied ${list.length} variables · paste them into the variable list of the POU ${pouName(row.branch)}`);
+    } catch (error) {
+      onnotice?.(`Could not copy: ${error.message}`);
+    }
+  }
+
+  async function copyPackage(make, message, formats = FBD_FORMATS){
     let text;
     try {
-      text = clipboardPackage(FBD_FORMATS, await make());
+      text = clipboardPackage(formats, await make());
       await navigator.clipboard.writeText(text);
     } catch (error) {
       onnotice?.(`Could not copy the blocks: ${error.message}`);
@@ -491,6 +503,16 @@
     color: #b91c1c;
   }
 
+  .branch-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .libraries {
+    margin: 6px 0 0;
+    color: #64748b;
+  }
+
   .branch-label {
     font-weight: 600;
     color: #0f172a;
@@ -681,7 +703,7 @@
 
   {#if helperMissing}
     <div class="helper">
-      <span>c.strategy needs the Pathfinder clipboard helper to paste blocks. Download it, right-click it and choose <strong>Run with PowerShell</strong> and keep its window open. The first time, copy any block in c.strategy so it learns your project key, then copy the blocks here again.</span>
+      <span>c.strategy needs the Pathfinder clipboard helper to paste blocks. Download it, right-click it and choose <strong>Run with PowerShell</strong> and keep its window open. The first time, copy any block and any POU in c.strategy so it learns your project keys, then copy here again.</span>
       <a href="{base}/pathfinder-clipboard.ps1" download>Download helper</a>
       <button type="button" class="remove" aria-label="Dismiss" onclick={() => helperMissing = false}>✕</button>
     </div>
@@ -858,7 +880,7 @@
             {#each BRANCH_ROLES as role (role.id)}
               <col>
             {/each}
-            <col style="width: 150px">
+            <col style="width: 190px">
           </colgroup>
           <thead>
             <tr>
@@ -888,13 +910,19 @@
                   </td>
                 {/each}
                 <td>
-                  <button type="button" class="small" disabled={!!row.problem} title={row.problem ?? "FBD blocks for this branch, for an empty POU"}
-                          onclick={() => copyBranch(row)}>Copy POU blocks</button>
+                  <div class="branch-actions">
+                    <button type="button" class="small" disabled={!!row.problem}
+                            title={row.problem ?? `The POU ${pouName(row.branch)} with its blocks · the project needs the libraries ${solutionLibraries(row.template).join(", ")}`}
+                            onclick={() => copyBranch(row)}>Copy POU</button>
+                    <button type="button" class="small" disabled={!row.template} title="The POU's local variables, for its variable list in c.strategy"
+                            onclick={() => copyBranchVariables(row)}>Copy variables</button>
+                  </div>
                 </td>
               </tr>
             {/each}
           </tbody>
         </table>
+        <p class="libraries">Copy POU first, pasted on Programs in c.strategy, then Copy variables into that POU's variable list. The project needs the libraries {solutionLibraries("heating").join(" and ")}.</p>
       </section>
     {/if}
   </div>

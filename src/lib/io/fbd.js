@@ -264,53 +264,6 @@ function pack(root, elements){
   return out;
 }
 
-const BRANCH_TEMPLATES = {
-  heating: {
-    source: () => import("./branch-templates.js").then((module) => module.HEATING_BRANCH),
-    names: {
-      pump: "NO17_Vklop_P41_Crpalka_Talno_Ogrevanje_A",
-      valve: "Y1_Pogon_Mesalni_Ventil_Talno_Ogrevanje_A",
-      supply: "AI_N2_U2_Temperatura_Dovod_Talno_Ogrevanje",
-      thermostat: "ALM_DI_ID8_Varnostni_Termostat_Talno_Ogrevanje",
-      outdoor: "AI_U2_Zunanje_Tipalo_Temperature",
-      outdoorAlarm: "ALM_ERR_AI_U2_Zunanje_Tipalo_Temperature"
-    }
-  }
-};
-
-const branchRoots = new Map();
-
-export async function branchBlocks(type, names){
-  const template = BRANCH_TEMPLATES[type];
-  if (!template) throw new Error(`There is no ${type} branch template yet`);
-  if (!branchRoots.has(type)) branchRoots.set(type, parseNrbf(fromBase64(await template.source())));
-  const root = branchRoots.get(type);
-  const copies = new Map();
-  const elements = member(root, "_object").values.map((element) => cloneGraph(element, copies));
-  const swaps = Object.entries(template.names)
-    .map(([role, from]) => ({ pattern: new RegExp(`${from}(\\.Active)?(?![A-Za-z0-9_])`, "g"), to: names[role] }))
-    .sort((a, b) => b.pattern.source.length - a.pattern.source.length);
-  for (const element of elements) {
-    walkGraph(element, (node) => {
-      if (node.kind !== "string") return;
-      for (const { pattern, to } of swaps) node.value = node.value.replace(pattern, (match, active) => active ? to.active : to.plain);
-    });
-  }
-  const targets = new Set(Object.values(names).flatMap((name) => [name.plain, name.active]));
-  const connections = elements.filter(isConnection);
-  for (const variable of elements.filter(isVariable)) {
-    const name = nameOf(variable);
-    if (!targets.has(name)) continue;
-    const width = variableWidth(name);
-    const current = box(variable);
-    const input = connections.some((connection) => ends(connection)[0] === variable);
-    setBox(variable, input ? { left: current.left + current.width - width, width } : { width });
-  }
-  const left = Math.min(...elements.filter((element) => !isConnection(element)).map((element) => box(element).left));
-  if (left < 16) move({ elements }, Math.ceil((16 - left) / 16) * 16, 0);
-  return pack(root, elements);
-}
-
 export function clipboardPackage(formats, bytes){
   return ["PATHFINDER-CLIPBOARD 1", `${formats.join("|")}\t${toBase64(bytes)}`, ""].join("\r\n");
 }

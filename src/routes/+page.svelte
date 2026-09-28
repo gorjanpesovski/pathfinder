@@ -39,8 +39,9 @@
   import { WALL_STYLE, describeWall, openEnds } from "$lib/tools/walls.js";
   import { APPS, appById, GENERAL_TOOLS } from "$lib/apps.js";
   import HydronicLayer from "$lib/components/HydronicLayer.svelte";
-  import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, isHydronicType, isInlineType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
+  import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, DEFAULT_PROTOCOL, mediumOf, isHydronicType, isInlineType, isDeviceType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
   import { branchDefaults, alignBranch, snapBranch, branchRiders, isBranch, branchParams } from "$lib/hydronic/branch.js";
+  import { connectNetwork, placeDevices } from "$lib/hydronic/network.js";
   import { readoutLayout, readoutSpec } from "$lib/hydronic/readout.js";
   import { findPort, endpointPose, manhattanRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, findPipePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
   import { hydronicToSvg } from "$lib/hydronic/export.js";
@@ -649,7 +650,7 @@
       renameRoom();
       return true;
     }
-    if (repeated && isBranch(shape)) {
+    if (repeated && (isBranch(shape) || isDeviceType(shape.type))) {
       selectShape(shape.id);
       setTimeout(() => document.querySelector("input.branch-name")?.select(), 0);
       return true;
@@ -1647,6 +1648,11 @@
 
   let pipeDraft = $state(null);
   let pipeMedium = $state(DEFAULT_MEDIUM);
+
+  $effect(() => {
+    const network = app === "network";
+    if (!!mediumOf(pipeMedium).network !== network) pipeMedium = network ? DEFAULT_PROTOCOL : DEFAULT_MEDIUM;
+  });
   let hydronicLibrary = $state(HYDRONIC_STYLE.library);
   let freshPipes = $state([]);
   let selectedFitting = $state(null);
@@ -1909,9 +1915,43 @@
     for (const { fitting } of fittingGroup) delete fitting.readoutOffset;
   }
 
+  let networkSelection = $derived.by(() => {
+    if (app !== "network") return null;
+    const devices = selectedIds.map((id) => shapeById(id)).filter((shape) => shape?.kind === "equipment" && isDeviceType(shape.type));
+    if (!devices.length) return null;
+    const centre = devices.find((shape) => ["hub", "gateway"].includes(HYDRONIC_ELEMENTS[shape.type].device)) ?? null;
+    return { centre, devices: devices.filter((shape) => shape !== centre) };
+  });
+
+  function connectSelected({ topology, medium }){
+    const selection = networkSelection;
+    if (!selection?.centre || !selection.devices.length) return;
+    const pipes = connectNetwork($state.snapshot(selection.centre), $state.snapshot(selection.devices), topology, medium, pipeThickness, () => nextId++);
+    shapes.push(...pipes);
+    showFileNotice(`Connected ${selection.devices.length} device${selection.devices.length === 1 ? "" : "s"} as a ${topology === "daisy" ? "daisy chain" : topology}`);
+  }
+
+  function addDevices({ type, count, name, slave, medium, topology }){
+    const centre = networkSelection?.centre;
+    if (!centre) return;
+    const added = placeDevices($state.snapshot(centre), type, count, name, slave).map((device) => ({ id: nextId++, ...device }));
+    shapes.push(...added);
+    shapes.push(...connectNetwork($state.snapshot(centre), added, topology, medium, pipeThickness, () => nextId++));
+    selectedIds = added.map((device) => device.id);
+    selectedId = added[0]?.id ?? null;
+    showFileNotice(`Added ${added.length} device${added.length === 1 ? "" : "s"} under ${centre.name || "the gateway"}`);
+  }
+
+  function setDeviceParam(name, value){
+    for (const element of selectedElements()) {
+      if (!isDeviceType(element.type)) continue;
+      element.params = { ...$state.snapshot(element.params ?? {}), [name]: value };
+    }
+  }
+
   function setBranchName(value){
     for (const element of selectedElements()) {
-      if (!isBranch(element)) continue;
+      if (!isBranch(element) && !isDeviceType(element.type)) continue;
       element.name = value.trim() || nextElementName(element.type, shapes.filter((shape) => shape !== element));
     }
   }
@@ -2959,7 +2999,7 @@
 
   function buildSvg(){
     const texts = shapes.filter((shape) => shape.kind === "text").map(textToSvg);
-    if (app === "hydronic") return atviseDocument(canvasWidth, canvasHeight, [hydronicToSvg(shapes, hydronicStyle), ...texts].filter(Boolean).join("\n"));
+    if (app === "hydronic" || app === "network") return atviseDocument(canvasWidth, canvasHeight, [hydronicToSvg(shapes, hydronicStyle), ...texts].filter(Boolean).join("\n"));
     const body = [roomsToSvg(shapes, roomStyle, canvasFill), ...layered(shapes).filter((shape) => !isRoomShape(shape) && shape.kind !== "image" && shape.kind !== "wall").map((shape) => {
       if (shape.kind === "curve") return curveToSvg(shape, lineColor);
       if (shape.kind === "text") return textToSvg(shape);
@@ -4067,7 +4107,7 @@
 <div class="app-layout">
   <Toolbar {tool} onpick={pickTool} onimage={openImagePicker} showHints={showToolHints}
            {elementsOpen} ontoggleelements={() => elementsOpen = !elementsOpen}
-           tools={currentApp.tools} general={GENERAL_TOOLS} special={currentApp.special} automations={currentApp.automations}
+           tools={currentApp.tools} general={GENERAL_TOOLS} special={currentApp.special} pipeLabel={currentApp.pipeLabel ?? null} automations={currentApp.automations}
            canplacedoors={shapes.some((shape) => shape.kind === "room")}
            canfurnish={shapes.some((shape) => shape.kind === "room" && FURNISHABLE.includes(shape.category))}
            onplacedoors={placeDoors} onfurnish={furnishOffices}/>
@@ -4189,7 +4229,8 @@
                    onfittingflip={flipFitting} onfittingremove={removeFitting}
                    onfittingscale={setFittingScale} onreverse={reversePipes} onpipelayer={pipeLayer}
                    onresetsize={resetElementSize}
-                   onfittingreadout={setFittingReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName}
+                   onfittingreadout={setFittingReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName} ondeviceparam={setDeviceParam}
+                   network={networkSelection} onconnect={connectSelected} onadddevices={addDevices}
                    onelementrotate={rotateElements} onelementsize={setElementSize} ontankprobe={toggleTankProbe}
                    groups={selectionGroups} onnamesize={setNameSize} onfittingnamesize={setFittingNameSize}
                    onradius={setCornerRadius}

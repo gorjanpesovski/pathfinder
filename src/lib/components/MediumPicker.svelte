@@ -1,13 +1,14 @@
 <script>
-  import { PIPE_MEDIA, mediumOf } from "$lib/hydronic/elements.js";
+  import { mediaFor, mediumOf } from "$lib/hydronic/elements.js";
   import { portal } from "$lib/actions/portal.js";
 
-  let { value = null, onchange } = $props();
+  let { value = null, onchange, network = null } = $props();
 
   let menu = $state(null);
   let button;
   let list = $state(null);
   let current = $derived(value === null || value === undefined ? null : mediumOf(value));
+  let options = $derived(mediaFor(network ?? !!current?.network));
 
   function toggle(){
     const box = button.getBoundingClientRect();
@@ -17,8 +18,8 @@
   function cycle(event){
     const step = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
     if (step === 0) return;
-    const index = current ? PIPE_MEDIA.findIndex((entry) => entry.id === current.id) : -1;
-    onchange(PIPE_MEDIA[(index + step + PIPE_MEDIA.length) % PIPE_MEDIA.length].id);
+    const index = current ? options.findIndex((entry) => entry.id === current.id) : -1;
+    onchange(options[(index + step + options.length) % options.length].id);
   }
 
   function close(event){

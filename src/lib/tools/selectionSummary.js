@@ -43,7 +43,8 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
       tanks: tanks.length ? Object.fromEntries(TANK_PROBES.map((probe) => [probe.id, state(tanks, (tank) => !!tank.probes?.[probe.id])])) : null,
       bars: bars.length,
       barMedium: common(bars, (bar) => mediumOf(bar.medium).id),
-      branch: elements.find((element) => HYDRONIC_ELEMENTS[element.type].branch) ?? null
+      branch: elements.find((element) => HYDRONIC_ELEMENTS[element.type].branch) ?? null,
+      device: elements.length === 1 && HYDRONIC_ELEMENTS[elements[0].type].device ? elements[0] : null
     } : null,
     pipes: pipes.length ? {
       count: pipes.length,

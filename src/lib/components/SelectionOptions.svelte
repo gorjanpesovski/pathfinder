@@ -2,6 +2,8 @@
   import { READOUT_MODES } from "$lib/hydronic/elements.js";
   import { TANK_PROBES } from "$lib/hydronic/tank.js";
   import MediumPicker from "./MediumPicker.svelte";
+  import NetworkActions from "./NetworkActions.svelte";
+  import { HYDRONIC_ELEMENTS } from "$lib/hydronic/elements.js";
   import BranchOptions from "./BranchOptions.svelte";
 
   let {
@@ -14,6 +16,10 @@
     ontankprobe,
     onbranchparam,
     onbranchname,
+    ondeviceparam,
+    network = null,
+    onconnect,
+    onadddevices,
     onmedium,
     onpipewidth,
     onreverse,
@@ -69,7 +75,8 @@
   }
 
   input[type="number"],
-  input.branch-name {
+  input.branch-name,
+  input.address {
     width: 58px;
     height: 26px;
     padding: 2px 6px;
@@ -84,6 +91,10 @@
 
   input.branch-name {
     width: 170px;
+  }
+
+  input.address {
+    width: 120px;
   }
 
   input[type="range"] {
@@ -217,6 +228,39 @@
   {/if}
   {#if elements.bars && !pipes}
     <MediumPicker value={elements.barMedium} onchange={onmedium}/>
+  {/if}
+  {#if network}
+    <NetworkActions {network} {onconnect} {onadddevices}/>
+  {/if}
+  {#if elements.device}
+    {@const device = elements.device}
+    {@const kind = HYDRONIC_ELEMENTS[device.type].device}
+    <label>
+      Name
+      <input type="text" class="branch-name" value={device.name ?? ""}
+             onchange={(e) => onbranchname(e.currentTarget.value)} onkeydown={blurOnEnter}>
+    </label>
+    {#if kind === "ip" || kind === "gateway"}
+      <label>
+        IP
+        <input type="text" class="address" value={device.params?.ip ?? ""} placeholder="10.0.0.1"
+               onchange={(e) => ondeviceparam("ip", e.currentTarget.value.trim())} onkeydown={blurOnEnter}>
+      </label>
+    {/if}
+    {#if kind === "ip"}
+      <label>
+        Port
+        <input type="number" min="1" max="65535" step="1" value={device.params?.port ?? 502}
+               onchange={(e) => { const next = readNumber(e, 1, 65535); if (next !== null) ondeviceparam("port", next); }} onkeydown={blurOnEnter}>
+      </label>
+    {/if}
+    {#if kind === "ip" || kind === "rtu"}
+      <label>
+        Slave ID
+        <input type="number" min="0" max="255" step="1" value={device.params?.slave ?? 1}
+               onchange={(e) => { const next = readNumber(e, 0, 255); if (next !== null) ondeviceparam("slave", next); }} onkeydown={blurOnEnter}>
+      </label>
+    {/if}
   {/if}
   {#if elements.branch}
     <label>

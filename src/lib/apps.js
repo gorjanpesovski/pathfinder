@@ -1,5 +1,5 @@
 import { ELEMENT_GROUPS } from "./tools/furniture.js";
-import { HYDRONIC_GROUPS } from "./hydronic/elements.js";
+import { HYDRONIC_GROUPS, NETWORK_GROUPS } from "./hydronic/elements.js";
 
 export const GENERAL_TOOLS = ["select", "pan", "text"];
 
@@ -38,9 +38,10 @@ export const APPS = [
     id: "network",
     label: "Network topology",
     description: "Controllers, switches, devices and their links",
-    special: [],
-    specialShortcuts: {},
-    elements: [],
+    special: ["pipe"],
+    specialShortcuts: { p: "pipe" },
+    elements: NETWORK_GROUPS,
+    pipeLabel: "Connection",
     automations: false,
     exports: ["svg"]
   })

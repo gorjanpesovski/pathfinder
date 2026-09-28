@@ -233,7 +233,8 @@ export function parseNrbf(bytes, offset = 0){
       const length = reader.i32();
       const primitive = reader.u8();
       const node = register(id, { kind: "primitiveArray", primitive });
-      readItems(node, length, { bt: 0, primitive });
+      if (primitive === 2) node.bytes = reader.take(length);
+      else readItems(node, length, { bt: 0, primitive });
       return node;
     }
     if (type === 0) {
@@ -408,8 +409,9 @@ export function writeNrbf(root){
     if (node.kind === "primitiveArray") {
       out.u8(15);
       out.i32(id);
-      out.i32(node.values.length);
+      out.i32(node.bytes ? node.bytes.length : node.values.length);
       out.u8(node.primitive);
+      if (node.bytes) return out.push(node.bytes);
       return items(node);
     }
     out.u8(node.kind === "objectArray" ? 16 : 17);
@@ -452,6 +454,7 @@ export function cloneGraph(node, copies = new Map()){
   const copy = { ...node };
   copies.set(node, copy);
   if (node.values) copy.values = node.values.map((item) => cloneGraph(item, copies));
+  if (node.bytes) copy.bytes = node.bytes.slice();
   if (node.lengths) copy.lengths = [...node.lengths];
   return copy;
 }

@@ -7,6 +7,7 @@
   import { contactPoint, touchRoute } from "$lib/hydronic/outline.js";
   import { BRANCH_GEOMETRY } from "$lib/hydronic/branch.js";
   import BranchGraphic from "./BranchGraphic.svelte";
+  import DeviceGraphic from "./DeviceGraphic.svelte";
   import { uprightSize, localRect } from "$lib/hydronic/frame.js";
   import { buildScene } from "$lib/hydronic/scene.js";
 
@@ -196,7 +197,9 @@
     {@const length = routeLength(item.points)}
     {@const isFresh = fresh.includes(item.pipeId)}
     <path class="pipe" class:fresh={isFresh} {d} fill="none" stroke={item.color} stroke-width={item.width}
-          stroke-linecap="round" stroke-linejoin="round" style="--len: {length}px; --dur: {duration(length)}s"/>
+          stroke-linecap={item.dash ? "butt" : "round"} stroke-linejoin="round"
+          stroke-dasharray={item.dash && !isFresh ? `${item.width * 2} ${item.width * 1.5}` : undefined}
+          style="--len: {length}px; --dur: {duration(length)}s"/>
     {#if isFresh}
       <path class="pulse" {d} fill="none" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width={item.width * 0.55}
             stroke-linecap="round" stroke-linejoin="round" style="--len: {length}px; --dur: {duration(length)}s"/>
@@ -210,6 +213,8 @@
     <rect x={item.x} y={item.y} width={item.width} height={item.height} fill={item.color}/>
   {:else if item.kind === "branch"}
     <BranchGraphic element={item.element}/>
+  {:else if item.kind === "device"}
+    <DeviceGraphic {item}/>
   {:else if item.kind === "icon"}
     <use href="#hyd-{item.type}" x={item.cx - item.width / 2} y={item.cy - item.height / 2} width={item.width} height={item.height}
          transform={item.rotation ? `rotate(${item.rotation} ${item.cx} ${item.cy})` : undefined}/>

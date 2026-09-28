@@ -79,6 +79,31 @@ function valueField(item){
   }, argumentsOf(args));
 }
 
+const DEVICE_NATIVES = {
+  hub: { width: 248.305, height: 88, boxX: 4.153, boxY: 4, boxWidth: 240, boxHeight: 80 },
+  other: { width: 248.31, height: 87.9, boxX: 4.277, boxY: 3.939, boxWidth: 240, boxHeight: 80 }
+};
+
+function device(item, style){
+  const spec = HYDRONIC_ELEMENTS[item.type];
+  const DEVICE_NATIVE = DEVICE_NATIVES[spec.device] ?? DEVICE_NATIVES.other;
+  const sx = item.width / DEVICE_NATIVE.boxWidth;
+  const sy = item.height / DEVICE_NATIVE.boxHeight;
+  const x = item.cx - item.width / 2 - DEVICE_NATIVE.boxX * sx;
+  const y = item.cy - item.height / 2 - DEVICE_NATIVE.boxY * sy;
+  return svgElement("svg", {
+    "atv:refpx": round(item.cx),
+    "atv:refpy": round(item.cy),
+    height: DEVICE_NATIVE.height,
+    id: item.id,
+    transform: `matrix(${round(sx)},0,0,${round(sy)},${round(x)},${round(y)})`,
+    width: DEVICE_NATIVE.width,
+    x: 0,
+    y: 0,
+    "xlink:href": `${style.library}.${spec.atv}`
+  }, argumentsOf(item.args));
+}
+
 const RENDER = {
   gap: (item, style) => rect(item, style.background),
   bar: (item) => rect(item, item.color),
@@ -92,6 +117,7 @@ const RENDER = {
       id: item.id,
       points: item.points.map((point) => `${point.x},${point.y}`).join(" "),
       stroke: item.color,
+      "stroke-dasharray": item.dash ? `${round(item.width * 2)} ${round(item.width * 1.5)}` : undefined,
       "stroke-linejoin": "round",
       "stroke-width": item.width
     });
@@ -117,6 +143,7 @@ const RENDER = {
   }),
   icon: reference,
   branch: reference,
+  device,
   field: valueField,
   label: (item) => svgElement("text", {
     "atv:refpx": round(item.box.x + item.box.width / 2),

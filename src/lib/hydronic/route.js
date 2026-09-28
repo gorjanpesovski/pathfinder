@@ -42,6 +42,14 @@ export function portPose(element, port){
 
 export function elementPorts(element){
   if (HYDRONIC_ELEMENTS[element.type]?.noPorts) return [];
+  const spec = HYDRONIC_ELEMENTS[element.type];
+  if (spec?.centerPorts || spec?.ports) {
+    const fractions = spec.ports ?? { top: [0.5], bottom: [0.5], left: [0.5], right: [0.5] };
+    return Object.entries(fractions).flatMap(([side, list]) => list.map((fraction) => {
+      const port = { side, offset: fraction * (side === "top" || side === "bottom" ? element.width : element.height) };
+      return { ...port, ...portPose(element, port) };
+    }));
+  }
   const ports = [];
   const spacing = portStep(element);
   for (const offset of offsets(element.width, spacing)) ports.push({ side: "top", offset }, { side: "bottom", offset });

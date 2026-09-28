@@ -23,7 +23,10 @@ public static class PathfinderClipboard {
 
   const string Marker = "PATHFINDER-CLIPBOARD 1";
   const string Blocks = "ISaGRAF.ISaGRAF5.Core.Shell.Isa5EncryptedObject";
+  const string Pous = "WindowsForms10PersistentObject";
+  const string Placeholder = "PATHFINDER__KEY_";
   static readonly string KeyFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Pathfinder", "cstrategy-key.txt");
+  static readonly string PouKeyFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Pathfinder", "cstrategy-pou-key.txt");
 
   static bool Open() {
     for (int attempt = 0; attempt < 40; attempt++) {
@@ -92,20 +95,67 @@ public static class PathfinderClipboard {
     return File.Exists(KeyFile) ? File.ReadAllText(KeyFile) : null;
   }
 
+  public static string PouKey() {
+    return File.Exists(PouKeyFile) ? File.ReadAllText(PouKeyFile) : null;
+  }
+
+  static string ReadPouKey(byte[] data) {
+    if (IndexOf(data, Encoding.ASCII.GetBytes("Isa5DataBox")) < 0) return null;
+    var counts = new System.Collections.Generic.Dictionary<string, int>();
+    for (int index = 0; index + 22 <= data.Length; index++) {
+      if (data[index] != 6 || data[index + 5] != 16) continue;
+      bool hex = true;
+      for (int offset = 0; offset < 16 && hex; offset++) {
+        byte value = data[index + 6 + offset];
+        hex = (value >= 48 && value <= 57) || (value >= 65 && value <= 70);
+      }
+      if (!hex) continue;
+      string key = Encoding.ASCII.GetString(data, index + 6, 16);
+      counts[key] = counts.ContainsKey(key) ? counts[key] + 1 : 1;
+    }
+    string best = null;
+    foreach (var pair in counts) if (best == null || pair.Value > counts[best]) best = pair.Key;
+    return best;
+  }
+
+  static byte[] WithPouKey(byte[] data, string key) {
+    byte[] pattern = Encoding.ASCII.GetBytes((char)16 + Placeholder);
+    byte[] bytes = Encoding.ASCII.GetBytes(key);
+    var result = new System.Collections.Generic.List<byte>(data.Length);
+    int index = 0;
+    while (index < data.Length) {
+      if (data[index] == 16 && Matches(data, pattern, index)) {
+        result.Add((byte)bytes.Length);
+        result.AddRange(bytes);
+        index += pattern.Length;
+      } else {
+        result.Add(data[index++]);
+      }
+    }
+    return result.ToArray();
+  }
+
+  static bool Matches(byte[] data, byte[] pattern, int at) {
+    if (at + pattern.Length > data.Length) return false;
+    for (int offset = 0; offset < pattern.Length; offset++) if (data[at + offset] != pattern[offset]) return false;
+    return true;
+  }
+
+  static string Remember(string file, string key, string label) {
+    if (string.IsNullOrEmpty(key) || (File.Exists(file) && File.ReadAllText(file) == key)) return null;
+    Directory.CreateDirectory(Path.GetDirectoryName(file));
+    File.WriteAllText(file, key);
+    return "Learned the c.strategy " + label + " from your copy";
+  }
+
   public static string Process() {
     if (!Open()) return null;
     string text = null;
     try {
       byte[] copied = ReadFormat(RegisterClipboardFormat(Blocks));
-      if (copied != null) {
-        string key = ReadKey(copied);
-        if (!string.IsNullOrEmpty(key) && key != Key()) {
-          Directory.CreateDirectory(Path.GetDirectoryName(KeyFile));
-          File.WriteAllText(KeyFile, key);
-          return "Learned the c.strategy project key from your copy";
-        }
-        return null;
-      }
+      if (copied != null) return Remember(KeyFile, ReadKey(copied), "project key");
+      byte[] pou = ReadFormat(RegisterClipboardFormat(Pous));
+      if (pou != null) return Remember(PouKeyFile, ReadPouKey(pou), "POU key");
       if (!IsClipboardFormatAvailable(13)) return null;
       byte[] raw = ReadFormat(13);
       if (raw == null) return null;
@@ -114,9 +164,12 @@ public static class PathfinderClipboard {
       CloseClipboard();
     }
     if (!text.StartsWith(Marker)) return null;
-    string known = Key();
-    if (known == null) return "Copy any block in c.strategy once so the helper learns your project key, then copy again in Pathfinder";
     string[] lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+    bool pouCopy = Array.Exists(lines, (line) => line.StartsWith(Pous + "\t"));
+    string known = pouCopy ? PouKey() : Key();
+    if (known == null) return pouCopy
+      ? "Copy any POU in the c.strategy solution tree once so the helper learns your POU key, then copy again in Pathfinder"
+      : "Copy any block in c.strategy once so the helper learns your project key, then copy again in Pathfinder";
     if (!Open()) return null;
     try {
       EmptyClipboard();
@@ -124,7 +177,8 @@ public static class PathfinderClipboard {
       for (int index = 1; index < lines.Length; index++) {
         int tab = lines[index].IndexOf('\t');
         if (tab < 0) continue;
-        byte[] data = WithKey(Convert.FromBase64String(lines[index].Substring(tab + 1)), known);
+        byte[] raw = Convert.FromBase64String(lines[index].Substring(tab + 1));
+        byte[] data = pouCopy ? WithPouKey(raw, known) : WithKey(raw, known);
         foreach (string name in lines[index].Substring(0, tab).Split('|')) Put(name, data);
         total += data.Length;
       }

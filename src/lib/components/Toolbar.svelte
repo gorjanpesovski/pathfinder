@@ -1,6 +1,7 @@
 <script>
   let { tool, onpick, onimage, elementsOpen = false, ontoggleelements, showHints = true,
-        tools = null, general = null, special = null, automations = false, canplacedoors = false, canfurnish = false, onplacedoors, onfurnish } = $props();
+        tools = null, general = null, special = null, automations = false, canplacedoors = false, canfurnish = false, onplacedoors, onfurnish,
+        pipeLabel = null } = $props();
 
   const PRIMARY = [
     { id: "select", label: "Select", key: "S", ready: true,
@@ -17,6 +18,13 @@
 
   PRIMARY.push({ id: "pipe", label: "Pipe", key: "P", ready: true,
     hint: "Click an element to start a pipe; it snaps to the nearest connection point along the element. Hold Ctrl and click to add bend points on the grid that the trace has to pass through. Click another element to connect. Backspace removes the last bend point, Esc cancels. Choose Supply, Return or Other in the options bar." });
+
+  const CONNECTION_HINT = "Click a device to start a connection; it snaps to the middle of the nearest side. Hold Ctrl and click to add bend points. Click another device, or a connection to branch off it. Backspace removes the last bend point, Esc cancels. Choose the protocol in the options bar.";
+
+  function entryOf(id){
+    const entry = PRIMARY.find((item) => item.id === id);
+    return entry?.id === "pipe" && pipeLabel ? { ...entry, label: pipeLabel, hint: CONNECTION_HINT } : entry;
+  }
 
   PRIMARY.push({ id: "text", label: "Text", key: "T", ready: true,
     hint: "Click to place a text and type. Enter confirms, Shift+Enter adds a line, Esc cancels. Double-click a text to edit it; size, colour and bold are in the options bar." });
@@ -221,12 +229,12 @@
 
 <nav class="toolbar" aria-label="Tools">
   {#if general}
-    {#each general.map((id) => PRIMARY.find((entry) => entry.id === id)).filter((entry) => entry && !entry.hidden) as entry (entry.id)}
+    {#each general.map(entryOf).filter((entry) => entry && !entry.hidden) as entry (entry.id)}
       {@render toolButton(entry)}
     {/each}
     {#if special?.length}
       <div class="divider" role="separator"></div>
-      {#each special.map((id) => PRIMARY.find((entry) => entry.id === id)).filter((entry) => entry && !entry.hidden) as entry (entry.id)}
+      {#each special.map(entryOf).filter((entry) => entry && !entry.hidden) as entry (entry.id)}
         {@render toolButton(entry)}
       {/each}
     {/if}
