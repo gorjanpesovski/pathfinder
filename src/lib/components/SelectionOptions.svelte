@@ -247,7 +247,7 @@
                onchange={(e) => ondeviceparam("ip", e.currentTarget.value.trim())} onkeydown={blurOnEnter}>
       </label>
     {/if}
-    {#if kind === "ip"}
+    {#if kind === "ip" || kind === "gateway"}
       <label>
         Port
         <input type="number" min="1" max="65535" step="1" value={device.params?.port ?? 502}

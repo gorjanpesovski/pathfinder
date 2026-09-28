@@ -55,6 +55,7 @@
   import { hydronicToPgd } from "$lib/hydronic/pgd.js";
   import SaveDialog from "$lib/components/SaveDialog.svelte";
   import IoView from "$lib/components/IoView.svelte";
+  import ConnectExport from "$lib/components/ConnectExport.svelte";
   import { summarizeSelection } from "$lib/tools/selectionSummary.js";
   import { junctionMedium } from "$lib/hydronic/inherit.js";
   import { alignToAnchor, trimLastStretch } from "$lib/hydronic/alignEnd.js";
@@ -3894,6 +3895,9 @@
                   onsave={confirmSave} oncancel={() => saveDialog = null}/>
     {/if}
     <span class="header-sep" aria-hidden="true"></span>
+    {#if app === "network"}
+      <ConnectExport {shapes} name={documentName} onnotice={showFileNotice}/>
+    {/if}
     {#if currentApp.exports.includes("pgd")}
       <button class="header-export secondary" type="button" onclick={downloadPgdImages} disabled={shapes.length === 0}
               title="Download the images this page uses, to unzip into the project's images folder">
