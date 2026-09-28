@@ -39,7 +39,7 @@
   import { WALL_STYLE, describeWall, openEnds } from "$lib/tools/walls.js";
   import { APPS, appById, GENERAL_TOOLS } from "$lib/apps.js";
   import HydronicLayer from "$lib/components/HydronicLayer.svelte";
-  import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, DEFAULT_PROTOCOL, mediumOf, isHydronicType, isInlineType, isDeviceType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
+  import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, DEFAULT_PROTOCOL, DEFAULT_WIRE, familyOf, isElectricType, mediumOf, isHydronicType, isInlineType, isDeviceType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
   import { branchDefaults, alignBranch, snapBranch, branchRiders, isBranch, branchParams } from "$lib/hydronic/branch.js";
   import { connectNetwork, placeDevices } from "$lib/hydronic/network.js";
   import { readoutLayout, readoutSpec } from "$lib/hydronic/readout.js";
@@ -56,6 +56,11 @@
   import SaveDialog from "$lib/components/SaveDialog.svelte";
   import IoView from "$lib/components/IoView.svelte";
   import ConnectExport from "$lib/components/ConnectExport.svelte";
+  import WiringActions from "$lib/components/WiringActions.svelte";
+  import { boardSize, sheetsSvg, sheetDate } from "$lib/electric/sheet.js";
+  import { wiringFromIo } from "$lib/electric/generate.js";
+  import { printSheets } from "$lib/electric/print.js";
+  import { electricSize, electricDefaults, nextElectricName } from "$lib/electric/symbols.js";
   import { summarizeSelection } from "$lib/tools/selectionSummary.js";
   import { junctionMedium } from "$lib/hydronic/inherit.js";
   import { alignToAnchor, trimLastStretch } from "$lib/hydronic/alignEnd.js";
@@ -135,6 +140,9 @@
   let cursor = $state(null);
   let selectedId = $state(null);
   let nextId = 1;
+  let electricBoard = $derived(app === "electrical" ? boardSize(shapes) : null);
+  let boardWidth = $derived(electricBoard?.width ?? canvasWidth);
+  let boardHeight = $derived(electricBoard?.height ?? canvasHeight);
 
   let svgEl;
 
@@ -152,7 +160,7 @@
   }
 
   function snapPoint(point){
-    return { x: snapValue(point.x, canvasWidth), y: snapValue(point.y, canvasHeight) };
+    return { x: snapValue(point.x, boardWidth), y: snapValue(point.y, boardHeight) };
   }
 
   function toCanvas(event){
@@ -167,7 +175,7 @@
   let fitted = false;
 
   function fitContent(){
-    viewport.fit({ x: 0, y: 0, width: canvasWidth, height: canvasHeight });
+    viewport.fit({ x: 0, y: 0, width: boardWidth, height: boardHeight });
   }
 
   $effect(() => {
@@ -182,12 +190,12 @@
     if (mode === "v") return [from, { x: from.x, y: to.y }, to];
 
     if (mode === "zh") {
-      const x = snapValue((from.x + to.x) / 2, canvasWidth);
+      const x = snapValue((from.x + to.x) / 2, boardWidth);
       return [from, { x, y: from.y }, { x, y: to.y }, to];
     }
 
     if (mode === "zv") {
-      const y = snapValue((from.y + to.y) / 2, canvasHeight);
+      const y = snapValue((from.y + to.y) / 2, boardHeight);
       return [from, { x: from.x, y }, { x: to.x, y }, to];
     }
 
@@ -546,7 +554,7 @@
   }
 
   function applyPointDelta(group, dx, dy){
-    const delta = clampDelta(polygonBounds(group.map((entry) => entry.original)), dx, dy, canvasWidth, canvasHeight);
+    const delta = clampDelta(polygonBounds(group.map((entry) => entry.original)), dx, dy, boardWidth, boardHeight);
     const byShape = new Map();
     for (const entry of group) {
       if (!byShape.has(entry.shape)) byShape.set(entry.shape, entry.shape.points.map((point) => ({ x: point.x, y: point.y })));
@@ -700,7 +708,7 @@
         const still = Math.hypot(point.x - start.x, point.y - start.y) * viewport.zoom < 3;
         const dx = still ? 0 : centre ? round2(Math.round((centre.x + point.x - start.x) / step) * step - centre.x) : Math.round((point.x - start.x) / step) * step;
         const dy = still ? 0 : centre ? round2(Math.round((centre.y + point.y - start.y) / step) * step - centre.y) : Math.round((point.y - start.y) / step) * step;
-        let delta = box ? clampDelta(box, dx, dy, canvasWidth, canvasHeight) : { dx, dy };
+        let delta = box ? clampDelta(box, dx, dy, boardWidth, boardHeight) : { dx, dy };
         if (lonelyBranch) {
           const shifted = { ...lonelyBranch.original, ...translateShape(lonelyBranch.original, delta.dx, delta.dy) };
           const snapped = snapBranch(shifted, resting, snapRadius);
@@ -989,7 +997,7 @@
     const units = selectionUnits();
     if (units.length === 0) return;
     const boxes = units.map((members) => unionBox(members.map(shapeBox)));
-    const frame = units.length === 1 ? { x: 0, y: 0, width: canvasWidth, height: canvasHeight } : unionBox(boxes);
+    const frame = units.length === 1 ? { x: 0, y: 0, width: boardWidth, height: boardHeight } : unionBox(boxes);
     moveUnitsBy(units, alignOffsets(boxes, mode, frame));
   }
 
@@ -1650,15 +1658,20 @@
   let pipeDraft = $state(null);
   let pipeMedium = $state(DEFAULT_MEDIUM);
 
+  const FAMILY_DEFAULTS = { network: DEFAULT_PROTOCOL, electric: DEFAULT_WIRE, hydronic: DEFAULT_MEDIUM };
+  const WIRE_WIDTH = 1.5;
+
   $effect(() => {
-    const network = app === "network";
-    if (!!mediumOf(pipeMedium).network !== network) pipeMedium = network ? DEFAULT_PROTOCOL : DEFAULT_MEDIUM;
+    const family = app === "network" ? "network" : app === "electrical" ? "electric" : "hydronic";
+    if (familyOf(mediumOf(pipeMedium)) !== family) pipeMedium = FAMILY_DEFAULTS[family];
+    if (family === "electric" && pipeThickness !== WIRE_WIDTH) pipeThickness = WIRE_WIDTH;
+    if (family !== "electric" && pipeThickness === WIRE_WIDTH) pipeThickness = HYDRONIC_STYLE.pipeWidth;
   });
   let hydronicLibrary = $state(HYDRONIC_STYLE.library);
   let freshPipes = $state([]);
   let selectedFitting = $state(null);
   let extraFittings = $state([]);
-  let hydronicStyle = $derived({ ...HYDRONIC_STYLE, library: hydronicLibrary, background: canvasFill, native: ICON_SIZES, bounds: { width: canvasWidth, height: canvasHeight } });
+  let hydronicStyle = $derived({ ...HYDRONIC_STYLE, library: hydronicLibrary, background: canvasFill, native: ICON_SIZES, bounds: { width: boardWidth, height: boardHeight } });
   let shapeIndex = $derived(new Map(shapes.map((shape) => [shape.id, shape])));
   let pipeRoutes = $derived(computeRoutes(shapes));
   let snapRadius = $derived(Math.max(20, 16 / viewport.zoom));
@@ -1945,15 +1958,32 @@
 
   function setDeviceParam(name, value){
     for (const element of selectedElements()) {
-      if (!isDeviceType(element.type)) continue;
+      if (!isDeviceType(element.type) && !isElectricType(element.type)) continue;
       element.params = { ...$state.snapshot(element.params ?? {}), [name]: value };
+      if (isElectricType(element.type)) Object.assign(element, electricSize(element.type, element.params));
     }
+  }
+
+  let sheetMeta = $derived({ project: documentName ?? "", date: sheetDate() });
+
+  function generateWiring(options){
+    const result = wiringFromIo($state.snapshot(ioPoints), $state.snapshot(shapes), () => nextId++, options);
+    if (!result.shapes.length) return;
+    shapes.push(...result.shapes);
+    selectedId = null;
+    selectedIds = [];
+    showFileNotice(`Added ${result.points} IO point${result.points === 1 ? "" : "s"} on ${result.pages} page${result.pages === 1 ? "" : "s"}`);
+  }
+
+  function printWiring(){
+    printSheets($state.snapshot(shapes), sheetMeta);
   }
 
   function setBranchName(value){
     for (const element of selectedElements()) {
-      if (!isBranch(element) && !isDeviceType(element.type)) continue;
-      element.name = value.trim() || nextElementName(element.type, shapes.filter((shape) => shape !== element));
+      if (!isBranch(element) && !isDeviceType(element.type) && !isElectricType(element.type)) continue;
+      const others = shapes.filter((shape) => shape !== element);
+      element.name = value.trim() || (isElectricType(element.type) ? nextElectricName(element.type, others) : nextElementName(element.type, others));
     }
   }
 
@@ -2339,16 +2369,23 @@
     const size = footprint(spec.width, spec.height, rotation);
     const element = {
       type,
-      x: snapValue(point.x, canvasWidth) - size.width / 2,
-      y: snapValue(point.y, canvasHeight) - size.height / 2,
+      x: snapValue(point.x, boardWidth) - size.width / 2,
+      y: snapValue(point.y, boardHeight) - size.height / 2,
       width: size.width,
       height: size.height
     };
+    if (spec.electric) {
+      element.x = snapValue(point.x - size.width / 2, boardWidth);
+      element.y = snapValue(point.y - size.height / 2, boardHeight);
+      element.params = electricDefaults(type);
+      Object.assign(element, electricSize(type, element.params));
+      return { kind: "equipment", element, valid: true };
+    }
     if (rotation) element.rotation = rotation;
     if (spec.bar) element.medium = pipeMedium;
     if (spec.branch) {
       element.params = branchDefaults();
-      const aligned = alignBranch(element, (value) => snapValue(value, canvasWidth));
+      const aligned = alignBranch(element, (value) => snapValue(value, boardWidth));
       return { kind: "equipment", element: { ...aligned, ...snapBranch(aligned, shapes, snapRadius) }, valid: true };
     }
     return { kind: "equipment", element, valid: true };
@@ -2356,7 +2393,7 @@
 
   function placeHydronic(target, keep){
     const id = nextId++;
-    if (target.kind === "equipment") shapes.push({ id, kind: "equipment", ...target.element, name: nextElementName(target.element.type, shapes) });
+    if (target.kind === "equipment") shapes.push({ id, kind: "equipment", ...target.element, name: isElectricType(target.element.type) ? nextElectricName(target.element.type, shapes) : nextElementName(target.element.type, shapes) });
     else target.pipe.fittings = [...(target.pipe.fittings ?? []), { id, ...target.fitting, name: nextFittingName(target.fitting.type, shapes) }];
     if (keep) return;
     pickTool("select");
@@ -3898,6 +3935,9 @@
     {#if app === "network"}
       <ConnectExport {shapes} name={documentName} onnotice={showFileNotice}/>
     {/if}
+    {#if app === "electrical"}
+      <WiringActions points={ioPoints} {shapes} ongenerate={generateWiring} onprint={printWiring}/>
+    {/if}
     {#if currentApp.exports.includes("pgd")}
       <button class="header-export secondary" type="button" onclick={downloadPgdImages} disabled={shapes.length === 0}
               title="Download the images this page uses, to unzip into the project's images folder">
@@ -3908,10 +3948,12 @@
         {pgdCopied ? "Copied" : "Copy pGD"}
       </button>
     {/if}
-    <button class="header-export" class:copied={copySuccess} type="button"
-            onclick={handleExport} disabled={shapes.length === 0}>
-      {copySuccess ? "Copied to Clipboard" : "Copy SVG"}
-    </button>
+    {#if app !== "electrical"}
+      <button class="header-export" class:copied={copySuccess} type="button"
+              onclick={handleExport} disabled={shapes.length === 0}>
+        {copySuccess ? "Copied to Clipboard" : "Copy SVG"}
+      </button>
+    {/if}
   </div>
 
   <div class="display-settings" bind:this={displaySettingsEl}>
@@ -4279,13 +4321,16 @@
         </defs>
 
         <g transform={viewport.transform}>
-        <rect x="0" y="0" width={canvasWidth} height={canvasHeight} fill={canvasFill}/>
+        <rect x="0" y="0" width={boardWidth} height={boardHeight} fill={canvasFill}/>
         <ImageLayer {shapes} sources={imageSources} interactive={tool === "select"}/>
         {#if showGrid && majorSize * viewport.zoom >= MIN_GRID_PX}
-          <rect x="0" y="0" width={canvasWidth} height={canvasHeight} fill="url(#grid_major)" pointer-events="none"/>
+          <rect x="0" y="0" width={boardWidth} height={boardHeight} fill="url(#grid_major)" pointer-events="none"/>
         {/if}
-        <rect x="0" y="0" width={canvasWidth} height={canvasHeight} fill="none"
+        <rect x="0" y="0" width={boardWidth} height={boardHeight} fill="none"
               stroke="#94A3B8" stroke-width="1" vector-effect="non-scaling-stroke" pointer-events="none"/>
+        {#if electricBoard}
+          <g pointer-events="none">{@html sheetsSvg(electricBoard.pages, electricBoard.used, sheetMeta)}</g>
+        {/if}
 
         <RoomLayer {shapes} {draft} {cursor} selectedIds={selectionIds} zoom={viewport.zoom} style={roomStyle}
                    closure={floorPreview}
@@ -4353,9 +4398,9 @@
 
         {#if drawing && cursor}
           <g pointer-events="none">
-            <line x1="0" x2={canvasWidth} y1={cursor.y} y2={cursor.y} stroke="#2563EB"
+            <line x1="0" x2={boardWidth} y1={cursor.y} y2={cursor.y} stroke="#2563EB"
                   stroke-width="1" stroke-dasharray="4 4" opacity="0.4" vector-effect="non-scaling-stroke"/>
-            <line x1={cursor.x} x2={cursor.x} y1="0" y2={canvasHeight} stroke="#2563EB"
+            <line x1={cursor.x} x2={cursor.x} y1="0" y2={boardHeight} stroke="#2563EB"
                   stroke-width="1" stroke-dasharray="4 4" opacity="0.4" vector-effect="non-scaling-stroke"/>
             <circle cx={cursor.x} cy={cursor.y} r={Math.max(3, gridSize / 6) / viewport.zoom}
                     fill="#FFFFFF" stroke="#2563EB" stroke-width="2" vector-effect="non-scaling-stroke"/>

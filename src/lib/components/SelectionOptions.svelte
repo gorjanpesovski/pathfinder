@@ -5,6 +5,7 @@
   import NetworkActions from "./NetworkActions.svelte";
   import { HYDRONIC_ELEMENTS } from "$lib/hydronic/elements.js";
   import BranchOptions from "./BranchOptions.svelte";
+  import { formatSlots, parseSlots } from "$lib/electric/symbols.js";
 
   let {
     groups,
@@ -76,6 +77,7 @@
 
   input[type="number"],
   input.branch-name,
+  input.slots,
   input.address {
     width: 58px;
     height: 26px;
@@ -87,6 +89,10 @@
     font-size: 12px;
     color: #0f172a;
     box-sizing: border-box;
+  }
+
+  input.slots {
+    width: 190px;
   }
 
   input.branch-name {
@@ -183,7 +189,57 @@
   }
 </style>
 
-{#if elements}
+{#if elements?.electric}
+  <span>{elements.count === 1 ? elements.label : `${elements.count} elements`}</span>
+  {#if elements.wiring}
+    {@const part = elements.wiring}
+    <label>
+      Name
+      <input type="text" class="address" value={part.name ?? ""}
+             onchange={(e) => onbranchname(e.currentTarget.value)} onkeydown={blurOnEnter}>
+    </label>
+    {#if part.type === "controller" || part.type === "fieldDevice"}
+      <label>
+        Model
+        <input type="text" class="branch-name" value={part.params?.model ?? ""}
+               onchange={(e) => ondeviceparam("model", e.currentTarget.value.trim())} onkeydown={blurOnEnter}>
+      </label>
+    {/if}
+    {#if part.type === "controller" || part.type === "fieldDevice" || part.type === "terminalStrip"}
+      <label title="Comma separated, leave an entry empty for a gap">
+        Terminals
+        <input type="text" class="slots" value={formatSlots(part.params?.terminals)}
+               onchange={(e) => ondeviceparam("terminals", parseSlots(e.currentTarget.value))} onkeydown={blurOnEnter}>
+      </label>
+    {/if}
+    {#if part.type === "cable"}
+      <label>
+        Type
+        <input type="text" class="branch-name" value={part.params?.cableType ?? ""}
+               onchange={(e) => ondeviceparam("cableType", e.currentTarget.value.trim())} onkeydown={blurOnEnter}>
+      </label>
+      <label title="Comma separated, leave an entry empty for a gap">
+        Conductors
+        <input type="text" class="slots" value={formatSlots(part.params?.conductors)}
+               onchange={(e) => ondeviceparam("conductors", parseSlots(e.currentTarget.value))} onkeydown={blurOnEnter}>
+      </label>
+    {/if}
+    {#if part.type === "fieldDevice"}
+      <label>
+        Description
+        <input type="text" class="slots" value={part.params?.description ?? ""}
+               onchange={(e) => ondeviceparam("description", e.currentTarget.value.trim())} onkeydown={blurOnEnter}>
+      </label>
+    {/if}
+    {#if part.type === "relayCoil"}
+      <label>
+        Note
+        <input type="text" class="slots" value={part.params?.note ?? ""}
+               onchange={(e) => ondeviceparam("note", e.currentTarget.value.trim())} onkeydown={blurOnEnter}>
+      </label>
+    {/if}
+  {/if}
+{:else if elements}
   <span>{elements.count === 1 ? elements.label : `${elements.count} elements`}</span>
   <label>
     W

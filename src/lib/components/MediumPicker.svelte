@@ -1,14 +1,14 @@
 <script>
-  import { mediaFor, mediumOf } from "$lib/hydronic/elements.js";
+  import { mediaFor, mediumOf, familyOf } from "$lib/hydronic/elements.js";
   import { portal } from "$lib/actions/portal.js";
 
-  let { value = null, onchange, network = null } = $props();
+  let { value = null, onchange, family = null } = $props();
 
   let menu = $state(null);
   let button;
   let list = $state(null);
   let current = $derived(value === null || value === undefined ? null : mediumOf(value));
-  let options = $derived(mediaFor(network ?? !!current?.network));
+  let options = $derived(mediaFor(family ?? familyOf(current)));
 
   function toggle(){
     const box = button.getBoundingClientRect();
@@ -122,9 +122,9 @@
 </button>
 
 {#if menu}
-  <div class="medium-menu" role="listbox" aria-label="Pipe type" bind:this={list} use:portal
+  <div class="medium-menu" role="listbox" aria-label="Type" bind:this={list} use:portal
        style="left: {menu.x}px; top: {menu.y}px">
-    {#each PIPE_MEDIA as entry (entry.id)}
+    {#each options as entry (entry.id)}
       <button type="button" role="option" class:active={current?.id === entry.id} aria-selected={current?.id === entry.id}
               onclick={() => pick(entry.id)}>
         <span class="swatch" style="background: {entry.color}"></span>{entry.label}

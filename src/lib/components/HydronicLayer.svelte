@@ -43,7 +43,7 @@
   let equipment = $derived(shapes.filter((shape) => shape.kind === "equipment" && HYDRONIC_ELEMENTS[shape.type]));
   let pipes = $derived(shapes.filter((shape) => shape.kind === "pipe" && shape.id !== hidden && routes.get(shape.id)));
   let editing = $derived(interactive && selectedIds.length === 1 ? pipes.find((pipe) => pipe.id === selectedIds[0]) : null);
-  let scaling = $derived(interactive && selectedIds.length === 1 ? equipment.find((element) => element.id === selectedIds[0] && !element.locked) : null);
+  let scaling = $derived(interactive && selectedIds.length === 1 ? equipment.find((element) => element.id === selectedIds[0] && !element.locked && !HYDRONIC_ELEMENTS[element.type].electric) : null);
   let scene = $derived(buildScene(shapes, style, { routes, readouts, hidden }));
   let lengths = $derived(new Map(scene.filter((item) => item.kind === "pipe").map((item) => [item.pipeId, routeLength(item.points)])));
   let editPath = $derived(editing ? editablePath(routes.get(editing.id)) : []);
@@ -198,7 +198,7 @@
     {@const isFresh = fresh.includes(item.pipeId)}
     <path class="pipe" class:fresh={isFresh} {d} fill="none" stroke={item.color} stroke-width={item.width}
           stroke-linecap={item.dash ? "butt" : "round"} stroke-linejoin="round"
-          stroke-dasharray={item.dash && !isFresh ? `${item.width * 2} ${item.width * 1.5}` : undefined}
+          stroke-dasharray={isFresh ? undefined : item.dashArray ?? (item.dash ? `${item.width * 2} ${item.width * 1.5}` : undefined)}
           style="--len: {length}px; --dur: {duration(length)}s"/>
     {#if isFresh}
       <path class="pulse" {d} fill="none" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width={item.width * 0.55}
@@ -207,6 +207,8 @@
   {:else if item.kind === "arrow"}
     <polygon class="arrow" class:fresh={fresh.includes(item.pipeId)} points={arrowPoints(item.mark, item.size)} fill={item.color}
              style="--dur: {duration(lengths.get(item.pipeId) ?? 0)}s"/>
+  {:else if item.kind === "junction" && item.dot}
+    <circle cx={item.x} cy={item.y} r={item.radius} fill="#1E293B"/>
   {:else if item.kind === "junction"}
     <circle cx={item.x} cy={item.y} r={item.radius} fill="#FFFFFF" stroke={style.junctionStroke} stroke-width={item.stroke}/>
   {:else if item.kind === "bar"}
@@ -215,6 +217,8 @@
     <BranchGraphic element={item.element}/>
   {:else if item.kind === "device"}
     <DeviceGraphic {item}/>
+  {:else if item.kind === "electric"}
+    <g>{@html item.svg}</g>
   {:else if item.kind === "icon"}
     <use href="#hyd-{item.type}" x={item.cx - item.width / 2} y={item.cy - item.height / 2} width={item.width} height={item.height}
          transform={item.rotation ? `rotate(${item.rotation} ${item.cx} ${item.cy})` : undefined}/>

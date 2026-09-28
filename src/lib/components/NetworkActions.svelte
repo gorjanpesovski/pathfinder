@@ -5,7 +5,7 @@
 
   let { network, onconnect, onadddevices } = $props();
 
-  const PROTOCOLS = mediaFor(true);
+  const PROTOCOLS = mediaFor("network");
   const DEVICE_TYPES = ["rtuDevice", "ipDevice"];
 
   let menu = $state(null);

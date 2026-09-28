@@ -1,5 +1,5 @@
 import { ELEMENT_GROUPS } from "./tools/furniture.js";
-import { HYDRONIC_GROUPS, NETWORK_GROUPS } from "./hydronic/elements.js";
+import { HYDRONIC_GROUPS, NETWORK_GROUPS, ELECTRIC_GROUPS } from "./hydronic/elements.js";
 
 export const GENERAL_TOOLS = ["select", "pan", "text"];
 
@@ -44,6 +44,17 @@ export const APPS = [
     pipeLabel: "Connection",
     automations: false,
     exports: ["svg"]
+  }),
+  defineApp({
+    id: "electrical",
+    label: "Wiring diagram",
+    description: "Controller terminals, relays, terminal strips and cables",
+    special: ["pipe"],
+    specialShortcuts: { p: "pipe" },
+    elements: ELECTRIC_GROUPS,
+    pipeLabel: "Wire",
+    automations: false,
+    exports: ["pdf"]
   })
 ];
 

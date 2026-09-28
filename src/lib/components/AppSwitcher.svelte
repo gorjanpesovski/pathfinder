@@ -72,6 +72,12 @@
           <path d="M10 9.5 L15 12 L10 14.5 Z" fill="currentColor" stroke="none"/>
           <path d="M2 12 H7 M17 12 H22"/>
           <path d="M4 8 V16 M20 8 V16"/>
+        {:else if entry.id === "electrical"}
+          <rect x="3" y="3" width="18" height="6" rx="1"/>
+          <path d="M7 9 V15 M12 9 V15 M17 9 V15"/>
+          <circle cx="7" cy="17" r="2"/>
+          <circle cx="12" cy="17" r="2"/>
+          <circle cx="17" cy="17" r="2"/>
         {:else}
           <rect x="9" y="3" width="6" height="5" rx="1"/>
           <rect x="3" y="16" width="6" height="5" rx="1"/>

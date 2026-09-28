@@ -2,6 +2,12 @@
   import FurnitureShape from "./FurnitureShape.svelte";
   import { FURNITURE, ELEMENT_GROUPS, newFurniture } from "$lib/tools/furniture.js";
   import { HYDRONIC_ELEMENTS } from "$lib/hydronic/elements.js";
+  import { electricSvg, electricDefaults, ELECTRIC_DEFAULTS } from "$lib/electric/symbols.js";
+
+  function electricPreview(type){
+    const spec = HYDRONIC_ELEMENTS[type];
+    return electricSvg({ type, x: 0, y: 0, width: spec.width, height: spec.height, name: ELECTRIC_DEFAULTS[type].name, params: electricDefaults(type) });
+  }
 
   let { active = null, onpick, onclose, groups = ELEMENT_GROUPS, empty = "" } = $props();
 
@@ -149,7 +155,11 @@
                 ? `Place ${element.label.toLowerCase()} · ${element.hydronic.inline ? "click on a pipe" : "click on the canvas"} · Shift keeps placing, Esc stops`
                 : `Place ${element.label.toLowerCase()} · R rotates, Shift keeps placing, Esc stops`}
               onclick={() => onpick(element.type)}>
-        {#if element.hydronic}
+        {#if element.hydronic?.electric}
+          <svg viewBox="-24 -8 {Math.max(element.hydronic.width, 60) + 60} {element.hydronic.height + 24}" aria-hidden="true">
+            {@html electricPreview(element.type)}
+          </svg>
+        {:else if element.hydronic}
           <svg viewBox="-4 -4 {element.hydronic.width + 8} {element.hydronic.height + 8}" aria-hidden="true">
             <use href="#hyd-{element.type}" x="0" y="0" width={element.hydronic.width} height={element.hydronic.height}/>
           </svg>

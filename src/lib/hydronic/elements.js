@@ -1,4 +1,6 @@
 
+import { electricSize } from "../electric/symbols.js";
+
 const HUB_NODES = [0.1507, 0.3243, 0.4979, 0.6715, 0.8451];
 const HUB_PORTS = { top: HUB_NODES, bottom: HUB_NODES, left: [0.5], right: [0.5] };
 
@@ -23,8 +25,23 @@ export const HYDRONIC_ELEMENTS = {
   networkSwitch: { label: "Switch", atv: "Topologija.Hub", width: 240, height: 80, device: "hub", ownLabel: true, ports: HUB_PORTS },
   ipDevice: { label: "IP device", atv: "Topologija.IP_Naprava", width: 240, height: 80, device: "ip", ownLabel: true, centerPorts: true },
   rtuDevice: { label: "RTU device", atv: "Topologija.RTU_Naprava", width: 240, height: 80, device: "rtu", ownLabel: true, centerPorts: true },
-  gateway: { label: "Gateway", atv: "Topologija.Gateway", width: 240, height: 80, device: "gateway", ownLabel: true, centerPorts: true }
+  gateway: { label: "Gateway", atv: "Topologija.Gateway", width: 240, height: 80, device: "gateway", ownLabel: true, centerPorts: true },
+  controller: { label: "Controller", ...electricSize("controller"), electric: true, ownLabel: true },
+  terminalStrip: { label: "Terminals", ...electricSize("terminalStrip"), electric: true, ownLabel: true },
+  cable: { label: "Cable", ...electricSize("cable"), electric: true, ownLabel: true },
+  relayCoil: { label: "Relay coil", ...electricSize("relayCoil"), electric: true, ownLabel: true },
+  relayContact: { label: "Relay contact", ...electricSize("relayContact"), electric: true, ownLabel: true },
+  fieldDevice: { label: "Field device", ...electricSize("fieldDevice"), electric: true, ownLabel: true }
 };
+
+export const ELECTRIC_GROUPS = [
+  { id: "control", label: "Control", items: ["controller", "relayCoil", "relayContact"] },
+  { id: "wiring", label: "Wiring", items: ["terminalStrip", "cable", "fieldDevice"] }
+];
+
+export function isElectricType(type){
+  return !!HYDRONIC_ELEMENTS[type]?.electric;
+}
 
 export const NETWORK_GROUPS = [
   { id: "devices", label: "Devices", items: ["ipDevice", "rtuDevice", "gateway"] },
@@ -67,13 +84,25 @@ export const PIPE_MEDIA = [
   { id: "knx", label: "KNX", color: "#D97706", network: true },
   { id: "mqtt", label: "MQTT", color: "#7C3AED", network: true },
   { id: "opcUa", label: "OPC UA", color: "#0F766E", network: true },
-  { id: "ethernet", label: "Ethernet", color: "#64748B", network: true }
+  { id: "ethernet", label: "Ethernet", color: "#64748B", network: true },
+  { id: "wire", label: "Wire", color: "#1E293B", electric: true },
+  { id: "sp", label: "SP (24 V AC)", color: "#1E293B", electric: true, rail: "SP" },
+  { id: "sn", label: "SN (24 V AC)", color: "#1E293B", electric: true, rail: "SN" },
+  { id: "dcPlus", label: "DC+ (24 V DC)", color: "#1E293B", electric: true, rail: "DC+" },
+  { id: "dcMinus", label: "DC− (24 V DC)", color: "#1E293B", electric: true, rail: "DC−" },
+  { id: "neutral", label: "N", color: "#1E293B", electric: true, rail: "N", dashArray: "10 6" },
+  { id: "earth", label: "PE", color: "#1E293B", electric: true, rail: "PE", dashArray: "14 4 3 4" }
 ];
 
 export const DEFAULT_PROTOCOL = "modbusTcp";
+export const DEFAULT_WIRE = "wire";
 
-export function mediaFor(network){
-  return PIPE_MEDIA.filter((entry) => !!entry.network === !!network);
+export function familyOf(medium){
+  return medium?.network ? "network" : medium?.electric ? "electric" : "hydronic";
+}
+
+export function mediaFor(family){
+  return PIPE_MEDIA.filter((entry) => familyOf(entry) === family);
 }
 
 const MEDIUM_ALIASES = { supply: "hotSupply", return: "hotReturn" };
@@ -116,7 +145,7 @@ export function nextElementName(type, shapes){
 
 export function hydronicLabel(shape){
   if (shape.kind === "equipment") return HYDRONIC_ELEMENTS[shape.type]?.label ?? "Element";
-  if (shape.kind === "pipe") return mediumOf(shape.medium).network ? "Connection" : "Pipe";
+  if (shape.kind === "pipe") return mediumOf(shape.medium).network ? "Connection" : mediumOf(shape.medium).electric ? "Wire" : "Pipe";
   return null;
 }
 

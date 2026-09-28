@@ -44,7 +44,9 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
       bars: bars.length,
       barMedium: common(bars, (bar) => mediumOf(bar.medium).id),
       branch: elements.find((element) => HYDRONIC_ELEMENTS[element.type].branch) ?? null,
-      device: elements.length === 1 && HYDRONIC_ELEMENTS[elements[0].type].device ? elements[0] : null
+      device: elements.length === 1 && HYDRONIC_ELEMENTS[elements[0].type].device ? elements[0] : null,
+      electric: elements.every((element) => HYDRONIC_ELEMENTS[element.type].electric),
+      wiring: elements.length === 1 && HYDRONIC_ELEMENTS[elements[0].type].electric ? elements[0] : null
     } : null,
     pipes: pipes.length ? {
       count: pipes.length,

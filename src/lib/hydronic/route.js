@@ -1,4 +1,5 @@
 import { PORT_STEP, HYDRONIC_ELEMENTS } from "./elements.js";
+import { electricPorts } from "../electric/symbols.js";
 
 const NORMALS = {
   top: { x: 0, y: -1 },
@@ -43,6 +44,7 @@ export function portPose(element, port){
 export function elementPorts(element){
   if (HYDRONIC_ELEMENTS[element.type]?.noPorts) return [];
   const spec = HYDRONIC_ELEMENTS[element.type];
+  if (spec?.electric) return electricPorts(element).map((port) => ({ ...port, ...portPose(element, port) }));
   if (spec?.centerPorts || spec?.ports) {
     const fractions = spec.ports ?? { top: [0.5], bottom: [0.5], left: [0.5], right: [0.5] };
     return Object.entries(fractions).flatMap(([side, list]) => list.map((fraction) => {

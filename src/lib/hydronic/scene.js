@@ -9,6 +9,8 @@ import { tankParts } from "./tank.js";
 import { elementLabel, hasNameLabel } from "./label.js";
 import { fittingLabel } from "./fittingLabel.js";
 import { fittingPose, fittingSize, pipeDecorations, pipeWidthOf } from "./geometry.js";
+import { electricSvg } from "../electric/symbols.js";
+import { location } from "../electric/sheet.js";
 
 const INK = "#1E293B";
 const LABEL_FORMATS = ["app", "pgd"];
@@ -107,6 +109,36 @@ function protocolLabel(group, obstacles, solids, taken){
   return null;
 }
 
+function relayRefs(elements){
+  const spots = { relayCoil: new Map(), relayContact: new Map() };
+  for (const element of elements) {
+    const map = spots[element.type];
+    if (!map || !element.name) continue;
+    if (!map.has(element.name)) map.set(element.name, []);
+    map.get(element.name).push(location(element.x + element.width / 2));
+  }
+  return (element) => {
+    if (element.type === "relayCoil") return spots.relayContact.get(element.name) ?? [];
+    if (element.type === "relayContact") return spots.relayCoil.get(element.name) ?? [];
+    return null;
+  };
+}
+
+function railLabels(pipe, points){
+  const rail = mediumOf(pipe.medium).rail;
+  if (!rail || points.length < 2) return [];
+  const labels = [];
+  const ends = [[pipe.from, points[0], points[1]], [pipe.to, points[points.length - 1], points[points.length - 2]]];
+  ends.forEach(([end, point, next], index) => {
+    if (end?.id !== undefined || end?.pipe !== undefined || point.y !== next.y) return;
+    const leftward = next.x > point.x;
+    const x = leftward ? point.x + 4 : point.x - 4;
+    labels.push({ kind: "label", id: `pipe_${pipe.id}_rail_${index}`, text: rail, x, y: point.y - 5, size: 12, anchor: leftward ? "start" : "end", color: INK,
+      box: { x: leftward ? x : x - 30, y: point.y - 17, width: 30, height: 14 } });
+  });
+  return labels;
+}
+
 export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   const routes = options.routes ?? computeRoutes(shapes);
   const byId = new Map(shapes.map((shape) => [shape.id, shape]));
@@ -116,7 +148,10 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   const equipment = shapes.filter((shape) => shape.kind === "equipment" && HYDRONIC_ELEMENTS[shape.type]);
   const bars = equipment.filter((element) => HYDRONIC_ELEMENTS[element.type].bar);
   const solids = equipment.filter((element) => !HYDRONIC_ELEMENTS[element.type].bar);
-  const { crossings, junctions, arrows } = pipeDecorations(pipes, style);
+  const { crossings: allCrossings, junctions, arrows } = pipeDecorations(pipes, style);
+  const electricPipes = new Set(pipes.filter(({ pipe }) => mediumOf(pipe.medium).electric).map(({ pipe }) => pipe.id));
+  const crossings = allCrossings.filter((crossing) => !electricPipes.has(crossing.upper) && !electricPipes.has(crossing.lower));
+  const refsOf = relayRefs(equipment);
   const items = [];
 
   for (const { pipe, route } of pipes) {
@@ -125,11 +160,11 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
       items.push({ kind: "gap", id: `pipe_${pipe.id}_gap_${index + 1}`, x: crossing.x - side / 2, y: crossing.y - side / 2, width: side, height: side });
     });
     const medium = mediumOf(pipe.medium);
-    items.push({ kind: "pipe", id: `pipe_${pipe.id}`, pipeId: pipe.id, points: touchRoute(route, pipe, byId), route, color: medium.color, width: pipeWidthOf(pipe, style), dash: !!medium.dash });
+    items.push({ kind: "pipe", id: `pipe_${pipe.id}`, pipeId: pipe.id, points: touchRoute(route, pipe, byId), route, color: medium.color, width: pipeWidthOf(pipe, style), dash: !!medium.dash, dashArray: medium.dashArray ?? null });
   }
 
   for (const { pipe } of pipes) {
-    if (mediumOf(pipe.medium).network) continue;
+    if (mediumOf(pipe.medium).network || mediumOf(pipe.medium).electric) continue;
     (arrows.get(pipe.id) ?? []).forEach((mark, index) => {
       items.push({ kind: "arrow", id: `pipe_${pipe.id}_arrow_${index + 1}`, pipeId: pipe.id, mark, size: mark.size ?? style.arrowSize, color: mediumOf(pipe.medium).color });
     });
@@ -138,6 +173,10 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   const networkPipes = new Set(pipes.filter(({ pipe }) => mediumOf(pipe.medium).network).map(({ pipe }) => pipe.id));
   junctions.forEach((junction, index) => {
     if (networkPipes.has(junction.pipeId)) return;
+    if (electricPipes.has(junction.pipeId)) {
+      items.push({ kind: "junction", id: `junction_${index + 1}`, x: junction.x, y: junction.y, radius: 3.5, dot: true });
+      return;
+    }
     items.push({ kind: "junction", id: `junction_${index + 1}`, x: junction.x, y: junction.y, radius: junction.radius ?? style.junctionRadius, stroke: junction.stroke ?? style.junctionWidth });
   });
 
@@ -163,7 +202,8 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
       args: elementArgs(element)
     };
     const spec = HYDRONIC_ELEMENTS[element.type];
-    items.push(spec.branch ? { kind: "branch", ...base, element, parts: branchParts(element) }
+    items.push(spec.electric ? { kind: "electric", ...base, svg: electricSvg(element, refsOf(element)) }
+      : spec.branch ? { kind: "branch", ...base, element, parts: branchParts(element) }
       : spec.device ? { kind: "device", ...base, device: spec.device, x: element.x, y: element.y, name: element.name ?? "", address: base.args.ip ?? "" }
       : { kind: "icon", ...base });
   }
@@ -206,6 +246,10 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
         ref: { pipeId: pipe.id, fittingId: fitting.id }, formats: LABEL_FORMATS
       });
     }
+  }
+
+  for (const { pipe, route } of pipes) {
+    if (electricPipes.has(pipe.id)) items.push(...railLabels(pipe, touchRoute(route, pipe, byId)));
   }
 
   const network = pipes

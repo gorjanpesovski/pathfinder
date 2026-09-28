@@ -117,7 +117,7 @@ const RENDER = {
       id: item.id,
       points: item.points.map((point) => `${point.x},${point.y}`).join(" "),
       stroke: item.color,
-      "stroke-dasharray": item.dash ? `${round(item.width * 2)} ${round(item.width * 1.5)}` : undefined,
+      "stroke-dasharray": item.dashArray ?? (item.dash ? `${round(item.width * 2)} ${round(item.width * 1.5)}` : undefined),
       "stroke-linejoin": "round",
       "stroke-width": item.width
     });
@@ -130,7 +130,8 @@ const RENDER = {
     points: arrowPoints(item.mark, item.size),
     "stroke-width": 0
   }),
-  junction: (item, style) => svgElement("circle", {
+  electric: (item) => item.svg,
+  junction: (item, style) => item.dot ? svgElement("circle", { cx: round(item.x), cy: round(item.y), fill: "#1E293B", id: item.id, r: item.radius }) : svgElement("circle", {
     "atv:refpx": round(item.x),
     "atv:refpy": round(item.y),
     cx: round(item.x),
