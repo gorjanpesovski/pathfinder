@@ -26,7 +26,7 @@ export function pipeWidthOf(pipe, style = HYDRONIC_STYLE){
   return pipe?.width ?? style.pipeWidth;
 }
 
-export function pipeScale(pipe, style = HYDRONIC_STYLE){
+function pipeScale(pipe, style = HYDRONIC_STYLE){
   return pipeWidthOf(pipe, style) / style.pipeWidth;
 }
 

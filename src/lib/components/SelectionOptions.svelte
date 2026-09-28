@@ -13,6 +13,7 @@
     onnamesize,
     ontankprobe,
     onbranchparam,
+    onbranchname,
     onmedium,
     onpipewidth,
     onreverse,
@@ -67,7 +68,8 @@
     cursor: pointer;
   }
 
-  input[type="number"] {
+  input[type="number"],
+  input.branch-name {
     width: 58px;
     height: 26px;
     padding: 2px 6px;
@@ -78,6 +80,10 @@
     font-size: 12px;
     color: #0f172a;
     box-sizing: border-box;
+  }
+
+  input.branch-name {
+    width: 170px;
   }
 
   input[type="range"] {
@@ -213,6 +219,11 @@
     <MediumPicker value={elements.barMedium} onchange={onmedium}/>
   {/if}
   {#if elements.branch}
+    <label>
+      Name
+      <input type="text" class="branch-name" value={elements.branch.name ?? ""}
+             onchange={(e) => onbranchname(e.currentTarget.value)} onkeydown={blurOnEnter}>
+    </label>
     <BranchOptions element={elements.branch} onchange={onbranchparam}/>
   {/if}
   <button type="button" onclick={onelementrotate}>Rotate 90°</button>

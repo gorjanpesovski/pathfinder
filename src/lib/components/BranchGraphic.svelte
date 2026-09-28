@@ -45,8 +45,8 @@
 {/snippet}
 
 {#snippet readout(cx, cy, text)}
-  <rect x={cx - 40} y={cy - 20} width="80" height="40" rx="2" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
-  <text x={cx} y={cy + 5.5} text-anchor="middle" font-family={FONT} font-size="16" fill={INK}>{text}</text>
+  <rect x={cx - 50} y={cy - 20} width="100" height="40" rx="2" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x={cx} y={cy + 7} text-anchor="middle" font-family={FONT} font-size="20" fill={INK}>{text}</text>
 {/snippet}
 
 <g transform="translate({element.x + element.width / 2} {element.y + element.height / 2}) rotate({rotationOf(element)}) translate({-upright.width / 2} {-upright.height / 2}) scale({upright.width / spec.width} {upright.height / spec.height})">

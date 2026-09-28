@@ -2,7 +2,7 @@ export const DOCUMENT_FORMAT = "pathfinder";
 export const DOCUMENT_VERSION = 1;
 export const AUTOSAVE_KEY = "pathfinder.autosave";
 
-export function serializeDocument({ app, apps, canvas, name = null }){
+export function serializeDocument({ app, apps, canvas, name = null, io = null }){
   return JSON.stringify({
     format: DOCUMENT_FORMAT,
     version: DOCUMENT_VERSION,
@@ -10,7 +10,8 @@ export function serializeDocument({ app, apps, canvas, name = null }){
     name,
     app,
     canvas,
-    apps
+    apps,
+    io
   });
 }
 
@@ -19,7 +20,11 @@ export function parseDocument(text){
   if (!data || data.format !== DOCUMENT_FORMAT || typeof data.apps !== "object") throw new Error("This is not a Pathfinder drawing.");
   if (data.version > DOCUMENT_VERSION) throw new Error("This drawing was saved by a newer version of Pathfinder.");
   const apps = Object.fromEntries(Object.entries(data.apps).map(([id, shapes]) => [id, Array.isArray(shapes) ? shapes : []]));
-  return { app: data.app, canvas: data.canvas ?? null, apps, name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : null };
+  const io = {
+    points: Array.isArray(data.io?.points) ? data.io.points : [],
+    others: Array.isArray(data.io?.others) ? data.io.others : []
+  };
+  return { app: data.app, canvas: data.canvas ?? null, apps, io, name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : null };
 }
 
 export function highestId(apps){

@@ -40,7 +40,7 @@
   import { APPS, appById, GENERAL_TOOLS } from "$lib/apps.js";
   import HydronicLayer from "$lib/components/HydronicLayer.svelte";
   import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, isHydronicType, isInlineType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
-  import { branchDefaults, alignBranch, snapBranch, branchRiders, isBranch } from "$lib/hydronic/branch.js";
+  import { branchDefaults, alignBranch, snapBranch, branchRiders, isBranch, branchParams } from "$lib/hydronic/branch.js";
   import { readoutLayout, readoutSpec } from "$lib/hydronic/readout.js";
   import { findPort, endpointPose, manhattanRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, findPipePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
   import { hydronicToSvg } from "$lib/hydronic/export.js";
@@ -53,6 +53,7 @@
   import { HYDRONIC_SPRITE, ICON_SIZES, ICON_SOURCES } from "$lib/hydronic/iconSprite.js";
   import { hydronicToPgd } from "$lib/hydronic/pgd.js";
   import SaveDialog from "$lib/components/SaveDialog.svelte";
+  import IoView from "$lib/components/IoView.svelte";
   import { summarizeSelection } from "$lib/tools/selectionSummary.js";
   import { junctionMedium } from "$lib/hydronic/inherit.js";
   import { alignToAnchor, trimLastStretch } from "$lib/hydronic/alignEnd.js";
@@ -648,6 +649,11 @@
       renameRoom();
       return true;
     }
+    if (repeated && isBranch(shape)) {
+      selectShape(shape.id);
+      setTimeout(() => document.querySelector("input.branch-name")?.select(), 0);
+      return true;
+    }
     if (repeated && shape.kind === "equipment" && hasNameLabel(shape)) {
       selectShape(shape.id);
       renamingElementId = shape.id;
@@ -1184,6 +1190,7 @@
   }
 
   function handleCopy(event){
+    if (ioVisible) return;
     if (!typingInto(event.target) && copyFurniture(event)) return;
     if (!typingInto(event.target) && copyFittingSelection(event)) return;
     if (typingInto(event.target) || selectionIds.length === 0) return;
@@ -1197,6 +1204,7 @@
   }
 
   function handleCut(event){
+    if (ioVisible) return;
     handleCopy(event);
     if (!event.defaultPrevented) return;
     if (clipboardFurniture && activeFurniture) removeFurniture();
@@ -1245,6 +1253,7 @@
   }
 
   function handlePaste(event){
+    if (ioVisible) return;
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
     const text = event.clipboardData?.getData("text/plain");
@@ -1898,6 +1907,13 @@
 
   function resetReadoutPosition(){
     for (const { fitting } of fittingGroup) delete fitting.readoutOffset;
+  }
+
+  function setBranchName(value){
+    for (const element of selectedElements()) {
+      if (!isBranch(element)) continue;
+      element.name = value.trim() || nextElementName(element.type, shapes.filter((shape) => shape !== element));
+    }
   }
 
   function setBranchParam(name, value){
@@ -2667,6 +2683,11 @@
   }
 
   let documents = {};
+  let ioPoints = $state([]);
+  let ioOthers = $state([]);
+  let ioOpen = $state(false);
+  let ioVisible = $derived(ioOpen && app === "hydronic");
+  let ioBranches = $derived(ioVisible ? shapes.filter(isBranch).map((shape, index) => ({ id: shape.id, label: shape.name?.trim() || `Branch ${index + 1}`, type: branchParams(shape).branch_type })) : []);
   let documentName = $state(null);
   let saveDialog = $state(null);
   let saveButton = $state(null);
@@ -2690,7 +2711,7 @@
   }
 
   function currentDocument(){
-    return serializeDocument({ app, apps: currentApps(), canvas: { width: canvasWidth, height: canvasHeight, fill: canvasFill }, name: documentName });
+    return serializeDocument({ app, apps: currentApps(), canvas: { width: canvasWidth, height: canvasHeight, fill: canvasFill }, name: documentName, io: { points: $state.snapshot(ioPoints), others: $state.snapshot(ioOthers) } });
   }
 
   function applyDocument(doc){
@@ -2716,6 +2737,8 @@
     }
     nextId = highestId(doc.apps) + 1;
     documentName = doc.name ?? null;
+    ioPoints = doc.io?.points ?? [];
+    ioOthers = doc.io?.others ?? [];
   }
 
   const autosaved = loadAutosave();
@@ -2822,6 +2845,11 @@
   function handleKeydown(event){
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) return;
+    if (ioVisible) {
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && (key === "s" || key === "o")) appKeydown(event);
+      return;
+    }
 
     if (roomKeydown(event)) return;
     if (pipeKeydown(event)) return;
@@ -3020,6 +3048,37 @@
     position: relative;
   }
 
+  .view-switch {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 8px;
+    background: #f1f5f9;
+  }
+
+  .view-switch button {
+    height: 28px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+  }
+
+  .view-switch button:hover {
+    color: #1d4ed8;
+  }
+
+  .view-switch button.current {
+    background: #ffffff;
+    color: #1d4ed8;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  }
+
   .header-actions {
     display: flex;
     align-items: center;
@@ -3189,6 +3248,7 @@
   }
 
   .viewer-section {
+    position: relative;
     grid-area: stage;
     height: 100%;
     background: #ffffff;
@@ -3778,6 +3838,12 @@
   </div>
 
   <AppSwitcher apps={APPS} current={app} onswitch={switchApp}/>
+  {#if app === "hydronic"}
+    <div class="view-switch" role="group" aria-label="View">
+      <button type="button" class:current={!ioOpen} aria-pressed={!ioOpen} onclick={() => ioOpen = false}>Drawing</button>
+      <button type="button" class:current={ioOpen} aria-pressed={ioOpen} onclick={() => ioOpen = true}>IO list</button>
+    </div>
+  {/if}
 
   <div class="header-actions">
     <button class="header-export secondary" type="button" onclick={openDrawing} title="Open a saved drawing (Ctrl+O)">Open</button>
@@ -4123,7 +4189,7 @@
                    onfittingflip={flipFitting} onfittingremove={removeFitting}
                    onfittingscale={setFittingScale} onreverse={reversePipes} onpipelayer={pipeLayer}
                    onresetsize={resetElementSize}
-                   onfittingreadout={setFittingReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam}
+                   onfittingreadout={setFittingReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName}
                    onelementrotate={rotateElements} onelementsize={setElementSize} ontankprobe={toggleTankProbe}
                    groups={selectionGroups} onnamesize={setNameSize} onfittingnamesize={setFittingNameSize}
                    onradius={setCornerRadius}
@@ -4311,6 +4377,11 @@
       <CanvasNotice message={notice}/>
 
     </div>
+
+    {#if ioVisible}
+      <IoView bind:points={ioPoints} bind:others={ioOthers} branches={ioBranches} onnotice={showFileNotice}/>
+      <CanvasNotice message={notice}/>
+    {/if}
 
     {#if elementsOpen}
       <ElementBar active={tool === "place" ? placing?.type : null} onpick={startPlacing}

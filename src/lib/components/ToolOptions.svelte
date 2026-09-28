@@ -28,6 +28,7 @@
     onfittingreadout,
     onreadoutreset,
     onbranchparam,
+    onbranchname,
     onelementrotate,
     onelementsize,
     ontankprobe,
@@ -326,7 +327,7 @@
     {/if}
     {#if groups}
       <SelectionOptions {groups} bind:keepRatio {onelementsize} {onelementrotate} {onresetsize} {onnamesize} {ontankprobe}
-                        {onbranchparam} {onmedium} {onpipewidth} {onreverse} {onpipelayer} {onfittingreadout} {onreadoutreset}
+                        {onbranchparam} {onbranchname} {onmedium} {onpipewidth} {onreverse} {onpipelayer} {onfittingreadout} {onreadoutreset}
                         {onfittingflip} {onfittingscale} {onfittingremove} {onfittingnamesize} {onedittext} {ontextstyle}/>
     {:else if furniture}
       <span>{furniture.label} · {furniture.roomName}</span>

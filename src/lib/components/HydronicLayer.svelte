@@ -396,7 +396,9 @@
 
   {#if placement?.kind === "equipment"}
     <g pointer-events="none" opacity={placement.valid ? 0.7 : 0.35}>
-      {@render body(placement.element)}
+      {#each buildScene([{ id: -1, kind: "equipment", ...placement.element }], style) as item (item.id)}
+        {@render visual(item)}
+      {/each}
       <rect x={placement.element.x} y={placement.element.y} width={placement.element.width} height={placement.element.height}
             fill="none" stroke={placement.valid ? PORT : "#DC2626"} stroke-width="1.5" stroke-dasharray="5 4"
             vector-effect="non-scaling-stroke"/>
