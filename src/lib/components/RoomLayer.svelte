@@ -2,20 +2,20 @@
 
 <script>
   import { polygonPath, formatMeters, rectPoints, samePoint, wouldCross, distance } from "$lib/tools/polygon.js";
-  import { shapePath } from "$lib/tools/path.js";
-  import { ROOM_STYLE, FLOOR_OPACITY, ROOM_OPACITY, isPolygonTool, labelPoint, roomColors } from "$lib/tools/rooms.js";
-  import { furnitureTransform } from "$lib/tools/furniture.js";
+  import { shapePath, visibleEdgesPath, hiddenEdgesPath, hasHiddenEdges } from "$lib/tools/path.js";
+  import { ROOM_STYLE, FLOOR_OPACITY, ROOM_OPACITY, isPolygonTool, roomLabelPoint, roomColors } from "$lib/tools/rooms.js";
+  import { furnitureTransform, furnitureHit } from "$lib/tools/furniture.js";
   import FurnitureShape from "./FurnitureShape.svelte";
   import { categoryLabel } from "$lib/tools/categories.js";
 
-  let { shapes, draft, cursor, zoom, selectedIds = [], interactive, style = ROOM_STYLE, closure = null, selectedFurniture = null } = $props();
+  let { shapes, draft, cursor, zoom, selectedIds = [], interactive, style = ROOM_STYLE, selectedFurniture = [], labelsMovable = false } = $props();
 
   const INVALID = "#DC2626";
   const HIGHLIGHT = "#F59E0B";
 
   let floors = $derived(shapes.filter((shape) => shape.kind === "floor"));
   let rooms = $derived(shapes.filter((shape) => shape.kind === "room"));
-  let labelled = $derived(rooms.filter((shape) => !shape.regulated));
+  let labelled = $derived(rooms.filter((shape) => !shape.regulated && !shape.hideName));
   let furnished = $derived(rooms.filter((shape) => shape.furniture?.length));
   let selected = $derived(shapes.filter((shape) => selectedIds.includes(shape.id) && (shape.kind === "floor" || shape.kind === "room")));
   let px = $derived(1 / zoom);
@@ -64,6 +64,11 @@
     fill: rgba(147, 197, 253, 0.35);
   }
 
+  text.movable {
+    pointer-events: all;
+    cursor: move;
+  }
+
   text {
     paint-order: stroke;
     stroke: #ffffff;
@@ -83,29 +88,49 @@
 
   {#each rooms as shape (shape.id)}
     {@const colors = roomColors(shape, style)}
-    <path d={shapePath(shape)} fill={colors.fill} fill-opacity={ROOM_OPACITY} stroke={colors.stroke}
+    {@const partial = hasHiddenEdges(shape)}
+    <path d={shapePath(shape)} fill={colors.fill} fill-opacity={ROOM_OPACITY} stroke={partial ? "none" : colors.stroke}
           stroke-width={style.roomWidth} stroke-linejoin="miter" data-shape-id={shape.id}
           class:hit={interactive && !shape.locked}
           pointer-events={interactive && !shape.locked ? "visiblePainted" : "none"}
           role="presentation"/>
+    {#if partial}
+      <path d={visibleEdgesPath(shape)} fill="none" stroke={colors.stroke} stroke-width={style.roomWidth}
+            stroke-linejoin="miter" stroke-linecap="square" pointer-events="none"/>
+      {#if interactive}
+        <path d={hiddenEdgesPath(shape)} fill="none" stroke={colors.stroke} stroke-width="1.5" stroke-dasharray="6 5"
+              opacity="0.6" vector-effect="non-scaling-stroke" pointer-events="none"/>
+      {/if}
+    {/if}
   {/each}
 
   {#each furnished as room (room.id)}
     {#each room.furniture as item (item.id)}
-      {@const selected = selectedFurniture?.roomId === room.id && selectedFurniture?.itemId === item.id}
+      {@const selected = selectedFurniture.some((entry) => entry.roomId === room.id && entry.itemId === item.id)}
       <g transform={furnitureTransform(item)} opacity={style.furnitureOpacity ?? 0.5}>
         <FurnitureShape {item}/>
-        <rect class="furniture-hit" x={-item.width / 2} y={-item.height / 2} width={item.width} height={item.height}
+        {#if furnitureHit(item)}
+          <path class="furniture-hit" d={furnitureHit(item)}
+                stroke={selected ? HIGHLIGHT : "none"} stroke-width="2" vector-effect="non-scaling-stroke"
+                pointer-events={interactive && !room.locked ? "all" : "none"}
+                data-shape-id={room.id} data-furniture-id={item.id} role="presentation"/>
+        {:else}
+          <rect class="furniture-hit" x={-item.width / 2} y={-item.height / 2} width={item.width} height={item.height}
               stroke={selected ? HIGHLIGHT : "none"} stroke-width="2" vector-effect="non-scaling-stroke"
               pointer-events={interactive && !room.locked ? "all" : "none"}
               data-shape-id={room.id} data-furniture-id={item.id} role="presentation"/>
+        {/if}
       </g>
     {/each}
   {/each}
 
   {#each floors as shape (shape.id)}
-    <path d={shapePath(shape)} fill="none" stroke={style.floorStroke} stroke-width={style.floorWidth}
-          stroke-linejoin="miter" data-shape-id={shape.id}
+    {#if hasHiddenEdges(shape) && interactive}
+      <path d={hiddenEdgesPath(shape)} fill="none" stroke={style.floorStroke} stroke-width="1.5" stroke-dasharray="6 5"
+            opacity="0.6" vector-effect="non-scaling-stroke" pointer-events="none"/>
+    {/if}
+    <path d={visibleEdgesPath(shape)} fill="none" stroke={style.floorStroke} stroke-width={style.floorWidth}
+          stroke-linejoin="miter" stroke-linecap={hasHiddenEdges(shape) ? "square" : undefined} data-shape-id={shape.id}
           class:hit={interactive && !shape.locked}
           pointer-events={interactive && !shape.locked ? "stroke" : "none"} role="presentation"/>
   {/each}
@@ -116,19 +141,16 @@
   {/each}
 
   {#each labelled as shape (shape.id)}
-    {@const center = labelPoint(shape)}
-    <text x={center.x} y={center.y + (shape.category ? -2 : 4.5) * px} text-anchor="middle" font-family={style.labelFont}
-          font-size={13 * px} font-weight="600" fill={style.labelColor} stroke-width={3 * px}>{shape.name}</text>
+    {@const center = roomLabelPoint(shape, style)}
+    {@const size = shape.labelSize ?? style.labelSize}
+    {@const movable = labelsMovable && interactive && !shape.locked && selectedIds.includes(shape.id)}
+    <text class:movable x={center.x} data-shape-id={movable ? shape.id : undefined} data-room-label={movable ? "" : undefined} role="presentation" y={center.y + (shape.category ? -0.15 : 0.35) * size} text-anchor="middle" font-family={style.labelFont}
+          font-size={size} font-weight="600" fill={style.labelColor} stroke-width={size * 0.22}>{shape.name}</text>
     {#if shape.category}
-      <text x={center.x} y={center.y + 12 * px} text-anchor="middle" font-family={style.labelFont}
-            font-size={10.5 * px} fill={roomColors(shape, style).stroke} stroke-width={3 * px}>{categoryLabel(shape.category)}</text>
+      <text x={center.x} y={center.y + 0.9 * size} text-anchor="middle" font-family={style.labelFont}
+            font-size={size * 0.75} fill={roomColors(shape, style).stroke} stroke-width={size * 0.2}>{categoryLabel(shape.category)}</text>
     {/if}
   {/each}
-
-  {#if closure}
-    <path d={polygonPath(closure.points)} fill={style.roomStroke} fill-opacity="0.12" stroke={style.roomStroke}
-          stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" pointer-events="none"/>
-  {/if}
 
   {#if preview}
     <g pointer-events="none">
@@ -157,7 +179,7 @@
       {/if}
       <text x={cursor.x + 14 * px} y={cursor.y - 12 * px} font-family="inherit" font-size={12 * px} font-weight="600"
             fill={preview.kind === "poly" && preview.invalid ? INVALID : "#0F172A"} stroke-width={3 * px}>
-        {closure ? "Close along floor" : preview.kind === "poly" && preview.invalid ? "Edges would cross" : preview.label}
+        {preview.kind === "poly" && preview.invalid ? "Edges would cross" : preview.label}
       </text>
     </g>
   {/if}

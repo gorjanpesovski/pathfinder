@@ -18,18 +18,19 @@
   import { newText, refitText, describeText, textToSvg } from "$lib/tools/text.js";
   import PenPreview from "$lib/components/PenPreview.svelte";
   import { samePoint, rectPoints, constrainOrtho, nearestVertex, wouldCross, closingCrosses, removeCollinear, polygonSelfIntersects, polygonBounds, maxCornerRadius, distance, pointInPolygon } from "$lib/tools/polygon.js";
-  import { isRoomTool, isPolygonTool, isRoomShape, roomKindLabel, nextRoomName, describeRoom, snapVertices, snapToEdges, labelPoint, layered, roomsToSvg, VERTEX_SNAP_PX, ROOM_STYLE, thermostatFit, thermostatGlobalScale } from "$lib/tools/rooms.js";
+  import { isRoomTool, isPolygonTool, isRoomShape, roomKindLabel, nextRoomName, describeRoom, snapVertices, snapToEdges, labelPoint, roomLabelPoint, layered, roomsToSvg, VERTEX_SNAP_PX, ROOM_STYLE, thermostatFit, thermostatGlobalScale } from "$lib/tools/rooms.js";
   import { hasCurves, outlinePoints, segmentCurved } from "$lib/tools/path.js";
   import { History } from "$lib/history.svelte.js";
   import { alignOffsets, distributeOffsets, contains, ALIGN_ACTIONS, DISTRIBUTE_ACTIONS } from "$lib/tools/align.js";
   import { ROOM_CATEGORIES, defaultCategoryColors } from "$lib/tools/categories.js";
-  import { suggestDoor, projectDoor, doorGeometry, maxDoorWidth, MIN_DOOR_WIDTH } from "$lib/tools/doors.js";
+  import { suggestDoor, projectDoor, doorGeometry, maxDoorWidth, MIN_DOOR_WIDTH, DOOR_ELEMENTS, isDoorElement } from "$lib/tools/doors.js";
+  import { furnitureItem } from "$lib/tools/transform.js";
   import DoorLayer from "$lib/components/DoorLayer.svelte";
   import ImageLayer from "$lib/components/ImageLayer.svelte";
-  import ImageFrame from "$lib/components/ImageFrame.svelte";
-  import { floorClosure } from "$lib/tools/floorClose.js";
+  import TransformFrame from "$lib/components/TransformFrame.svelte";
+  import { scaling, rotating, mirroring, transformShape, transformPort } from "$lib/tools/transform.js";
   import { furnishForCategory, FURNISHABLE, usableRect, wallSides } from "$lib/tools/populate.js";
-  import { FURNITURE, furnitureFits, newFurniture } from "$lib/tools/furniture.js";
+  import { FURNITURE, furnitureFits, newFurniture, furnitureCorners } from "$lib/tools/furniture.js";
   import ElementBar from "$lib/components/ElementBar.svelte";
   import PlacementGhost from "$lib/components/PlacementGhost.svelte";
   import ThermostatLayer from "$lib/components/ThermostatLayer.svelte";
@@ -380,7 +381,6 @@
   let editableShapes = $derived(tool === "select"
     ? selectedShapes.filter((shape) => ["floor", "room", "curve", "wall"].includes(shape.kind) && (!shape.groupId || selectionIds.length === 1))
     : []);
-  let selectedImages = $derived(tool === "select" ? selectedShapes.filter((shape) => shape.kind === "image") : []);
 
   function sameKey(a, b){
     return a.id === b.id && a.index === b.index;
@@ -393,8 +393,7 @@
   function clearSubSelection(){
     selectedPoints = [];
     selectedEdges = [];
-    selectedDoor = null;
-    selectedFurniture = null;
+    selectedParts = [];
     selectedFitting = null;
     extraFittings = [];
   }
@@ -402,8 +401,7 @@
   function clearShapeSubSelection(){
     selectedPoints = [];
     selectedEdges = [];
-    selectedDoor = null;
-    selectedFurniture = null;
+    selectedParts = [];
   }
 
   function withGroups(ids){
@@ -414,6 +412,7 @@
 
   function selectShape(id, additive = false, deep = false){
     const members = deep ? [id] : withGroups([id]);
+    selectedParts = [];
     if (!additive) {
       selectedIds = members;
       selectedId = id;
@@ -500,16 +499,92 @@
       canGroup: unitCount >= 2,
       canUngroup: selectedShapes.some((entry) => entry.groupId),
       thermostat: thermostatState(selectedShapes),
+      nameShown: (() => {
+        const rooms = selectedShapes.filter((entry) => entry.kind === "room");
+        const shown = rooms.filter((entry) => !entry.hideName).length;
+        return shown === 0 ? "none" : shown === rooms.length ? "all" : "mixed";
+      })(),
       furnish: selectionIds.length === 1 && shape.kind === "room"
         ? { supported: FURNISHABLE.includes(shape.category), count: shape.furniture?.length ?? 0 }
         : null,
       roomCount: selectedShapes.filter((entry) => entry.kind === "room").length,
+      kinds: selectedShapes.every((entry) => entry.kind === "floor" || entry.kind === "room")
+        ? (selectedShapes.every((entry) => entry.kind === "floor") ? "floor" : selectedShapes.every((entry) => entry.kind === "room") ? "room" : "mixed")
+        : null,
+      labelSize: commonValue(selectedShapes.filter((entry) => entry.kind === "room").map((entry) => entry.labelSize ?? roomStyle.labelSize)),
+      wallEdges: activeEdges.filter((key) => ["room", "floor"].includes(shapeById(key.id)?.kind)).length,
+      edgesHidden: edgeHiddenState(),
       pipeCount: pipes.length,
       pipeMedium: pipes[0]?.medium ?? pipeMedium,
       pipeWidth: pipes[0]?.width ?? HYDRONIC_STYLE.pipeWidth,
       category: commonCategory(selectedShapes)
     };
   });
+
+  function commonValue(list){
+    return list.length && list.every((value) => value === list[0]) ? list[0] : null;
+  }
+
+  function edgeHiddenState(){
+    const keys = activeEdges.filter((key) => ["room", "floor"].includes(shapeById(key.id)?.kind));
+    const hidden = keys.filter((key) => shapeById(key.id).hiddenEdges?.includes(key.index)).length;
+    return hidden === 0 ? "none" : hidden === keys.length ? "all" : "mixed";
+  }
+
+  function edgeEnds(shape, index){
+    return [shape.points[index], shape.points[(index + 1) % shape.points.length]];
+  }
+
+  function twinEdges(shape, index){
+    const [a, b] = edgeEnds(shape, index);
+    const twins = [];
+    for (const other of shapes) {
+      if (other === shape || other.kind !== "room" || shape.kind !== "room") continue;
+      other.points.forEach((_, edge) => {
+        const [c, d] = edgeEnds(other, edge);
+        if ((samePoint(a, c) && samePoint(b, d)) || (samePoint(a, d) && samePoint(b, c))) twins.push({ shape: other, index: edge });
+      });
+    }
+    return twins;
+  }
+
+  function setEdgeHidden(shape, index, hide){
+    const hidden = new Set(shape.hiddenEdges ?? []);
+    if (hide) hidden.add(index);
+    else hidden.delete(index);
+    if (hidden.size) shape.hiddenEdges = [...hidden].sort((a, b) => a - b);
+    else delete shape.hiddenEdges;
+  }
+
+  function hideEdges(hide){
+    for (const key of activeEdges) {
+      const shape = shapeById(key.id);
+      if (shape?.kind !== "room" && shape?.kind !== "floor") continue;
+      setEdgeHidden(shape, key.index, hide);
+      for (const twin of twinEdges(shape, key.index)) setEdgeHidden(twin.shape, twin.index, hide);
+    }
+  }
+
+  function setShapeKind(kind){
+    for (const shape of selectedShapes) {
+      if (shape.kind === kind || (shape.kind !== "floor" && shape.kind !== "room")) continue;
+      shape.kind = kind;
+      if (kind === "room" && !shape.name) shape.name = nextRoomName(shapes);
+    }
+  }
+
+  function showRoomNames(show){
+    for (const shape of selectedShapes) {
+      if (shape.kind !== "room") continue;
+      if (show) delete shape.hideName;
+      else shape.hideName = true;
+    }
+  }
+
+  function setLabelSize(value){
+    editKey = "label-size";
+    for (const shape of selectedShapes) if (shape.kind === "room") shape.labelSize = value;
+  }
 
   function setCornerRadius(value){
     editKey = "radius";
@@ -570,7 +645,136 @@
   let lastPress = { id: null, time: 0 };
   let lastFittingPress = { key: null, time: 0 };
 
+  function routeBox(pipe){
+    const route = pipeRoutes.get(pipe.id);
+    return route?.length ? polygonBounds(route) : null;
+  }
+
+  let transformBox = $derived.by(() => {
+    if (tool === "select" && !selectedShapes.length && partGroup.length) {
+      const boxes = partGroup.map(partBox).filter(Boolean);
+      return boxes.length ? unionBox(boxes) : null;
+    }
+    if (tool !== "select" || activePoints.length || activeEdges.length || !selectedShapes.length) return null;
+    const boxes = selectedShapes.map((shape) => shape.kind === "pipe" ? routeBox(shape) : shapeBox(shape)).filter(Boolean);
+    return boxes.length ? unionBox(boxes) : null;
+  });
+
+  function transformGroup(){
+    const carried = [...selectionIds, ...branchRiders(shapes, selectionIds)];
+    const ids = [...new Set([...carried, ...ridingPipes(shapes, carried)])];
+    const entries = ids.map(shapeById).filter(Boolean).map((shape) => ({ shape, original: $state.snapshot(shape) }));
+    const elements = new Map(entries.filter((entry) => entry.shape.kind === "equipment").map((entry) => [entry.shape.id, entry.original]));
+    const ends = [];
+    for (const pipe of shapes) {
+      if (pipe.kind !== "pipe") continue;
+      for (const key of ["from", "to"]) {
+        if (pipe[key]?.id !== undefined && elements.has(pipe[key].id)) ends.push({ pipe, key, end: $state.snapshot(pipe[key]), element: elements.get(pipe[key].id) });
+      }
+    }
+    return { entries, ends };
+  }
+
+  function applyTransformation({ entries, ends }, t){
+    for (const entry of entries) Object.assign(entry.shape, transformShape(entry.original, t));
+    for (const item of ends) item.pipe[item.key] = transformPort(item.end, item.element, shapeById(item.end.id), t);
+  }
+
+  function scaleRatio(value, start, anchor){
+    const base = start - anchor;
+    if (Math.abs(base) < 1e-6) return 1;
+    return Math.max(0.05, (value - anchor) / base);
+  }
+
+  function beginTransform(event, handle){
+    const box = transformBox;
+    if (!box) return;
+    if (handle !== "rotate" && handle.length === 2 && selectedShapes.length === 1 && selectedShapes[0].kind === "equipment") {
+      beginElementScale(event, selectedShapes[0], handle);
+      return;
+    }
+    const start = toCanvas(event);
+    if (!start) return;
+    const parts = !selectedShapes.length ? partEntries() : null;
+    const group = parts ? null : transformGroup();
+    const apply = (t) => parts ? transformParts(parts, t) : applyTransformation(group, t);
+    const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const rigid = !!group?.entries.some((entry) => entry.shape.kind === "equipment" || entry.shape.kind === "pipe");
+    history.beginGesture();
+    dragPointer(svgEl, event, {
+      onmove: (next) => {
+        const point = toCanvas(next);
+        if (!point) return;
+        if (handle === "rotate") {
+          const raw = (Math.atan2(point.y - center.y, point.x - center.x) - Math.atan2(start.y - center.y, start.x - center.x)) * 180 / Math.PI;
+          const step = rigid ? 90 : next.shiftKey ? 15 : 1;
+          apply(rotating(center, Math.round(raw / step) * step));
+          return;
+        }
+        const anchor = {
+          x: handle.includes("w") ? box.x + box.width : handle.includes("e") ? box.x : center.x,
+          y: handle.includes("n") ? box.y + box.height : handle.includes("s") ? box.y : center.y
+        };
+        let sx = handle.includes("w") || handle.includes("e") ? scaleRatio(point.x, start.x, anchor.x) : 1;
+        let sy = handle.includes("n") || handle.includes("s") ? scaleRatio(point.y, start.y, anchor.y) : 1;
+        if (handle.length === 2 && !next.shiftKey) sx = sy = Math.max(sx, sy);
+        apply(scaling(anchor, sx, sy));
+      },
+      onend: () => history.endGesture()
+    });
+  }
+
+  function moveInList(list, picked, mode){
+    if (mode === "front") return [...list.filter((entry) => !picked(entry)), ...list.filter(picked)];
+    if (mode === "back") return [...list.filter(picked), ...list.filter((entry) => !picked(entry))];
+    const next = [...list];
+    if (mode === "forward") {
+      for (let index = next.length - 2; index >= 0; index -= 1) {
+        if (picked(next[index]) && !picked(next[index + 1])) [next[index], next[index + 1]] = [next[index + 1], next[index]];
+      }
+    } else {
+      for (let index = 1; index < next.length; index += 1) {
+        if (picked(next[index]) && !picked(next[index - 1])) [next[index], next[index - 1]] = [next[index - 1], next[index]];
+      }
+    }
+    return next;
+  }
+
+  function reorderSelection(mode){
+    if (partGroup.length) {
+      const keys = new Set(partGroup.map((part) => `${part.kind}:${part.roomId}:${part.id}`));
+      for (const room of new Set(partGroup.map((part) => part.room))) {
+        if (room.furniture) room.furniture = moveInList(room.furniture, (item) => keys.has(`furniture:${room.id}:${item.id}`), mode);
+        if (room.doors) room.doors = moveInList(room.doors, (door) => keys.has(`door:${room.id}:${door.id}`), mode);
+      }
+      return;
+    }
+    const ids = new Set(selectionIds);
+    shapes = moveInList(shapes, (shape) => ids.has(shape.id), mode);
+  }
+
+  function rotateSelection(){
+    const box = transformBox;
+    if (!box) return;
+    const t = rotating({ x: box.x + box.width / 2, y: box.y + box.height / 2 }, 90);
+    if (!selectedShapes.length) transformParts(partEntries(), t);
+    else applyTransformation(transformGroup(), t);
+  }
+
+  function flipSelection(axis){
+    const box = transformBox;
+    if (!box) return;
+    const t = mirroring({ x: box.x + box.width / 2, y: box.y + box.height / 2 }, axis);
+    if (!selectedShapes.length) transformParts(partEntries(), t);
+    else applyTransformation(transformGroup(), t);
+  }
+
   function beginMove(event){
+    const handle = event.target instanceof Element ? event.target.closest("[data-transform]") : null;
+    if (handle) {
+      beginTransform(event, handle.dataset.transform);
+      return true;
+    }
     const target = event.target instanceof Element ? event.target.closest("[data-shape-id]") : null;
     const shape = target ? shapeById(Number(target.dataset.shapeId)) : null;
     if (!shape) return false;
@@ -617,12 +821,8 @@
       beginPipeEdgeDrag(event, shape, Number(target.dataset.pipeEdge));
       return true;
     }
-    if (target.dataset.elementHandle) {
-      beginElementScale(event, shape, target.dataset.elementHandle);
-      return true;
-    }
-    if (target.dataset.imageHandle) {
-      beginImageScale(event, shape, target.dataset.imageHandle);
+    if (target.dataset.roomLabel !== undefined) {
+      beginRoomLabelDrag(event, shape);
       return true;
     }
     if (target.dataset.thermostat !== undefined) {
@@ -980,6 +1180,10 @@
   }
 
   function alignSelection(mode){
+    if (partGroup.length >= 1) {
+      alignParts(mode);
+      return;
+    }
     if (fittingGroup.length && selectionIds.length) {
       alignMixed(mode);
       return;
@@ -1031,6 +1235,10 @@
   }
 
   function distributeSelection(axis){
+    if (partGroup.length >= 3) {
+      distributeParts(axis);
+      return;
+    }
     if (fittingGroup.length && selectionIds.length) {
       distributeMixed(axis);
       return;
@@ -1061,6 +1269,40 @@
       if (on) shape.regulated = true;
       else delete shape.regulated;
     }
+  }
+
+  let lastLabelPress = 0;
+
+  function beginRoomLabelDrag(event, room){
+    const now = performance.now();
+    if (now - lastLabelPress < 400) {
+      lastLabelPress = 0;
+      selectShape(room.id);
+      renameRoom();
+      return;
+    }
+    lastLabelPress = now;
+    const start = toCanvas(event);
+    if (!start) return;
+    const base = labelPoint(room);
+    const current = roomLabelPoint(room, roomStyle);
+    const original = { dx: current.x - base.x, dy: current.y - base.y };
+    const outline = outlinePoints(room);
+    const step = snapToGrid ? gridSize / 2 : 1;
+
+    history.beginGesture();
+    dragPointer(svgEl, event, {
+      onmove: (next) => {
+        const point = toCanvas(next);
+        if (!point) return;
+        const candidate = {
+          dx: round2(original.dx + Math.round((point.x - start.x) / step) * step),
+          dy: round2(original.dy + Math.round((point.y - start.y) / step) * step)
+        };
+        if (pointInPolygon({ x: base.x + candidate.dx, y: base.y + candidate.dy }, outline)) room.labelOffset = candidate;
+      },
+      onend: () => history.endGesture()
+    });
   }
 
   function beginThermostatDrag(event, room){
@@ -1154,8 +1396,8 @@
   }
 
   function copyFurniture(event){
-    if (!activeFurniture) return false;
-    clipboardFurniture = { roomId: activeFurniture.room.id, item: $state.snapshot(activeFurniture.item) };
+    if (!partGroup.length) return false;
+    clipboardFurniture = partGroup.map((part) => ({ kind: part.kind, roomId: part.roomId, item: $state.snapshot(part.item), center: part.kind === "door" ? doorCenter(part.room, part.item) : null }));
     clipboardShapes = null;
     clipboardFittings = null;
     clipboardToken = `${Date.now()}`;
@@ -1166,37 +1408,105 @@
     return true;
   }
 
-  function pasteFurniture(){
-    const source = clipboardFurniture.item;
-    const hovered = pointer ? roomAt(pointer) : null;
-    const atPointer = !!hovered && !hovered.locked && hovered.id !== clipboardFurniture.roomId;
-    const room = atPointer ? hovered : shapeById(clipboardFurniture.roomId);
-    if (!room || room.kind !== "room" || room.locked) return;
+  function partCenter(entry){
+    return entry.kind === "door" ? entry.center : { x: entry.item.cx, y: entry.item.cy };
+  }
+
+  function doorClashes(room, door, extra = []){
+    const [a, b] = edgeEnds(room, door.edge);
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    return [...(room.doors ?? []), ...extra].some((other) => other.edge === door.edge
+      && Math.abs(other.t - door.t) * length < (other.width + door.width) / 2 + 10);
+  }
+
+  function pasteDoor(entry, room, target, taken){
     const step = snapToGrid ? gridSize : 20;
-    const origin = atPointer
-      ? { cx: Math.round(pointer.x / step) * step, cy: Math.round(pointer.y / step) * step }
-      : { cx: source.cx, cy: source.cy };
-    const key = atPointer ? `${room.id}:${origin.cx}:${origin.cy}` : "source";
+    const first = projectDoor(room, target, entry.item.width);
+    if (!first) return null;
+    const [a, b] = edgeEnds(room, first.edge);
+    const u = { x: (b.x - a.x), y: (b.y - a.y) };
+    const length = Math.hypot(u.x, u.y);
+    const base = { x: a.x + u.x * first.t, y: a.y + u.y * first.t };
+    for (let index = 0; index < 200; index += 1) {
+      const shift = (index % 2 ? 1 : -1) * Math.ceil(index / 2) * step;
+      const point = { x: base.x + u.x / length * shift, y: base.y + u.y / length * shift };
+      const placed = projectDoor(room, point, entry.item.width);
+      if (!placed) continue;
+      const door = { ...entry.item, ...placed };
+      if (!doorClashes(room, door, taken)) return door;
+    }
+    return null;
+  }
+
+  function pasteFurniture(){
+    const entries = clipboardFurniture.filter((entry) => shapeById(entry.roomId) || pointer);
+    if (!entries.length) return;
+    const hovered = pointer ? roomAt(pointer) : null;
+    const sources = new Set(entries.map((entry) => entry.roomId));
+    const atPointer = !!hovered && !hovered.locked && !sources.has(hovered.id);
+    const step = snapToGrid ? gridSize : 20;
+    const centers = entries.map(partCenter).filter(Boolean);
+    const middle = { x: centers.reduce((sum, p) => sum + p.x, 0) / centers.length, y: centers.reduce((sum, p) => sum + p.y, 0) / centers.length };
+    const origin = atPointer ? { x: Math.round(pointer.x / step) * step, y: Math.round(pointer.y / step) * step } : middle;
+    const key = atPointer ? `${hovered.id}:${origin.x}:${origin.y}` : "source";
     if (key !== pasteKey) {
       pasteKey = key;
       pasteCount = 0;
     }
     pasteCount += 1;
     const first = atPointer ? pasteCount - 1 : pasteCount;
+    const roomFor = (entry) => {
+      const room = atPointer ? hovered : shapeById(entry.roomId);
+      return room?.kind === "room" && !room.locked ? room : null;
+    };
+    const furniture = entries.filter((entry) => entry.kind === "furniture");
+    const doors = entries.filter((entry) => entry.kind === "door");
+    const keys = [];
 
-    for (let ring = first; ring < first + 40; ring += 1) {
-      for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [0, 1], [-1, 0], [0, -1]]) {
-        const candidate = { ...source, cx: round2(origin.cx + sx * ring * step), cy: round2(origin.cy + sy * ring * step) };
-        if (!furnitureFits(room, candidate)) continue;
+    if (furniture.length) {
+      let placed = null;
+      for (let ring = first; ring < first + 40 && !placed; ring += 1) {
+        for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [0, 1], [-1, 0], [0, -1]]) {
+          const dx = origin.x - middle.x + sx * ring * step;
+          const dy = origin.y - middle.y + sy * ring * step;
+          const attempt = furniture.map((entry) => {
+            const room = roomFor(entry);
+            const item = room ? { ...entry.item, cx: round2(entry.item.cx + dx), cy: round2(entry.item.cy + dy) } : null;
+            return item && furnitureFits(room, item) ? { room, item } : null;
+          });
+          if (attempt.every(Boolean)) {
+            placed = attempt;
+            break;
+          }
+        }
+      }
+      for (const { room, item } of placed ?? []) {
         const id = nextId++;
-        room.furniture = [...(room.furniture ?? []), { ...candidate, id }];
-        if (tool !== "select") pickTool("select");
-        selectedId = null;
-        clearSubSelection();
-        selectedFurniture = { roomId: room.id, itemId: id };
-        return;
+        room.furniture = [...(room.furniture ?? []), { ...item, id }];
+        keys.push({ kind: "furniture", roomId: room.id, id });
       }
     }
+
+    const shift = { x: origin.x - middle.x, y: origin.y - middle.y };
+    const taken = new Map();
+    for (const entry of doors) {
+      const room = roomFor(entry);
+      if (!room || !entry.center) continue;
+      const list = taken.get(room.id) ?? [];
+      const door = pasteDoor(entry, room, { x: entry.center.x + shift.x, y: entry.center.y + shift.y }, list);
+      if (!door) continue;
+      list.push(door);
+      taken.set(room.id, list);
+      const id = nextId++;
+      room.doors = [...(room.doors ?? []), { ...door, id }];
+      keys.push({ kind: "door", roomId: room.id, id });
+    }
+
+    if (!keys.length) return;
+    if (tool !== "select") pickTool("select");
+    selectedId = null;
+    clearSubSelection();
+    selectedParts = keys;
   }
 
   function handleCopy(event){
@@ -1217,7 +1527,7 @@
     if (ioVisible) return;
     handleCopy(event);
     if (!event.defaultPrevented) return;
-    if (clipboardFurniture && activeFurniture) removeFurniture();
+    if (clipboardFurniture && partGroup.length) removeParts();
     else if (clipboardFittings && activeFitting) removeFitting();
     else deleteSelection();
   }
@@ -1319,52 +1629,134 @@
     selectedShape.opacity = value;
   }
 
-  function beginImageScale(event, image, corner){
-    const original = { x: image.x, y: image.y, width: image.width, height: image.height };
-    const aspect = original.width / original.height;
-    const left = corner.includes("w");
-    const top = corner.includes("n");
-    const anchor = { x: left ? original.x + original.width : original.x, y: top ? original.y + original.height : original.y };
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        const width = Math.max(20, Math.abs(point.x - anchor.x));
-        const height = next.shiftKey ? Math.max(20, Math.abs(point.y - anchor.y)) : width / aspect;
-        Object.assign(image, {
-          x: round2(left ? anchor.x - width : anchor.x),
-          y: round2(top ? anchor.y - height : anchor.y),
-          width: round2(width),
-          height: round2(height)
-        });
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
   function lockSelection(){
     for (const shape of selectedShapes) shape.locked = true;
     selectedId = null;
     clearSubSelection();
   }
 
-  let selectedDoor = $state(null);
+  let selectedParts = $state([]);
 
-  let activeDoor = $derived.by(() => {
-    if (!selectedDoor || tool !== "select") return null;
-    const room = shapeById(selectedDoor.roomId);
-    const door = room?.doors?.find((entry) => entry.id === selectedDoor.doorId);
-    return room && door && !room.locked ? { room, door } : null;
-  });
+  function resolvePart(key){
+    const room = shapeById(key.roomId);
+    if (!room || room.locked) return null;
+    const item = (key.kind === "door" ? room.doors : room.furniture)?.find((entry) => entry.id === key.id);
+    return item ? { ...key, room, item } : null;
+  }
 
-  let doorOptions = $derived(activeDoor ? {
-    roomName: activeDoor.room.name,
-    hinge: activeDoor.door.hinge,
-    swing: activeDoor.door.swing,
-    width: activeDoor.door.width,
-    maxWidth: Math.max(MIN_DOOR_WIDTH, maxDoorWidth(activeDoor.room, activeDoor.door.edge))
+  let partGroup = $derived(tool === "select" ? selectedParts.map(resolvePart).filter(Boolean) : []);
+  let furnitureGroup = $derived(partGroup.filter((part) => part.kind === "furniture"));
+  let doorGroup = $derived(partGroup.filter((part) => part.kind === "door"));
+
+  let activeDoor = $derived(partGroup.length === 1 && partGroup[0].kind === "door" ? { room: partGroup[0].room, door: partGroup[0].item } : null);
+
+  let partOptions = $derived(partGroup.length ? { count: partGroup.length, furniture: furnitureGroup.length, doors: doorGroup.length } : null);
+
+  function samePart(a, b){
+    return a.kind === b.kind && a.roomId === b.roomId && a.id === b.id;
+  }
+
+  function pickPart(key, additive){
+    selectedId = null;
+    selectedIds = [];
+    selectedPoints = [];
+    selectedEdges = [];
+    selectedFitting = null;
+    extraFittings = [];
+    if (additive) {
+      selectedParts = selectedParts.some((entry) => samePart(entry, key))
+        ? selectedParts.filter((entry) => !samePart(entry, key))
+        : [...selectedParts, key];
+      return false;
+    }
+    if (!selectedParts.some((entry) => samePart(entry, key))) selectedParts = [key];
+    return true;
+  }
+
+  function partBox(part){
+    if (part.kind === "furniture") return polygonBounds(furnitureCorners(part.item));
+    const geometry = doorGeometry(part.room, part.item);
+    return geometry ? polygonBounds([geometry.p0, geometry.p1]) : null;
+  }
+
+  function shiftParts(parts, offsets){
+    parts.forEach((part, index) => {
+      const { dx, dy } = offsets[index];
+      if (!dx && !dy) return;
+      if (part.kind === "furniture") {
+        part.item.cx = round2(part.item.cx + dx);
+        part.item.cy = round2(part.item.cy + dy);
+        return;
+      }
+      const center = doorCenter(part.room, part.item);
+      if (!center) return;
+      const placed = projectDoor(part.room, { x: center.x + dx, y: center.y + dy }, part.item.width);
+      if (placed) Object.assign(part.item, placed);
+    });
+  }
+
+  function roomInterior(room){
+    const box = polygonBounds(outlinePoints(room));
+    const inset = roomStyle.roomWidth / 2;
+    return { x: box.x + inset, y: box.y + inset, width: box.width - inset * 2, height: box.height - inset * 2 };
+  }
+
+  function alignParts(mode){
+    const parts = partGroup.filter(partBox);
+    const boxes = parts.map(partBox);
+    if (!boxes.length) return;
+    const frame = boxes.length === 1 ? roomInterior(parts[0].room) : unionBox(boxes);
+    shiftParts(parts, alignOffsets(boxes, mode, frame));
+  }
+
+  function distributeParts(axis){
+    const parts = partGroup.filter(partBox);
+    const boxes = parts.map(partBox);
+    if (boxes.length < 3) return;
+    shiftParts(parts, distributeOffsets(boxes, axis));
+  }
+
+  function removeParts(){
+    for (const part of partGroup) {
+      if (part.kind === "door") part.room.doors = part.room.doors.filter((entry) => entry.id !== part.id);
+      else part.room.furniture = part.room.furniture.filter((entry) => entry.id !== part.id);
+    }
+    selectedParts = [];
+  }
+
+  function partEntries(){
+    return partGroup.map((part) => ({ part, original: $state.snapshot(part.item), center: part.kind === "door" ? doorCenter(part.room, part.item) : null }));
+  }
+
+  function transformParts(entries, t){
+    for (const entry of entries) {
+      if (entry.part.kind === "furniture") {
+        const next = furnitureItem(entry.original, t);
+        if (entries.length > 1 || furnitureFits(entry.part.room, next)) Object.assign(entry.part.item, next);
+        continue;
+      }
+      if (t.kind !== "scale" || !entry.center) continue;
+      const room = entry.part.room;
+      const factor = Math.sqrt(Math.abs(t.sx * t.sy));
+      const width = Math.round(Math.min(Math.max(MIN_DOOR_WIDTH, entry.original.width * factor), Math.max(MIN_DOOR_WIDTH, maxDoorWidth(room, entry.original.edge))));
+      const placed = projectDoor(room, t.point(entry.center), width);
+      const flipped = t.sx * t.sy < 0;
+      Object.assign(entry.part.item, {
+        width,
+        ...(placed ?? {}),
+        hinge: flipped ? (entry.original.hinge === "left" ? "right" : "left") : entry.original.hinge
+      });
+    }
+  }
+
+  let doorOptions = $derived(doorGroup.length && !furnitureGroup.length ? {
+    count: doorGroup.length,
+    roomName: doorGroup.length === 1 ? doorGroup[0].room.name : null,
+    type: commonValue(doorGroup.map((part) => part.item.type ?? "single")),
+    hinge: commonValue(doorGroup.map((part) => part.item.hinge)),
+    swing: commonValue(doorGroup.map((part) => part.item.swing)),
+    width: commonValue(doorGroup.map((part) => part.item.width)),
+    maxWidth: Math.max(MIN_DOOR_WIDTH, Math.min(...doorGroup.map((part) => maxDoorWidth(part.room, part.item.edge))))
   } : null);
 
   function commonCategory(list){
@@ -1405,9 +1797,7 @@
   }
 
   function beginDoorDrag(event, room, doorId){
-    selectedId = null;
-    clearSubSelection();
-    selectedDoor = { roomId: room.id, doorId };
+    if (!pickPart({ kind: "door", roomId: room.id, id: doorId }, event.ctrlKey || event.metaKey)) return;
     const door = room.doors.find((entry) => entry.id === doorId);
     const start = toCanvas(event);
     const center = door ? doorCenter(room, door) : null;
@@ -1427,35 +1817,27 @@
     });
   }
 
-  function updateDoor(patch){
-    if (!activeDoor) return;
-    const { room, door } = activeDoor;
-    const center = doorCenter(room, door);
-    Object.assign(door, patch);
-    if (patch.width && center) {
-      const placed = projectDoor(room, center, door.width);
-      if (placed) {
-        door.edge = placed.edge;
-        door.t = placed.t;
+  function updateDoor(changes){
+    for (const { room, item: door } of doorGroup) {
+      let patch = changes;
+      const center = doorCenter(room, door);
+      if (patch.type === "double" && door.width < DOOR_ELEMENTS.doubleDoor.width) {
+        patch = { ...patch, width: Math.min(DOOR_ELEMENTS.doubleDoor.width, maxDoorWidth(room, door.edge)) };
+      }
+      if (patch.width) patch = { ...patch, width: Math.min(patch.width, Math.max(MIN_DOOR_WIDTH, maxDoorWidth(room, door.edge))) };
+      Object.assign(door, patch);
+      if (patch.width && center) {
+        const placed = projectDoor(room, center, door.width);
+        if (placed) Object.assign(door, placed);
       }
     }
   }
 
   function removeDoor(){
-    if (!activeDoor) return;
-    const { room, door } = activeDoor;
-    room.doors = room.doors.filter((entry) => entry.id !== door.id);
-    selectedDoor = null;
+    removeParts();
   }
 
-  let selectedFurniture = $state(null);
-
-  let activeFurniture = $derived.by(() => {
-    if (!selectedFurniture || tool !== "select") return null;
-    const room = shapeById(selectedFurniture.roomId);
-    const item = room?.furniture?.find((entry) => entry.id === selectedFurniture.itemId);
-    return room && item && !room.locked ? { room, item } : null;
-  });
+  let activeFurniture = $derived(partGroup.length === 1 && partGroup[0].kind === "furniture" ? { room: partGroup[0].room, item: partGroup[0].item } : null);
 
   let furnitureOptions = $derived(activeFurniture ? {
     label: FURNITURE[activeFurniture.item.type]?.label ?? activeFurniture.item.type,
@@ -1506,13 +1888,10 @@
   }
 
   function beginFurnitureDrag(event, room, itemId){
-    selectedId = null;
-    clearSubSelection();
-    selectedFurniture = { roomId: room.id, itemId };
-    const item = room.furniture.find((entry) => entry.id === itemId);
+    if (!pickPart({ kind: "furniture", roomId: room.id, id: itemId }, event.ctrlKey || event.metaKey)) return;
     const start = toCanvas(event);
-    if (!item || !start) return;
-    const origin = { cx: item.cx, cy: item.cy };
+    const moving = furnitureGroup.map((part) => ({ part, origin: { cx: part.item.cx, cy: part.item.cy } }));
+    if (!moving.length || !start) return;
     const step = snapToGrid ? gridSize / 2 : 1;
 
     history.beginGesture();
@@ -1520,30 +1899,25 @@
       onmove: (next) => {
         const point = toCanvas(next);
         if (!point) return;
-        const candidate = {
-          ...item,
-          cx: round2(origin.cx + Math.round((point.x - start.x) / step) * step),
-          cy: round2(origin.cy + Math.round((point.y - start.y) / step) * step)
-        };
-        if (!furnitureFits(room, candidate)) return;
-        item.cx = candidate.cx;
-        item.cy = candidate.cy;
+        const dx = Math.round((point.x - start.x) / step) * step;
+        const dy = Math.round((point.y - start.y) / step) * step;
+        const candidates = moving.map(({ part, origin }) => ({ part, next: { ...part.item, cx: round2(origin.cx + dx), cy: round2(origin.cy + dy) } }));
+        if (!candidates.every(({ part, next }) => furnitureFits(part.room, next))) return;
+        for (const { part, next } of candidates) {
+          part.item.cx = next.cx;
+          part.item.cy = next.cy;
+        }
       },
       onend: () => history.endGesture()
     });
   }
 
   function rotateFurniture(){
-    if (!activeFurniture) return;
-    const { item } = activeFurniture;
-    item.rotation = (item.rotation + 90) % 360;
+    for (const part of furnitureGroup) part.item.rotation = (part.item.rotation + 90) % 360;
   }
 
   function removeFurniture(){
-    if (!activeFurniture) return;
-    const { room, item } = activeFurniture;
-    room.furniture = room.furniture.filter((entry) => entry.id !== item.id);
-    selectedFurniture = null;
+    removeParts();
   }
 
   let placing = $state(null);
@@ -1589,16 +1963,16 @@
     };
   }
 
-  function doorPlacement(point){
+  function doorPlacement(point, spec){
     const radius = Math.max(60, 40 / viewport.zoom);
     const inside = roomAt(point);
     const rooms = shapes.filter((shape) => shape.kind === "room");
     let best = null;
     for (const room of rooms) {
-      for (const width of [90, 70]) {
+      for (const width of [spec.width, Math.round(spec.width * 0.75), 70]) {
         const placed = projectDoor(room, point, width);
         if (!placed) continue;
-        const door = { edge: placed.edge, t: placed.t, width, hinge: "left", swing: "in" };
+        const door = { edge: placed.edge, t: placed.t, width, hinge: "left", swing: "in", type: spec.type };
         const geometry = doorGeometry(room, door);
         if (!geometry) break;
         const gap = Math.hypot((geometry.p0.x + geometry.p1.x) / 2 - point.x, (geometry.p0.y + geometry.p1.y) / 2 - point.y);
@@ -1616,7 +1990,7 @@
   let placement = $derived.by(() => {
     if (tool !== "place" || !placing || !cursor) return null;
     if (isHydronicType(placing.type)) return hydronicPlacement(placing.type, cursor);
-    if (placing.type === "door") return doorPlacement(cursor);
+    if (isDoorElement(placing.type)) return doorPlacement(cursor, DOOR_ELEMENTS[placing.type]);
     const room = roomAt(cursor);
     let item = newFurniture(placing.type, cursor.x, cursor.y, placing.rotation);
     if (room && placing.auto && FURNITURE[placing.type].wall) item = snapFurnitureToWall(room, item);
@@ -1624,9 +1998,10 @@
   });
 
   let placingOptions = $derived(tool === "place" && placing ? {
-    label: placing.type === "door" ? "Door" : (FURNITURE[placing.type] ?? HYDRONIC_ELEMENTS[placing.type]).label,
+    label: (DOOR_ELEMENTS[placing.type] ?? FURNITURE[placing.type] ?? HYDRONIC_ELEMENTS[placing.type]).label,
+    door: isDoorElement(placing.type),
     rotatable: !isHydronicType(placing.type) || !isInlineType(placing.type),
-    hint: placing.type === "door"
+    hint: isDoorElement(placing.type)
       ? "Click near a wall to place the door on it · Shift keeps placing · Esc stops"
       : isInlineType(placing.type)
         ? "Click on a pipe to place it · it stays on the pipe · Shift keeps placing · Esc stops"
@@ -1651,8 +2026,7 @@
     pickTool("select");
     selectedId = null;
     clearSubSelection();
-    if (target.kind === "door") selectedDoor = { roomId, doorId: id };
-    else selectedFurniture = { roomId, itemId: id };
+    selectedParts = [{ kind: target.kind === "door" ? "door" : "furniture", roomId, id }];
   }
 
   let pipeDraft = $state(null);
@@ -2433,6 +2807,21 @@
       lockSelection();
       return true;
     }
+    if (ctrl && !event.altKey && key === "m" && tool === "select" && transformBox) {
+      event.preventDefault();
+      flipSelection(event.shiftKey ? "x" : "y");
+      return true;
+    }
+    if (ctrl && !event.altKey && (key === "f" || key === "b") && tool === "select" && (partGroup.length || selectionIds.length)) {
+      event.preventDefault();
+      reorderSelection(key === "f" ? (event.shiftKey ? "front" : "forward") : (event.shiftKey ? "back" : "backward"));
+      return true;
+    }
+    if (!ctrl && !event.altKey && event.shiftKey && (key === "h" || key === "v") && tool === "select" && transformBox) {
+      event.preventDefault();
+      flipSelection(key === "h" ? "x" : "y");
+      return true;
+    }
     if (ctrl && event.shiftKey) {
       const align = ALIGN_ACTIONS.find((action) => action.code === event.code);
       const spread = DISTRIBUTE_ACTIONS.find((action) => action.code === event.code);
@@ -2489,14 +2878,9 @@
         if (mixed) deleteSelection();
         return true;
       }
-      if (activeFurniture) {
+      if (partGroup.length) {
         event.preventDefault();
-        removeFurniture();
-        return true;
-      }
-      if (activeDoor) {
-        event.preventDefault();
-        removeDoor();
+        removeParts();
         return true;
       }
       if (activePoints.length > 0) {
@@ -2515,7 +2899,7 @@
 
   let renamingId = $state(null);
   let renamingRoom = $derived(shapes.find((shape) => shape.id === renamingId && shape.kind === "room"));
-  let renamePosition = $derived(renamingRoom ? viewport.toScreen(labelPoint(renamingRoom)) : null);
+  let renamePosition = $derived(renamingRoom ? viewport.toScreen(roomLabelPoint(renamingRoom, roomStyle)) : null);
   let renamingElementId = $state(null);
   let renamingElement = $derived(shapes.find((shape) => shape.id === renamingElementId && shape.kind === "equipment") ?? null);
   let elementRenamePosition = $derived.by(() => {
@@ -2609,27 +2993,9 @@
       return;
     }
 
-    if (draft.kind !== "floor" && draft.target !== "floor" && draft.target !== "wall") {
-      const closure = floorClosure($state.snapshot(draft.points), point, floorOutlines);
-      if (closure) {
-        finishPolygon(closure.points);
-        return;
-      }
-    }
-
     if (wouldCross(draft.points, point)) return;
     draft.points.push(point);
   }
-
-  let floorOutlines = $derived(shapes.filter((shape) => shape.kind === "floor").map(outlinePoints));
-
-  let floorPreview = $derived.by(() => {
-    if (!draft?.points || !cursor || draft.dragging) return null;
-    if ((draft.kind !== "room-poly" && draft.kind !== "pen") || draft.target === "floor" || draft.target === "wall") return null;
-    const last = draft.points[draft.points.length - 1];
-    if (samePoint(cursor, last) || samePoint(cursor, draft.start)) return null;
-    return floorClosure($state.snapshot(draft.points), cursor, floorOutlines);
-  });
 
   function finishPolygon(closed = null, open = false){
     if (!closed && (!draft?.points || draft.points.length < (open ? 2 : 3) || (!open && closingCrosses(draft.points)))) return;
@@ -2663,14 +3029,6 @@
     if (samePoint(point, last)) {
       finishPen(null, draft.target === "wall");
       return;
-    }
-
-    if (draft.target !== "floor" && draft.target !== "wall") {
-      const closure = floorClosure($state.snapshot(draft.points), point, floorOutlines);
-      if (closure) {
-        finishPen(closure.points);
-        return;
-      }
     }
 
     draft.points.push(point);
@@ -4279,7 +4637,8 @@
                    network={networkSelection} onconnect={connectSelected} onadddevices={addDevices}
                    onelementrotate={rotateElements} onelementsize={setElementSize} ontankprobe={toggleTankProbe}
                    groups={selectionGroups} onnamesize={setNameSize} onfittingnamesize={setFittingNameSize}
-                   onradius={setCornerRadius}
+                   onradius={setCornerRadius} onflip={flipSelection}
+                   parts={partOptions} onpartsremove={removeParts} onkind={setShapeKind} onlabelsize={setLabelSize} onhideedges={hideEdges} onshowname={showRoomNames} onrotate={rotateSelection}
                    onname={(value) => selectedShape && setRoomName(selectedShape, value)}/>
       <div class="readout">
         <ZoomControls {viewport} onfit={fitContent}/>
@@ -4332,15 +4691,14 @@
           <g pointer-events="none">{@html sheetsSvg(electricBoard.pages, electricBoard.used, sheetMeta)}</g>
         {/if}
 
-        <RoomLayer {shapes} {draft} {cursor} selectedIds={selectionIds} zoom={viewport.zoom} style={roomStyle}
-                   closure={floorPreview}
-                   selectedFurniture={activeFurniture ? { roomId: activeFurniture.room.id, itemId: activeFurniture.item.id } : null}
+        <RoomLayer {shapes} {draft} {cursor} selectedIds={selectionIds} zoom={viewport.zoom} style={roomStyle} labelsMovable={tool === "select"}
+                   selectedFurniture={furnitureGroup.map((part) => ({ roomId: part.roomId, itemId: part.id }))}
                    interactive={tool === "select"}/>
 
         <WallLayer {shapes} selectedIds={selectionIds} style={roomStyle} interactive={tool === "select"}/>
 
-        <DoorLayer {shapes} style={roomStyle} background={canvasFill} interactive={tool === "select"}
-                   selectedDoor={activeDoor ? { roomId: activeDoor.room.id, doorId: activeDoor.door.id } : null}/>
+        <DoorLayer {shapes} style={roomStyle} background={roomStyle.floorFill} interactive={tool === "select"}
+                   selectedDoors={doorGroup.map((part) => ({ roomId: part.roomId, id: part.id }))}/>
 
         <ThermostatLayer {shapes} style={roomStyle} interactive={tool === "select"}/>
 
@@ -4411,7 +4769,7 @@
                     width={2} interactive={tool === "select"}/>
 
         {#if draft?.kind === "pen"}
-          <PenPreview {draft} {cursor} zoom={viewport.zoom} closure={floorPreview} color={draft.target === "wall" ? wallStroke : draft.target === "floor" ? floorStroke : roomStroke}/>
+          <PenPreview {draft} {cursor} zoom={viewport.zoom} color={draft.target === "wall" ? wallStroke : draft.target === "floor" ? floorStroke : roomStroke}/>
         {/if}
 
         {#each editableShapes as shape (shape.id)}
@@ -4420,9 +4778,9 @@
                          edges={activeEdges.filter((key) => key.id === shape.id).map((key) => key.index)}/>
         {/each}
 
-        {#each selectedImages as image (image.id)}
-          <ImageFrame {image} zoom={viewport.zoom}/>
-        {/each}
+        {#if transformBox}
+          <TransformFrame box={transformBox} zoom={viewport.zoom} rotate={selectedShapes.length > 0 || furnitureGroup.length > 0}/>
+        {/if}
 
         {#if placement}
           <PlacementGhost {placement}/>

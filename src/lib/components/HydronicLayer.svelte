@@ -43,7 +43,6 @@
   let equipment = $derived(shapes.filter((shape) => shape.kind === "equipment" && HYDRONIC_ELEMENTS[shape.type]));
   let pipes = $derived(shapes.filter((shape) => shape.kind === "pipe" && shape.id !== hidden && routes.get(shape.id)));
   let editing = $derived(interactive && selectedIds.length === 1 ? pipes.find((pipe) => pipe.id === selectedIds[0]) : null);
-  let scaling = $derived(interactive && selectedIds.length === 1 ? equipment.find((element) => element.id === selectedIds[0] && !element.locked && !HYDRONIC_ELEMENTS[element.type].electric) : null);
   let scene = $derived(buildScene(shapes, style, { routes, readouts, hidden }));
   let lengths = $derived(new Map(scene.filter((item) => item.kind === "pipe").map((item) => [item.pipeId, routeLength(item.points)])));
   let editPath = $derived(editing ? editablePath(routes.get(editing.id)) : []);
@@ -67,6 +66,13 @@
 
   function edgeCursor(a, b){
     return a.y === b.y ? "ns-resize" : "ew-resize";
+  }
+
+  function iconTransform(item){
+    const parts = [];
+    if (item.rotation) parts.push(`rotate(${item.rotation} ${item.cx} ${item.cy})`);
+    if (item.mirror) parts.push(`translate(${item.cx} ${item.cy}) scale(${item.mirror.x ? -1 : 1} ${item.mirror.y ? -1 : 1}) translate(${-item.cx} ${-item.cy})`);
+    return parts.length ? parts.join(" ") : undefined;
   }
 
   function duration(length){
@@ -221,7 +227,7 @@
     <g>{@html item.svg}</g>
   {:else if item.kind === "icon"}
     <use href="#hyd-{item.type}" x={item.cx - item.width / 2} y={item.cy - item.height / 2} width={item.width} height={item.height}
-         transform={item.rotation ? `rotate(${item.rotation} ${item.cx} ${item.cy})` : undefined}/>
+         transform={iconTransform(item)}/>
   {:else if item.kind === "field"}
     <rect x={item.x} y={item.y} width={item.width} height={item.height} rx={2 * item.height / 40} fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
     <text x={item.x + item.width / 2} y={item.y + item.height / 2 + 7 * item.height / 40} text-anchor="middle"
@@ -354,15 +360,6 @@
       <rect class="handle" x={point.x - 5 * px} y={point.y - 5 * px} width={10 * px} height={10 * px} rx={1.5 * px}
             fill="#FFFFFF" stroke={PORT} stroke-width="1.5" vector-effect="non-scaling-stroke"
             data-shape-id={editing.id} data-pipe-vertex={offset + 2} role="presentation"/>
-    {/each}
-  {/if}
-
-  {#if scaling}
-    {#each [["nw", scaling.x, scaling.y], ["ne", scaling.x + scaling.width, scaling.y], ["se", scaling.x + scaling.width, scaling.y + scaling.height], ["sw", scaling.x, scaling.y + scaling.height]] as [corner, cx, cy]}
-      <rect class="handle" x={cx - 5 * px} y={cy - 5 * px} width={10 * px} height={10 * px} rx={1.5 * px}
-            fill="#FFFFFF" stroke={PORT} stroke-width="1.5" vector-effect="non-scaling-stroke"
-            style="cursor: {corner === 'nw' || corner === 'se' ? 'nwse-resize' : 'nesw-resize'}"
-            data-shape-id={scaling.id} data-element-handle={corner} role="presentation"/>
     {/each}
   {/if}
 

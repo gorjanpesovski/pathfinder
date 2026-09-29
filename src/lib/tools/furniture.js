@@ -4,6 +4,7 @@ import { svgElement } from "../export/atvise.js";
 
 export const FURNITURE = {
   desk: { label: "Desk", width: 160, depth: 80, wall: true },
+  lDesk: { label: "L desk", width: 160, depth: 140, wall: true },
   chair: { label: "Chair", width: 56, depth: 56 },
   drawer: { label: "Drawer", width: 42, depth: 58, wall: true },
   shelf: { label: "Shelf", width: 90, depth: 35, wall: true },
@@ -17,6 +18,7 @@ export const FURNITURE = {
   sink: { label: "Sink", width: 60, depth: 50, wall: true },
   fridge: { label: "Fridge", width: 60, depth: 60, wall: true },
   toilet: { label: "Toilet", width: 40, depth: 65, wall: true },
+  toiletStall: { label: "Toilet stall", width: 90, depth: 150, wall: true },
   washbasin: { label: "Washbasin", width: 50, depth: 40, wall: true },
   rack: { label: "Storage rack", width: 120, depth: 50, wall: true },
   bench: { label: "Bench", width: 120, depth: 40, wall: true },
@@ -31,11 +33,12 @@ export const FURNITURE = {
 };
 
 export const ELEMENT_GROUPS = [
-  { id: "general", label: "General", items: ["door", "plant", "sofa", "whiteboard", "bench"] },
-  { id: "office", label: "Office", items: ["desk", "chair", "drawer", "shelf", "cabinet"] },
+  { id: "doors", label: "Doors", items: ["door", "doubleDoor", "slidingDoor", "opening", "window"] },
+  { id: "general", label: "General", items: ["plant", "sofa", "whiteboard", "bench"] },
+  { id: "office", label: "Office", items: ["desk", "lDesk", "chair", "drawer", "shelf", "cabinet"] },
   { id: "meeting", label: "Meeting room", items: ["meetingTable", "roundTable", "chair", "whiteboard"] },
   { id: "kitchen", label: "Kitchen", items: ["counter", "sink", "fridge", "roundTable"] },
-  { id: "wc", label: "WC", items: ["toilet", "washbasin"] },
+  { id: "wc", label: "WC", items: ["toiletStall", "washbasin"] },
   { id: "storage", label: "Storage", items: ["rack", "shelf", "cabinet"] },
   { id: "corridor", label: "Corridor", items: ["bench", "plant", "shelf"] },
   { id: "technical", label: "Technical room", items: ["ahu", "boiler", "tank", "panel"] },
@@ -79,6 +82,14 @@ export function furnitureParts(item){
   switch (item.type) {
     case "chair":
       return chairParts(0, 0, 0, w, h);
+
+    case "lDesk": {
+      const top = Math.min(70, h * 0.5);
+      const leg = Math.min(60, w * 0.4);
+      return [
+        { tag: "path", attrs: { d: `M ${round(x)} ${round(y)} H ${round(x + w)} V ${round(y + h)} H ${round(x + w - leg)} V ${round(y + top)} H ${round(x)} Z` } }
+      ];
+    }
 
     case "drawer":
       return [
@@ -273,6 +284,22 @@ export function furnitureParts(item){
         { tag: "rect", attrs: { x: x + 3, y: y + 20, width: w - 6, height: h - 20, rx: (w - 6) / 2 } }
       ];
 
+    case "toiletStall": {
+      const door = Math.min(66, w - 24);
+      const hinge = x + (w - door) / 2;
+      const bowl = Math.min(34, w - 20);
+      return [
+        { tag: "line", attrs: { x1: x, x2: x, y1: y, y2: y + h } },
+        { tag: "line", attrs: { x1: x + w, x2: x + w, y1: y, y2: y + h } },
+        { tag: "line", attrs: { x1: x, x2: hinge, y1: y + h, y2: y + h } },
+        { tag: "line", attrs: { x1: hinge + door, x2: x + w, y1: y + h, y2: y + h } },
+        { tag: "line", attrs: { x1: hinge, x2: hinge, y1: y + h, y2: round(y + h - door) } },
+        { tag: "path", attrs: { d: `M ${round(hinge)} ${round(y + h - door)} A ${round(door)} ${round(door)} 0 0 1 ${round(hinge + door)} ${round(y + h)}` }, fill: "none" },
+        { tag: "rect", attrs: { x: round(-bowl / 2 - 3), y, width: bowl + 6, height: 18, rx: 3 } },
+        { tag: "rect", attrs: { x: round(-bowl / 2), y: y + 20, width: bowl, height: 45, rx: bowl / 2 } }
+      ];
+    }
+
     case "washbasin":
       return [
         { tag: "rect", attrs: { x, y, width: w, height: h, rx: 8 } },
@@ -295,7 +322,12 @@ export function furnitureParts(item){
 }
 
 export function furnitureTransform(item){
-  return `translate(${round(item.cx)} ${round(item.cy)}) rotate(${round(item.rotation)})`;
+  return `translate(${round(item.cx)} ${round(item.cy)}) rotate(${round(item.rotation)})${item.flip ? " scale(-1 1)" : ""}`;
+}
+
+export function furnitureHit(item){
+  if (item.type !== "lDesk") return null;
+  return furnitureParts(item)[0].attrs.d;
 }
 
 export function furnitureCorners(item){
@@ -309,9 +341,12 @@ export function furnitureCorners(item){
   });
 }
 
+const FIT_TOLERANCE = 2;
+
 export function furnitureFits(room, item){
   const outline = outlinePoints(room);
-  return furnitureCorners(item).every((corner) => pointInPolygon(corner, outline));
+  const inset = { ...item, width: Math.max(1, item.width - FIT_TOLERANCE * 2), height: Math.max(1, item.height - FIT_TOLERANCE * 2) };
+  return furnitureCorners(inset).every((corner) => pointInPolygon(corner, outline));
 }
 
 export function newFurniture(type, cx, cy, rotation = 0){

@@ -2,6 +2,7 @@
   import FurnitureShape from "./FurnitureShape.svelte";
   import { FURNITURE, ELEMENT_GROUPS, newFurniture } from "$lib/tools/furniture.js";
   import { HYDRONIC_ELEMENTS } from "$lib/hydronic/elements.js";
+  import { DOOR_ELEMENTS } from "$lib/tools/doors.js";
   import { electricSvg, electricDefaults, ELECTRIC_DEFAULTS } from "$lib/electric/symbols.js";
 
   function electricPreview(type){
@@ -14,8 +15,8 @@
   let group = $state("office");
   let activeGroup = $derived(groups.find((entry) => entry.id === group)?.id ?? groups[0]?.id);
 
-  let elements = $derived(((groups.find((entry) => entry.id === group) ?? groups[0])?.items ?? []).map((type) => type === "door"
-    ? { type, label: "Door" }
+  let elements = $derived(((groups.find((entry) => entry.id === group) ?? groups[0])?.items ?? []).map((type) => DOOR_ELEMENTS[type]
+    ? { type, label: DOOR_ELEMENTS[type].label, door: DOOR_ELEMENTS[type].type }
     : HYDRONIC_ELEMENTS[type]
       ? { type, label: HYDRONIC_ELEMENTS[type].label, hydronic: HYDRONIC_ELEMENTS[type] }
       : { type, label: FURNITURE[type].label, item: newFurniture(type, 0, 0, 0) }));
@@ -169,9 +170,25 @@
           </svg>
         {:else}
           <svg viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-            <path d="M3 20 H8 M16 20 H21"/>
-            <path d="M8 20 V5"/>
-            <path d="M8 5 A15 15 0 0 1 21 18" stroke-dasharray="2 2"/>
+            {#if element.door === "double"}
+              <path d="M1 20 H4 M20 20 H23"/>
+              <path d="M4 20 V12 M20 20 V12"/>
+              <path d="M4 12 A8 8 0 0 1 12 20 M20 12 A8 8 0 0 0 12 20" stroke-dasharray="2 2"/>
+            {:else if element.door === "sliding"}
+              <path d="M2 20 H22"/>
+              <path d="M4 16 H14 M10 12 H20" stroke-width="2.2"/>
+            {:else if element.door === "window"}
+              <path d="M2 20 H6 M18 20 H22" stroke-width="2.4"/>
+              <path d="M6 18.5 H18 M6 21.5 H18" stroke-width="1"/>
+              <path d="M6 16 V24 M18 16 V24" stroke-width="1"/>
+            {:else if element.door === "opening"}
+              <path d="M2 20 H7 M17 20 H22" stroke-width="2.4"/>
+              <path d="M7 16 V24 M17 16 V24" stroke-width="1"/>
+            {:else}
+              <path d="M3 20 H8 M16 20 H21"/>
+              <path d="M8 20 V5"/>
+              <path d="M8 5 A15 15 0 0 1 21 18" stroke-dasharray="2 2"/>
+            {/if}
           </svg>
         {/if}
         <span>{element.label}</span>

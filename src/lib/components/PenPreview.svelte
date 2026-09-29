@@ -4,7 +4,7 @@
   import { openPath } from "$lib/tools/path.js";
   import { formatMeters, distance, samePoint } from "$lib/tools/polygon.js";
 
-  let { draft, cursor, zoom, color, closure = null } = $props();
+  let { draft, cursor, zoom, color } = $props();
 
   let px = $derived(1 / zoom);
   let last = $derived(draft.points[draft.points.length - 1]);
@@ -54,6 +54,6 @@
 
   {#if cursor && !draft.dragging}
     <text x={cursor.x + 14 * px} y={cursor.y - 12 * px} font-family="inherit" font-size={12 * px} font-weight="600"
-          fill="#0F172A" stroke-width={3 * px}>{closing ? "Close shape" : closure ? "Close along floor" : formatMeters(distance(last, cursor))}</text>
+          fill="#0F172A" stroke-width={3 * px}>{closing ? "Close shape" : formatMeters(distance(last, cursor))}</text>
   {/if}
 </g>

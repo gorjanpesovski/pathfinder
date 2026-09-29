@@ -193,11 +193,13 @@
   <span>{elements.count === 1 ? elements.label : `${elements.count} elements`}</span>
   {#if elements.wiring}
     {@const part = elements.wiring}
-    <label>
-      Name
-      <input type="text" class="address" value={part.name ?? ""}
-             onchange={(e) => onbranchname(e.currentTarget.value)} onkeydown={blurOnEnter}>
-    </label>
+    {#if part.count === 1}
+      <label>
+        Name
+        <input type="text" class="address" value={part.name ?? ""}
+               onchange={(e) => onbranchname(e.currentTarget.value)} onkeydown={blurOnEnter}>
+      </label>
+    {/if}
     {#if part.type === "controller" || part.type === "fieldDevice"}
       <label>
         Model
@@ -291,11 +293,13 @@
   {#if elements.device}
     {@const device = elements.device}
     {@const kind = HYDRONIC_ELEMENTS[device.type].device}
-    <label>
-      Name
-      <input type="text" class="branch-name" value={device.name ?? ""}
-             onchange={(e) => onbranchname(e.currentTarget.value)} onkeydown={blurOnEnter}>
-    </label>
+    {#if device.count === 1}
+      <label>
+        Name
+        <input type="text" class="branch-name" value={device.name ?? ""}
+               onchange={(e) => onbranchname(e.currentTarget.value)} onkeydown={blurOnEnter}>
+      </label>
+    {/if}
     {#if kind === "ip" || kind === "gateway"}
       <label>
         IP
@@ -326,7 +330,6 @@
     </label>
     <BranchOptions element={elements.branch} onchange={onbranchparam}/>
   {/if}
-  <button type="button" onclick={onelementrotate}>Rotate 90°</button>
   <button type="button" onclick={onresetsize}>Reset size</button>
 {/if}
 

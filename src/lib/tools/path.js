@@ -164,3 +164,41 @@ export function nearestEdge(point, outlines, radius){
   }
   return best;
 }
+
+function segmentStep(shape, index){
+  const [, p1, p2, p3] = segmentControls(shape, index);
+  return segmentCurved(shape, index)
+    ? ` C ${round2(p1.x)} ${round2(p1.y)} ${round2(p2.x)} ${round2(p2.y)} ${p3.x} ${p3.y}`
+    : ` L ${p3.x} ${p3.y}`;
+}
+
+export function hasHiddenEdges(shape){
+  return !!shape.hiddenEdges?.some((index) => index < shape.points.length);
+}
+
+export function visibleEdgesPath(shape){
+  if (!hasHiddenEdges(shape)) return shapePath(shape);
+  const count = shape.points.length;
+  const hidden = new Set(shape.hiddenEdges);
+  const start = [...hidden].find((index) => index < count);
+  let path = "";
+  let open = false;
+  for (let step = 1; step <= count; step += 1) {
+    const index = (start + step) % count;
+    if (hidden.has(index)) {
+      open = false;
+      continue;
+    }
+    if (!open) {
+      const point = shape.points[index];
+      path += ` M ${point.x} ${point.y}`;
+      open = true;
+    }
+    path += segmentStep(shape, index);
+  }
+  return path.trim();
+}
+
+export function hiddenEdgesPath(shape){
+  return (shape.hiddenEdges ?? []).filter((index) => index < shape.points.length).map((index) => segmentPath(shape, index)).join(" ");
+}

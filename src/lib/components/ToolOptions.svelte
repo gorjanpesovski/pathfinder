@@ -1,7 +1,7 @@
 <script>
   import { ALIGN_ACTIONS } from "$lib/tools/align.js";
   import { ROOM_CATEGORIES } from "$lib/tools/categories.js";
-  import { MIN_DOOR_WIDTH } from "$lib/tools/doors.js";
+  import { MIN_DOOR_WIDTH, DOOR_TYPES } from "$lib/tools/doors.js";
   import SelectionOptions from "./SelectionOptions.svelte";
   import MediumPicker from "./MediumPicker.svelte";
 
@@ -64,7 +64,15 @@
     ondoor,
     ondoorremove,
     onradius,
-    onname
+    onname,
+    onflip,
+    parts = null,
+    onpartsremove,
+    onkind,
+    onlabelsize,
+    onhideedges,
+    onshowname,
+    onrotate
   } = $props();
 
   const NAMES = {
@@ -106,9 +114,12 @@
     gap: 6px 14px;
     min-width: 0;
     min-height: 40px;
-    padding: 6px 12px 6px 0;
+    margin-left: -12px;
+    padding: 6px 12px;
+    align-content: center;
     border-bottom: 1px solid #e2e8f0;
-    border-bottom-right-radius: 8px;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 6px 12px -10px rgba(15, 23, 42, 0.25);
     background: #ffffff;
     box-sizing: border-box;
     white-space: nowrap;
@@ -286,6 +297,35 @@
   </button>
 {/snippet}
 
+{#snippet kindSwitch()}
+  {#if selection?.kinds}
+    <div class="segmented" role="group" aria-label="Shape type">
+      <button type="button" class:active={selection.kinds === "floor"} aria-pressed={selection.kinds === "floor"}
+              title="Turn into a floor outline" onclick={() => onkind("floor")}>Floor</button>
+      <button type="button" class:active={selection.kinds === "room"} aria-pressed={selection.kinds === "room"}
+              title="Turn into a room" onclick={() => onkind("room")}>Room</button>
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet flipButtons()}
+  <button type="button" aria-label="Rotate 90°" title="Rotate 90° clockwise" onclick={onrotate}>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M13 8 A5 5 0 1 1 8 3 H11"/><path d="M9.5 1 L11.5 3 L9.5 5"/>
+    </svg>
+  </button>
+  <button type="button" aria-label="Flip horizontally" title="Flip horizontally (Ctrl+Shift+M)" onclick={() => onflip("x")}>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M8 1.5 V14.5" stroke-dasharray="1.6 1.6"/><path d="M6 4 L2 12 H6 Z"/><path d="M10 4 L14 12 H10 Z" fill="currentColor"/>
+    </svg>
+  </button>
+  <button type="button" aria-label="Flip vertically" title="Flip vertically (Ctrl+M)" onclick={() => onflip("y")}>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M1.5 8 H14.5" stroke-dasharray="1.6 1.6"/><path d="M4 6 L12 2 V6 Z"/><path d="M4 10 L12 14 V10 Z" fill="currentColor"/>
+    </svg>
+  </button>
+{/snippet}
+
 <div class="tool-options">
   <span class="tool-name">{NAMES[tool] ?? tool}</span>
 
@@ -300,6 +340,7 @@
           </button>
         {/each}
         {@render distributeButtons(!selection.canDistribute)}
+        {@render flipButtons()}
         <button type="button" disabled={!selection.canGroup} aria-label="Group" title="Group (Ctrl+G)" onclick={ongroup}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
             <rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke-dasharray="2 2"/>
@@ -316,6 +357,17 @@
             <rect x="3" y="7" width="10" height="7" rx="1.2"/><path d="M5.5 7 V5 a2.5 2.5 0 0 1 5 0 V7"/>
           </svg>
         </button>
+      </div>
+      <span class="sep" aria-hidden="true"></span>
+    {:else if parts}
+      <div class="icon-group" role="group" aria-label="Align">
+        {#each ALIGN_ACTIONS as action}
+          <button type="button" aria-label={action.label} title="{action.label} ({action.shortcut})" onclick={() => onalign(action.id)}>
+            {@render alignIcon(action.id)}
+          </button>
+        {/each}
+        {@render distributeButtons(parts.count < 3)}
+        {@render flipButtons()}
       </div>
       <span class="sep" aria-hidden="true"></span>
     {:else if fitting && fitting.count > 1}
@@ -335,31 +387,43 @@
                         {onfittingflip} {onfittingscale} {onfittingremove} {onfittingnamesize} {onedittext} {ontextstyle}/>
     {:else if furniture}
       <span>{furniture.label} · {furniture.roomName}</span>
-      <button type="button" onclick={onfurniturerotate}>Rotate 90°</button>
       <button type="button" onclick={onfurnitureremove}>Remove</button>
     {:else if door}
-      <span>Door · {door.roomName}</span>
-      <span>Hinge</span>
-      <div class="segmented" role="group" aria-label="Hinge side">
-        <button type="button" class:active={door.hinge === "left"} aria-pressed={door.hinge === "left"}
-                onclick={() => ondoor({ hinge: "left" })}>Left</button>
-        <button type="button" class:active={door.hinge === "right"} aria-pressed={door.hinge === "right"}
-                onclick={() => ondoor({ hinge: "right" })}>Right</button>
+      <span>{door.count > 1 ? `${door.count} doors` : `Door · ${door.roomName}`}</span>
+      <div class="segmented" role="group" aria-label="Door type">
+        {#each DOOR_TYPES as entry (entry.id)}
+          <button type="button" class:active={door.type === entry.id} aria-pressed={door.type === entry.id}
+                  onclick={() => ondoor({ type: entry.id })}>{entry.label}</button>
+        {/each}
       </div>
-      <span>Opens</span>
-      <div class="segmented" role="group" aria-label="Opening direction">
-        <button type="button" class:active={door.swing === "in"} aria-pressed={door.swing === "in"}
-                onclick={() => ondoor({ swing: "in" })}>Into room</button>
-        <button type="button" class:active={door.swing === "out"} aria-pressed={door.swing === "out"}
-                onclick={() => ondoor({ swing: "out" })}>Out of room</button>
-      </div>
+      {#if door.type !== "double" && door.type !== "opening" && door.type !== "window"}
+        <span>{door.type === "sliding" ? "Slides" : "Hinge"}</span>
+        <div class="segmented" role="group" aria-label="Hinge side">
+          <button type="button" class:active={door.hinge === "left"} aria-pressed={door.hinge === "left"}
+                  onclick={() => ondoor({ hinge: "left" })}>Left</button>
+          <button type="button" class:active={door.hinge === "right"} aria-pressed={door.hinge === "right"}
+                  onclick={() => ondoor({ hinge: "right" })}>Right</button>
+        </div>
+      {/if}
+      {#if door.type !== "opening" && door.type !== "window"}
+        <span>{door.type === "sliding" ? "Side" : "Opens"}</span>
+        <div class="segmented" role="group" aria-label="Opening direction">
+          <button type="button" class:active={door.swing === "in"} aria-pressed={door.swing === "in"}
+                  onclick={() => ondoor({ swing: "in" })}>Into room</button>
+          <button type="button" class:active={door.swing === "out"} aria-pressed={door.swing === "out"}
+                  onclick={() => ondoor({ swing: "out" })}>Out of room</button>
+        </div>
+      {/if}
       <label>
         Width
-        <input type="number" min={MIN_DOOR_WIDTH} max={door.maxWidth} step="5" value={door.width}
+        <input type="number" min={MIN_DOOR_WIDTH} max={door.maxWidth} step="5" value={door.width ?? ""} placeholder="–"
                onchange={(e) => { const next = readNumber(e, MIN_DOOR_WIDTH, door.maxWidth); if (next !== null) ondoor({ width: next }); }}>
         <span class="unit">cm</span>
       </label>
       <button type="button" onclick={ondoorremove}>Remove door</button>
+    {:else if parts}
+      <span>{parts.doors && parts.furniture ? `${parts.count} parts` : parts.doors ? `${parts.count} doors` : `${parts.count} furniture items`}</span>
+      <button type="button" onclick={onpartsremove}>Remove</button>
     {:else if selection?.points > 0}
       <span>{plural(selection.points, "corner")}</span>
       {#if selection.maxRadius > 0}
@@ -375,10 +439,21 @@
       {/if}
     {:else if selection?.edges > 0}
       <span>{plural(selection.edges, "edge")}</span>
+      {#if selection.wallEdges > 0}
+        <button type="button" onclick={() => onhideedges(selection.edgesHidden !== "all")}
+                title="A hidden wall keeps the room's shape but draws no wall line, e.g. where a corridor opens into the room">
+          {selection.edgesHidden === "all" ? "Show wall" : "Hide wall"}
+        </button>
+      {/if}
     {:else if selection?.count > 1}
       <span>{selection.grouped ? `Group · ${plural(selection.count, "shape")}` : `${plural(selection.count, "shape")} selected`}</span>
+      {@render kindSwitch()}
     {:else if selection}
-      <span>{selection.kindLabel}</span>
+      {#if selection.kinds}
+        {@render kindSwitch()}
+      {:else}
+        <span>{selection.kindLabel}</span>
+      {/if}
       {#if selection.shape.kind === "room"}
         <label>
           Name
@@ -406,6 +481,12 @@
     {/if}
     {#if selection && selection.roomCount > 0 && selection.points === 0 && selection.edges === 0}
       <label>
+        Name size
+        <input type="number" min="6" max="120" step="1" value={selection.labelSize ?? ""} placeholder="–"
+               onchange={(e) => { const next = readNumber(e, 6, 120); if (next !== null) onlabelsize(next); }}
+               onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}>
+      </label>
+      <label>
         Category
         <select value={selection.category} onchange={(e) => oncategory(e.currentTarget.value)}>
           {#if selection.category === "mixed"}
@@ -416,6 +497,12 @@
             <option value={category.id}>{category.label}</option>
           {/each}
         </select>
+      </label>
+      <label>
+        <input type="checkbox" checked={selection.nameShown === "all"}
+               indeterminate={selection.nameShown === "mixed"}
+               onchange={(e) => onshowname(e.currentTarget.checked)}>
+        Name
       </label>
       <label>
         <input type="checkbox" checked={selection.thermostat === "all"}

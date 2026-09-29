@@ -264,7 +264,7 @@ export function furnishOffice(room, style, random = Math.random){
   const blocked = (room.doors ?? [])
     .map((door) => doorGeometry(room, door))
     .filter(Boolean)
-    .map((geometry) => boxOf([geometry.p0, geometry.p1, geometry.hinge, geometry.leaf], DOOR_CLEARANCE));
+    .map((geometry) => boxOf(geometry.extent, DOOR_CLEARANCE));
   if (room.regulated) {
     const card = thermostatRect(room, style);
     blocked.push({ x: card.x - 20, y: card.y - 20, width: card.width + 40, height: card.height + 40 });
@@ -354,7 +354,7 @@ function prepare(room, style){
   const blocked = (room.doors ?? [])
     .map((door) => doorGeometry(room, door))
     .filter(Boolean)
-    .map((geometry) => boxOf([geometry.p0, geometry.p1, geometry.hinge, geometry.leaf], DOOR_CLEARANCE));
+    .map((geometry) => boxOf(geometry.extent, DOOR_CLEARANCE));
   if (room.regulated) {
     const card = thermostatRect(room, style);
     blocked.push({ x: card.x - 20, y: card.y - 20, width: card.width + 40, height: card.height + 40 });
@@ -459,22 +459,25 @@ export function furnishKitchen(room, style, random = Math.random){
 
 export function furnishWC(room, style, random = Math.random){
   const { outline, area, rect, blocked } = prepare(room, style);
-  const { toilet } = FURNITURE;
+  const { toilet, toiletStall } = FURNITURE;
   if (!rect || Math.min(rect.width, rect.height) < toilet.depth + 50) return [];
 
-  const capacity = Math.min(6, Math.max(1, Math.round(area / AREA_PER_TOILET)));
+  const stalls = Math.min(rect.width, rect.height) >= toiletStall.depth + 60;
+  const type = stalls ? "toiletStall" : "toilet";
+  const capacity = stalls ? Math.min(6, Math.max(1, Math.round(area / AREA_PER_TOILET))) : 1;
   const items = [];
   const toiletSides = new Set();
 
   for (const side of orderedSides(rect, random)) {
-    const toilets = items.filter((item) => item.type === "toilet").length;
+    const toilets = items.filter((item) => item.type === type).length;
     if (toilets >= capacity) break;
-    const placed = fillSide("toilet", side, outline, blocked, { slot: TOILET_SLOT, front: 60, limit: capacity - toilets, random });
+    const placed = fillSide(type, side, outline, blocked, { slot: stalls ? toiletStall.width : TOILET_SLOT, front: 60, limit: capacity - toilets, random });
     if (placed.length) toiletSides.add(side.id);
     items.push(...placed);
+    if (placed.length) break;
   }
 
-  const toilets = items.filter((item) => item.type === "toilet").length;
+  const toilets = items.filter((item) => item.type === type).length;
   const basins = Math.min(4, Math.max(1, Math.ceil(toilets / 2)));
   const sides = orderedSides(rect, random).sort((a, b) => toiletSides.has(a.id) - toiletSides.has(b.id));
   let placedBasins = 0;

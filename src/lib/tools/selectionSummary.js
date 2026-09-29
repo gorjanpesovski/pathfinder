@@ -9,6 +9,20 @@ function common(list, read){
   return list.every((entry) => read(entry) === first) ? first : null;
 }
 
+function commonView(list){
+  const keys = new Set(list.flatMap((entry) => Object.keys(entry.params ?? {})));
+  const params = {};
+  for (const key of keys) {
+    const first = JSON.stringify(list[0].params?.[key]);
+    if (list.every((entry) => JSON.stringify(entry.params?.[key]) === first)) params[key] = list[0].params?.[key];
+  }
+  return { id: list[0].id, type: list[0].type, name: list.length === 1 ? list[0].name : null, params, count: list.length };
+}
+
+function sameKind(list, read){
+  return list.length > 0 && list.every((entry) => read(entry) && read(entry) === read(list[0]));
+}
+
 function tenth(value){
   return Math.round(value * 10) / 10;
 }
@@ -44,9 +58,9 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
       bars: bars.length,
       barMedium: common(bars, (bar) => mediumOf(bar.medium).id),
       branch: elements.find((element) => HYDRONIC_ELEMENTS[element.type].branch) ?? null,
-      device: elements.length === 1 && HYDRONIC_ELEMENTS[elements[0].type].device ? elements[0] : null,
+      device: sameKind(elements, (element) => HYDRONIC_ELEMENTS[element.type].device) ? commonView(elements) : null,
       electric: elements.every((element) => HYDRONIC_ELEMENTS[element.type].electric),
-      wiring: elements.length === 1 && HYDRONIC_ELEMENTS[elements[0].type].electric ? elements[0] : null
+      wiring: sameKind(elements, (element) => HYDRONIC_ELEMENTS[element.type].electric && element.type) ? commonView(elements) : null
     } : null,
     pipes: pipes.length ? {
       count: pipes.length,

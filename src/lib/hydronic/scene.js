@@ -199,6 +199,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
       width: upright.width,
       height: upright.height,
       rotation: rotationOf(element),
+      mirror: element.mirror?.x || element.mirror?.y ? { x: !!element.mirror.x, y: !!element.mirror.y } : null,
       args: elementArgs(element)
     };
     const spec = HYDRONIC_ELEMENTS[element.type];

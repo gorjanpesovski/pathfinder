@@ -1,5 +1,5 @@
 import { boundsCenter, polygonBounds, formatArea, formatMeters, innerPoint, pointInPolygon } from "./polygon.js";
-import { outlinePoints, shapePath, hasCurves, nearestEdge, projectOnSegment } from "./path.js";
+import { outlinePoints, shapePath, hasCurves, nearestEdge, projectOnSegment, hasHiddenEdges, visibleEdgesPath } from "./path.js";
 import { categoryLabel, defaultCategoryColors } from "./categories.js";
 import { doorsToSvg } from "./doors.js";
 import { svgElement, escapeXml } from "../export/atvise.js";
@@ -20,12 +20,15 @@ export const ROOM_STYLE = {
   roomFill: "#DBEAFE",
   roomStroke: "#2563EB",
   roomWidth: 8,
-  labelColor: "#1E3A8A",
+  labelColor: "#1E293B",
   labelFont: "Roboto",
   labelSize: 20,
   doorColor: "#0F172A",
   categories: defaultCategoryColors()
 };
+
+const LABEL_EXPORT_COLOR = "#1E293B";
+export const INFO_DISPLAY = { path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.Info_Display", width: 160, height: 130 };
 
 export const THERMOSTAT = {
   width: 160,
@@ -42,8 +45,9 @@ export const THERMOSTAT = {
 };
 
 export function roomColors(shape, style = ROOM_STYLE){
-  const category = shape.category ? style.categories?.[shape.category] : null;
-  return category ?? { fill: style.roomFill, stroke: style.roomStroke };
+  // const category = shape.category ? style.categories?.[shape.category] : null;
+  // return category ?? { fill: style.roomFill, stroke: style.roomStroke };
+  return { fill: style.roomFill, stroke: style.roomStroke };
 }
 
 export function isRoomTool(tool){
@@ -104,6 +108,12 @@ export function snapToEdges(point, shapes, radius, exclude = null, preferred = n
 
 export function labelPoint(shape){
   return innerPoint(outlinePoints(shape));
+}
+
+export function roomLabelPoint(shape, style = ROOM_STYLE){
+  const base = labelPoint(shape);
+  const offset = shape.labelOffset ?? { dx: 0, dy: 0 };
+  return { x: base.x + offset.dx, y: base.y + offset.dy };
 }
 
 function cardFits(outline, center, width, height){
@@ -180,44 +190,45 @@ function outline(shape, paint, id){
 }
 
 function roomLabel(shape, style){
-  const label = labelPoint(shape);
+  const label = roomLabelPoint(shape, style);
+  const size = shape.labelSize ?? style.labelSize;
   return svgElement("text", {
     "atv:refpx": round(label.x),
     "atv:refpy": round(label.y),
-    fill: style.labelColor,
+    fill: LABEL_EXPORT_COLOR,
     "font-family": style.labelFont,
-    "font-size": style.labelSize,
+    "font-size": size,
     id: `room_${shape.id}_label`,
     "text-anchor": "middle",
     x: round(label.x),
-    y: round(label.y + style.labelSize * 0.35)
+    y: round(label.y + size * 0.35)
   }, escapeXml(shape.name));
+}
+
+function stroked(shape, paint, id){
+  if (!hasHiddenEdges(shape)) return outline(shape, paint, id);
+  const { stroke, "stroke-width": width, "stroke-linejoin": join, ...fill } = paint;
+  return [
+    fill.fill === "none" ? null : outline(shape, { ...fill, stroke: "none" }, id),
+    svgElement("path", { ...reference(shape), d: visibleEdgesPath(shape), fill: "none", id: `${id}_edges`, stroke, "stroke-linecap": "square", "stroke-linejoin": join, "stroke-width": width })
+  ].filter(Boolean).join("\n");
 }
 
 function thermostatSvg(room, style, scale){
   const card = thermostatRect(room, style, scale);
-  const text = thermostatText(card);
-  const id = `room_${room.id}_thermostat`;
-  const label = (key, value, color, weight) => svgElement("text", {
-    fill: color,
-    "font-family": style.labelFont,
-    "font-size": text[key].size,
-    "font-weight": weight,
-    id: `${id}_${key}`,
-    "text-anchor": "middle",
-    x: round(text[key].x),
-    y: round(text[key].y)
-  }, escapeXml(value));
-
-  return [
-    `<g atv:refpx="${round(card.x + card.width / 2)}" atv:refpy="${round(card.y + card.height / 2)}" id="${id}">`,
-    svgElement("rect", { fill: THERMOSTAT.shadow, "fill-opacity": 0.08, height: card.height, id: `${id}_shadow`, rx: round(THERMOSTAT.radius * card.scale), ry: round(THERMOSTAT.radius * card.scale), width: card.width, x: card.x, y: round(card.y + 3 * card.scale) }),
-    svgElement("rect", { fill: THERMOSTAT.fill, height: card.height, id: `${id}_box`, rx: round(THERMOSTAT.radius * card.scale), ry: round(THERMOSTAT.radius * card.scale), stroke: THERMOSTAT.border, "stroke-width": 1, width: card.width, x: card.x, y: card.y }),
-    label("name", room.name, THERMOSTAT.nameColor, "bold"),
-    label("value", THERMOSTAT.placeholder, THERMOSTAT.valueColor, "bold"),
-    label("status", THERMOSTAT.placeholder, THERMOSTAT.statusColor, "normal"),
-    `</g>`
-  ].join("\n");
+  const sx = card.width / INFO_DISPLAY.width;
+  const sy = card.height / INFO_DISPLAY.height;
+  return svgElement("svg", {
+    "atv:refpx": round(card.x + card.width / 2),
+    "atv:refpy": round(card.y + card.height / 2),
+    height: INFO_DISPLAY.height,
+    id: `room_${room.id}_thermostat`,
+    transform: `matrix(${round(sx)},0,0,${round(sy)},${round(card.x)},${round(card.y)})`,
+    width: INFO_DISPLAY.width,
+    x: 0,
+    y: 0,
+    "xlink:href": INFO_DISPLAY.path
+  });
 }
 
 export function roomsToSvg(shapes, style = ROOM_STYLE, background = "#FFFFFF"){
@@ -228,13 +239,13 @@ export function roomsToSvg(shapes, style = ROOM_STYLE, background = "#FFFFFF"){
     ...floors.map((shape) => outline(shape, { fill: style.floorFill, stroke: "none" }, `floor_${shape.id}`)),
     ...rooms.map((shape) => {
       const colors = roomColors(shape, style);
-      return outline(shape, { fill: colors.fill, stroke: colors.stroke, "stroke-linejoin": "miter", "stroke-width": style.roomWidth }, `room_${shape.id}`);
+      return stroked(shape, { fill: colors.fill, stroke: colors.stroke, "stroke-linejoin": "miter", "stroke-width": style.roomWidth }, `room_${shape.id}`);
     }),
     ...rooms.flatMap((shape) => furnitureToSvg(shape, { ...FURNITURE_STYLE, opacity: style.furnitureOpacity ?? FURNITURE_STYLE.opacity })),
-    ...floors.map((shape) => outline(shape, { fill: "none", stroke: style.floorStroke, "stroke-linejoin": "miter", "stroke-width": style.floorWidth }, `floor_${shape.id}_wall`)),
+    ...floors.map((shape) => stroked(shape, { fill: "none", stroke: style.floorStroke, "stroke-linejoin": "miter", "stroke-width": style.floorWidth }, `floor_${shape.id}_wall`)),
     ...wallsToSvg(shapes, style),
-    ...rooms.flatMap((shape) => doorsToSvg(shape, style, background)),
-    ...rooms.filter((shape) => !shape.regulated).map((shape) => roomLabel(shape, style)),
+    ...rooms.flatMap((shape) => doorsToSvg(shape, style, style.floorFill)),
+    ...rooms.filter((shape) => !shape.regulated && !shape.hideName).map((shape) => roomLabel(shape, style)),
     ...rooms.filter((shape) => shape.regulated).map((shape) => thermostatSvg(shape, style, scale))
   ].join("\n");
 }

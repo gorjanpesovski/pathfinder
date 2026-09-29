@@ -33,8 +33,8 @@ export function elementMatrix(cx, cy, width, height, rotation = 0, sx = 1, sy = 
 function reference(item, style){
   const spec = HYDRONIC_ELEMENTS[item.type];
   const native = spec.native ?? style.native?.[item.type] ?? { width: spec.width, height: spec.height };
-  const sx = item.width / native.width;
-  const sy = spec.inline ? sx : item.height / native.height;
+  const sx = item.width / native.width * (item.mirror?.x ? -1 : 1);
+  const sy = (spec.inline ? item.width / native.width : item.height / native.height) * (item.mirror?.y ? -1 : 1);
   const lift = native.axisY === undefined ? 0 : (native.axisY - native.height / 2) * sy;
   const turn = item.rotation * Math.PI / 180;
   return svgElement("svg", {

@@ -36,8 +36,10 @@
             fill={THERMOSTAT.fill} stroke={THERMOSTAT.border} stroke-width="1" vector-effect="non-scaling-stroke"
             data-shape-id={shape.id} data-thermostat="" pointer-events={interactive && !shape.locked ? "all" : "none"}
             role="presentation"/>
-      <text x={text.name.x} y={text.name.y} text-anchor="middle" font-family={style.labelFont} font-size={text.name.size}
-            font-weight="bold" fill={THERMOSTAT.nameColor}>{shape.name}</text>
+      {#if !shape.hideName}
+        <text x={text.name.x} y={text.name.y} text-anchor="middle" font-family={style.labelFont} font-size={text.name.size}
+              font-weight="bold" fill={THERMOSTAT.nameColor}>{shape.name}</text>
+      {/if}
       <text x={text.value.x} y={text.value.y} text-anchor="middle" font-family={style.labelFont} font-size={text.value.size}
             font-weight="bold" fill={THERMOSTAT.valueColor}>{THERMOSTAT.placeholder}</text>
       <text x={text.status.x} y={text.status.y} text-anchor="middle" font-family={style.labelFont} font-size={text.status.size}
