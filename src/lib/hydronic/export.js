@@ -30,8 +30,44 @@ export function elementMatrix(cx, cy, width, height, rotation = 0, sx = 1, sy = 
   return `matrix(${round(a)},${round(b)},${round(c)},${round(d)},${e},${f})`;
 }
 
+function meterSensor(item){
+  const r = item.width / 2 - 1;
+  const k = item.width / 22;
+  return [
+    `<g atv:refpx="${round(item.cx)}" atv:refpy="${round(item.cy)}" id="${item.id}">`,
+    svgElement("circle", { cx: round(item.cx), cy: round(item.cy), fill: "#FFFFFF", id: `${item.id}_ring`, r: round(r), stroke: "#414142", "stroke-width": round(2 * k) }),
+    svgElement("path", { d: `M ${round(item.cx - 4 * k)} ${round(item.cy - 4 * k)} H ${round(item.cx + 4 * k)} M ${round(item.cx)} ${round(item.cy - 4 * k)} V ${round(item.cy + 5 * k)}`, fill: "none", id: `${item.id}_mark`, stroke: "#414142", "stroke-width": round(2 * k) }),
+    `</g>`
+  ].join("\n");
+}
+
+function branchHeader(item){
+  return item.parts.map((part, index) => {
+    const id = `${item.id}_${index}`;
+    if (part.kind === "drain") {
+      return [
+        svgElement("circle", { cx: round(part.cx), cy: round(part.cy), fill: "#FFFFFF", id: `${id}_outer`, r: round(part.outer), stroke: "#414142", "stroke-width": round(part.stroke) }),
+        svgElement("circle", { cx: round(part.cx), cy: round(part.cy), fill: "#FFFFFF", id: `${id}_inner`, r: round(part.inner), stroke: "#414142", "stroke-width": round(part.stroke) })
+      ].join("\n");
+    }
+    return svgElement("text", {
+      "atv:refpx": round(part.x),
+      "atv:refpy": round(part.baseline),
+      fill: part.color,
+      "font-family": FONT,
+      "font-size": round(part.size),
+      "font-weight": part.bold ? "bold" : undefined,
+      id,
+      "text-anchor": "middle",
+      x: round(part.x),
+      y: round(part.baseline)
+    }, escapeXml(part.text ?? ""));
+  }).join("\n");
+}
+
 function reference(item, style){
   const spec = HYDRONIC_ELEMENTS[item.type];
+  if (spec.primitive) return meterSensor(item);
   const native = spec.native ?? style.native?.[item.type] ?? { width: spec.width, height: spec.height };
   const sx = item.width / native.width * (item.mirror?.x ? -1 : 1);
   const sy = (spec.inline ? item.width / native.width : item.height / native.height) * (item.mirror?.y ? -1 : 1);
@@ -143,7 +179,7 @@ const RENDER = {
     "stroke-width": round(item.stroke)
   }),
   icon: reference,
-  branch: reference,
+  branch: branchHeader,
   device,
   field: valueField,
   label: (item) => svgElement("text", {

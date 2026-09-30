@@ -31,6 +31,8 @@
     onfittingscale,
     onfittingremove,
     onfittingnamesize,
+    onfittingname,
+    onreadoutscale,
     onedittext,
     ontextstyle
   } = $props();
@@ -243,6 +245,13 @@
   {/if}
 {:else if elements}
   <span>{elements.count === 1 ? elements.label : `${elements.count} elements`}</span>
+  {#if elements.single && !elements.branch && !elements.device}
+    <label>
+      Name
+      <input type="text" class="branch-name" value={elements.single.name ?? ""}
+             onchange={(e) => onbranchname(e.currentTarget.value)} onkeydown={blurOnEnter}>
+    </label>
+  {/if}
   <label>
     W
     <input type="number" min="4" step="1" value={elements.width ?? ""} placeholder="–"
@@ -344,7 +353,7 @@
     <input type="number" min="1" max="40" step="1" value={pipes.width ?? ""} placeholder="–"
            oninput={(e) => { const next = readNumber(e, 1, 40); if (next !== null) onpipewidth(next); }}>
   </label>
-  <button type="button" onclick={onreverse}>Reverse flow</button>
+  <button type="button" title="Reverse the flow direction (F)" onclick={onreverse}>Reverse flow</button>
   <div class="segmented" role="group" aria-label="Crossing order">
     <button type="button" onclick={() => onpipelayer(false)}>Below</button>
     <button type="button" onclick={() => onpipelayer(true)}>Above</button>
@@ -356,6 +365,13 @@
     <span class="sep" aria-hidden="true"></span>
   {/if}
   <span>{fittings.count === 1 ? fittings.label : `${fittings.count} on pipes`}</span>
+  {#if fittings.count === 1}
+    <label>
+      Name
+      <input type="text" class="branch-name" value={fittings.name ?? ""}
+             onchange={(e) => onfittingname(e.currentTarget.value)} onkeydown={blurOnEnter}>
+    </label>
+  {/if}
   {#if fittings.measured}
     <div class="segmented" role="group" aria-label="Readout">
       {#each READOUT_MODES as mode (mode.id)}
@@ -363,6 +379,12 @@
                 onclick={() => onfittingreadout(mode.id)}>{mode.id === "value" ? fittings.measure ?? mode.label : mode.label}</button>
       {/each}
     </div>
+    <label title="Size of the value boxes, independent of the element size">
+      Readout size
+      <input type="range" min="40" max="200" step="5" value={Math.round((fittings.readoutScale ?? 1) * 100)}
+             oninput={(e) => onreadoutscale(Number(e.currentTarget.value) / 100)}>
+      <span class="unit">{fittings.readoutScale === null ? "mixed" : `${Math.round(fittings.readoutScale * 100)}%`}</span>
+    </label>
     {#if fittings.moved}
       <button type="button" onclick={onreadoutreset}>Auto position</button>
     {/if}

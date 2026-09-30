@@ -1,7 +1,7 @@
 <svelte:options namespace="svg"/>
 
 <script>
-  let { box, zoom, rotate = true } = $props();
+  let { box, zoom, rotate = true, vertical = false } = $props();
 
   const COLOR = "#2563EB";
   const HANDLES = [
@@ -42,7 +42,7 @@
 <g class="transform-frame">
   <rect x={frame.x} y={frame.y} width={frame.width} height={frame.height} fill="none" stroke={COLOR} stroke-width="1"
         stroke-dasharray="5 4" vector-effect="non-scaling-stroke" pointer-events="none"/>
-  {#each HANDLES.filter((handle) => !small || handle.id.length === 2) as handle (handle.id)}
+  {#each HANDLES.filter((handle) => vertical ? handle.id === "n" || handle.id === "s" : !small || handle.id.length === 2) as handle (handle.id)}
     {@const x = frame.x + frame.width * handle.fx}
     {@const y = frame.y + frame.height * handle.fy}
     <rect class="handle" x={x - 4.5 * px} y={y - 4.5 * px} width={9 * px} height={9 * px} rx={1.5 * px}

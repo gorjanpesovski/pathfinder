@@ -5,10 +5,8 @@
   import { elementPorts, routePath, routeLength, editablePath, arrowPoints } from "$lib/hydronic/route.js";
   import { fittingPose, fittingSize, pipeWidthOf } from "$lib/hydronic/geometry.js";
   import { contactPoint, touchRoute } from "$lib/hydronic/outline.js";
-  import { BRANCH_GEOMETRY } from "$lib/hydronic/branch.js";
   import BranchGraphic from "./BranchGraphic.svelte";
   import DeviceGraphic from "./DeviceGraphic.svelte";
-  import { uprightSize, localRect } from "$lib/hydronic/frame.js";
   import { buildScene } from "$lib/hydronic/scene.js";
 
   let {
@@ -51,10 +49,7 @@
   let others = $derived(equipment.filter((element) => !HYDRONIC_ELEMENTS[element.type].bar));
 
   function hitArea(element){
-    const spec = HYDRONIC_ELEMENTS[element.type];
-    if (!spec.branch) return { x: element.x, y: element.y, width: element.width, height: element.height };
-    const upright = uprightSize(element);
-    return localRect(element, 0, 0, upright.width, BRANCH_GEOMETRY.hitHeight * upright.height / spec.height);
+    return { x: element.x, y: element.y, width: element.width, height: element.height };
   }
 
   let drawn = $derived(new Map(pipes.map((pipe) => [pipe.id, touchRoute(routes.get(pipe.id), pipe, byId)])));
@@ -201,7 +196,7 @@
   {:else if item.kind === "pipe"}
     {@const d = routePath(item.points)}
     {@const length = routeLength(item.points)}
-    {@const isFresh = fresh.includes(item.pipeId)}
+    {@const isFresh = !item.overlay && fresh.includes(item.pipeId)}
     <path class="pipe" class:fresh={isFresh} {d} fill="none" stroke={item.color} stroke-width={item.width}
           stroke-linecap={item.dash ? "butt" : "round"} stroke-linejoin="round"
           stroke-dasharray={isFresh ? undefined : item.dashArray ?? (item.dash ? `${item.width * 2} ${item.width * 1.5}` : undefined)}
@@ -220,7 +215,7 @@
   {:else if item.kind === "bar"}
     <rect x={item.x} y={item.y} width={item.width} height={item.height} fill={item.color}/>
   {:else if item.kind === "branch"}
-    <BranchGraphic element={item.element}/>
+    <BranchGraphic parts={item.parts}/>
   {:else if item.kind === "device"}
     <DeviceGraphic {item}/>
   {:else if item.kind === "electric"}
@@ -231,7 +226,7 @@
   {:else if item.kind === "field"}
     <rect x={item.x} y={item.y} width={item.width} height={item.height} rx={2 * item.height / 40} fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
     <text x={item.x + item.width / 2} y={item.y + item.height / 2 + 7 * item.height / 40} text-anchor="middle"
-          font-family={FONT} font-size={20 * item.height / 40} fill="#414142">--.- {item.unit}</text>
+          font-family={FONT} font-size={20 * item.height / 40} fill="#414142">{item.decimals ? "--.-" : "--"} {item.unit}</text>
   {:else if item.kind === "label" && !item.ref}
     <text x={item.x} y={item.y} text-anchor={item.anchor} font-family={FONT} font-size={item.size} font-weight={item.bold ? "bold" : undefined}
           fill={item.color}>{item.text}</text>
@@ -402,7 +397,7 @@
 
   {#if placement?.kind === "equipment"}
     <g pointer-events="none" opacity={placement.valid ? 0.7 : 0.35}>
-      {#each buildScene([{ id: -1, kind: "equipment", ...placement.element }], style) as item (item.id)}
+      {#each buildScene([{ id: -1, kind: "equipment", ...placement.element }, ...(placement.pipes ?? [])], style) as item (item.id)}
         {@render visual(item)}
       {/each}
       <rect x={placement.element.x} y={placement.element.y} width={placement.element.width} height={placement.element.height}

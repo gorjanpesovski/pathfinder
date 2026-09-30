@@ -1,6 +1,6 @@
 import { escapeXml } from "../export/atvise.js";
 import { HYDRONIC_STYLE } from "./elements.js";
-import { BRANCH_IMAGES } from "./branchParts.js";
+import { DRAIN_SVG } from "./branch.js";
 import { textLines, TEXT_LINE } from "../tools/text.js";
 import { buildScene, showsIn } from "./scene.js";
 
@@ -195,11 +195,10 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
   const caption = (item) => label(item.text, item.box.x, item.box.y, item.box.width, item.box.height, item.size, { align: item.anchor === "middle" ? "center" : undefined, bold: item.bold, color: item.color });
 
   const branchPart = (part) => {
-    if (part.kind === "bar") shape(part.x, part.y, part.width, part.height, part.color);
-    else if (part.kind === "icon") iconImage(part.type, part.cx, part.cy, part.width, part.height, part.rotation);
-    else if (part.kind === "image") image(`pf_branch_${part.name}`, `<?xml version="1.0" encoding="UTF-8"?>\n${BRANCH_IMAGES[part.name].svg}\n`, part.cx, part.cy, part.width, part.height);
-    else if (part.kind === "numeric") numeric(part.x, part.y, part.width, part.height, part.unit, part.decimals);
-    else if (part.kind === "text") {
+    if (part.kind === "drain") {
+      const size = (part.outer + part.stroke / 2) * 2;
+      image("pf_branch_drain", `<?xml version="1.0" encoding="UTF-8"?>\n${DRAIN_SVG}\n`, part.cx, part.cy, size, size);
+    } else if (part.kind === "text") {
       const boxHeight = part.size * 1.4;
       const top = part.baseline - part.size * 1.05;
       if (part.align === "center") label(part.text, part.x - 160 * part.size / 22, top, 320 * part.size / 22, boxHeight, part.size, part);

@@ -4,6 +4,10 @@ import { routePoint, pipeCrossings, arrowMarks } from "./route.js";
 export function orientAngle(type, angle, flip = false){
   const orient = HYDRONIC_ELEMENTS[type]?.orient ?? "flow";
   if (orient === "upright") return 0;
+  if (orient === "stem") {
+    const vertical = Math.abs(Math.abs(angle) - 90) < 1;
+    return ((vertical ? 0 : 90) + (flip ? 180 : 0)) % 360;
+  }
   if (orient === "axis") {
     const vertical = Math.abs(Math.abs(angle) - 90) < 1;
     return ((vertical ? 270 : 0) + (flip ? 180 : 0)) % 360;
@@ -48,7 +52,10 @@ export function pipeDecorations(pipes, style = HYDRONIC_STYLE){
   for (const { pipe, route } of pipes) {
     const size = style.arrowSize * pipeScale(pipe, style);
     const avoid = [
-      ...(pipe.fittings ?? []).filter((fitting) => HYDRONIC_ELEMENTS[fitting.type]).map((fitting) => fittingPose(route, fitting)),
+      ...(pipe.fittings ?? []).filter((fitting) => HYDRONIC_ELEMENTS[fitting.type]).map((fitting) => {
+        const reach = fittingSize(fitting);
+        return { ...fittingPose(route, fitting), radius: Math.max(reach.width, reach.height) / 2 + size * 2.5 };
+      }),
       ...crossings.filter((crossing) => crossing.upper === pipe.id || crossing.lower === pipe.id),
       ...junctions.filter((junction) => junction.host === pipe.id || junction.pipeId === pipe.id)
     ];

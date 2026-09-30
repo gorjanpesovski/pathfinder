@@ -217,6 +217,12 @@ export function pipeRoute(pipe, byId, hostRoute = null){
   const start = endpointPose(pipe.from, byId, hostRoute, points[0] ?? rawPoint(pipe.to, byId));
   const end = endpointPose(pipe.to, byId, hostRoute, points[points.length - 1] ?? rawPoint(pipe.from, byId));
   if (!start || !end) return null;
+  if (pipe.branchOf !== undefined && (pipe.role === "supply" || pipe.role === "return")) {
+    const port = start.normal ? start : end;
+    const loose = port === start ? end : start;
+    const y = Math.max(loose.point.y, port.point.y + 40);
+    return port === start ? [port.point, { x: port.point.x, y }] : [{ x: port.point.x, y }, port.point];
+  }
   return manhattanRoute(start, points, end);
 }
 
@@ -312,7 +318,7 @@ export function arrowMarks(route, avoid = [], clearance = 40, minLength = 100){
     for (const fraction of [0.5, 0.35, 0.65, 0.25, 0.75]) {
       const x = segment.a.x + (segment.b.x - segment.a.x) * fraction;
       const y = segment.a.y + (segment.b.y - segment.a.y) * fraction;
-      if (avoid.some((spot) => Math.hypot(spot.x - x, spot.y - y) < clearance)) continue;
+      if (avoid.some((spot) => Math.hypot(spot.x - x, spot.y - y) < (spot.radius ?? clearance))) continue;
       marks.push({ x: round(x), y: round(y), angle: Math.round(segment.angle) });
       break;
     }

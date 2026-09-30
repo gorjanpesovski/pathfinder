@@ -15,7 +15,9 @@ export function elementLabel(element){
   const size = nameSizeOf(element);
   const scale = size / NAME_SIZE;
   const inside = HYDRONIC_ELEMENTS[element.type]?.caption === "inside";
-  const x = element.x + element.width / 2;
-  const y = inside ? element.y + 24 * scale : element.y + element.height + 18 * scale;
-  return { x, y, size, top: inside ? element.y + 10 * scale : element.y + element.height + 4 * scale, height: 18 * scale, middle: y - size * 0.35 };
+  const dx = element.nameOffset?.x ?? 0;
+  const dy = element.nameOffset?.y ?? 0;
+  const x = element.x + element.width / 2 + dx;
+  const y = (inside ? element.y + 24 * scale : element.y + element.height + 18 * scale) + dy;
+  return { x, y, size, top: (inside ? element.y + 10 * scale : element.y + element.height + 4 * scale) + dy, height: 18 * scale, middle: y - size * 0.35 };
 }

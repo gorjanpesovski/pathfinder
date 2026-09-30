@@ -1,6 +1,6 @@
 import { HYDRONIC_ELEMENTS, mediumOf } from "../hydronic/elements.js";
 import { TANK_PROBES, hasTankProbes } from "../hydronic/tank.js";
-import { readoutSpec } from "../hydronic/readout.js";
+import { readoutSpec, readoutScaleOf } from "../hydronic/readout.js";
 import { hasNameLabel, nameSizeOf } from "../hydronic/label.js";
 
 function common(list, read){
@@ -58,6 +58,7 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
       bars: bars.length,
       barMedium: common(bars, (bar) => mediumOf(bar.medium).id),
       branch: elements.find((element) => HYDRONIC_ELEMENTS[element.type].branch) ?? null,
+      single: elements.length === 1 ? elements[0] : null,
       device: sameKind(elements, (element) => HYDRONIC_ELEMENTS[element.type].device) ? commonView(elements) : null,
       electric: elements.every((element) => HYDRONIC_ELEMENTS[element.type].electric),
       wiring: sameKind(elements, (element) => HYDRONIC_ELEMENTS[element.type].electric && element.type) ? commonView(elements) : null
@@ -69,12 +70,14 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
     } : null,
     fittings: fittings.length ? {
       count: fittings.length,
+      name: fittings.length === 1 ? fittings[0].fitting.name ?? "" : null,
       label: common(fittings, (entry) => HYDRONIC_ELEMENTS[entry.fitting.type]?.label ?? entry.fitting.type),
       scale: common(fittings, (entry) => entry.fitting.scale ?? 1),
       shownScale: fittings[0].fitting.scale ?? 1,
       measured: measured.length,
       measure: measures.length === 1 ? measures[0] : null,
       readout: common(measured, (entry) => entry.fitting.readout ?? "none"),
+      readoutScale: common(measured, (entry) => readoutScaleOf(entry.fitting)),
       moved: measured.some((entry) => entry.fitting.readoutOffset),
       nameSize: common(fittings, (entry) => nameSizeOf(entry.fitting)),
       flippable: fittings.length - measured.length

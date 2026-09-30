@@ -4,6 +4,14 @@ import { fittingBox } from "./fittingAlign.js";
 import { NAME_SIZE, nameSizeOf } from "./label.js";
 
 export function fittingLabel(route, fitting){
+  const label = baseLabel(route, fitting);
+  const dx = fitting.nameOffset?.x ?? 0;
+  const dy = fitting.nameOffset?.y ?? 0;
+  if (!dx && !dy) return label;
+  return { ...label, x: label.x + dx, y: label.y + dy, top: label.top + dy, middle: label.middle + dy, center: label.center + dx };
+}
+
+function baseLabel(route, fitting){
   const size = nameSizeOf(fitting);
   const scale = size / NAME_SIZE;
   const box = fittingBox(route, fitting);

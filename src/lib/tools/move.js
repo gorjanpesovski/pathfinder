@@ -5,7 +5,7 @@ export function shapeBox(shape){
   return shape.points ? polygonBounds(outlinePoints(shape)) : { x: shape.x, y: shape.y, width: shape.width, height: shape.height };
 }
 
-export function translateShape(shape, dx, dy){
+export function translateShape(shape, dx, dy, moving = null){
   if (shape.points) {
     const moved = { points: shape.points.map((point) => ({ x: point.x + dx, y: point.y + dy })) };
     if (shape.furniture) moved.furniture = shape.furniture.map((item) => ({ ...item, cx: item.cx + dx, cy: item.cy + dy }));
@@ -13,6 +13,7 @@ export function translateShape(shape, dx, dy){
       for (const end of ["from", "to"]) {
         const point = shape[end];
         if (point && point.id === undefined && point.pipe === undefined) moved[end] = { x: point.x + dx, y: point.y + dy };
+        else if (point?.pipe !== undefined && moving?.has(point.pipe)) moved[end] = { ...point, x: point.x + dx, y: point.y + dy };
       }
     }
     return moved;

@@ -11,14 +11,16 @@ export const HYDRONIC_ELEMENTS = {
   heatExchanger: { label: "Heat exchanger", atv: "Toplotni_Izmenjevalnik", width: 101, height: 201 },
   electricHeater: { label: "Electric heater", atv: "Elektricni_Grelec", width: 101, height: 221 },
   manifold: { label: "Manifold", atv: "Manifold", width: 300, height: 40, bar: true, fixedHeight: true },
-  branch: { label: "Branch", atv: "Veja", path: "SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.2.%20Toplotna%20Postaja.Veja", width: 340, height: 800, branch: true, noPorts: true, ownLabel: true },
+  branch: { label: "Branch", width: 240, height: 210, branch: true, ownLabel: true, ports: { bottom: [90 / 240, 150 / 240] } },
   pump: { label: "Pump", atv: "Crpalka", native: { width: 55, height: 55 }, width: 52, height: 52, inline: true, orient: "flow" },
   valve: { label: "Valve", atv: "Valve", width: 56, height: 32, inline: true, orient: "axis" },
-  controlValve: { label: "Motorized valve", atv: "Dvosmerni_Ventil", native: { width: 22, height: 26.05, axisY: 19.545 }, width: 60, height: 100, inline: true, orient: "axis" },
-  threeWayValve: { label: "Three-way valve", atv: "Trismerni_Ventil", native: { width: 22, height: 30.6, axisY: 19.545 }, width: 60, height: 100, inline: true, orient: "axis", junction: true },
+  controlValve: { label: "Motorized valve", atv: "Dvosmerni_Ventil", native: { width: 22, height: 26.05, axisY: 19.545 }, width: 60, height: 100, inline: true, orient: "axis", readout: { measure: "Position", label: "", unit: "%", decimals: 0 } },
+  threeWayValve: { label: "Three-way valve", atv: "Trismerni_Ventil", native: { width: 22, height: 30.6, axisY: 19.545 }, width: 60, height: 100, inline: true, orient: "axis", junction: true, readout: { measure: "Position", label: "", unit: "%", decimals: 0 } },
+  energyValve: { label: "Energy valve", atv: "Energijski_Ventil", native: { width: 50, height: 130, axisY: 101.8 }, width: 50, height: 203.6, inline: true, orient: "stem", readout: { measure: "Position", label: "", unit: "%", decimals: 0 } },
   checkValve: { label: "Check valve", atv: "Nepovratna_Loputa", native: { width: 83.01, height: 43.02 }, width: 52, height: 32, inline: true, orient: "flow" },
   tempProbe: { label: "Temperature probe", atv: "Temperaturni_Senzor", native: { width: 35, height: 35 }, width: 40, height: 40, inline: true, orient: "upright", readout: { measure: "Temperature", label: "T:", unit: "°C" } },
   pressureProbe: { label: "Pressure probe", atv: "Tlacni_Senzor", width: 40, height: 40, inline: true, orient: "upright", readout: { measure: "Pressure", label: "P:", unit: "bar" } },
+  meterSensor: { label: "Energy meter sensor", width: 22, height: 22, inline: true, orient: "upright", primitive: true },
   tempSwitch: { label: "Temperature switch", atv: "Varnostni_Termostat", width: 40, height: 40, inline: true, orient: "upright" },
   pressureSwitch: { label: "Pressure switch", atv: "Varnostno_Tlacno_Stikalo", width: 40, height: 40, inline: true, orient: "upright" },
   router: { label: "Router", atv: "Topologija.Hub", width: 240, height: 80, device: "hub", ownLabel: true, ports: HUB_PORTS },
@@ -55,7 +57,7 @@ export function isDeviceType(type){
 export const HYDRONIC_GROUPS = [
   { id: "equipment", label: "Equipment", items: ["heatPump", "boiler", "bufferTank", "heatExchanger", "electricHeater", "manifold", "branch"] },
   { id: "inline", label: "On pipes", items: ["pump", "valve", "controlValve", "threeWayValve", "checkValve"] },
-  { id: "sensors", label: "Sensors", items: ["tempProbe", "pressureProbe", "tempSwitch", "pressureSwitch"] }
+  { id: "sensors", label: "Sensors", items: ["tempProbe", "pressureProbe", "tempSwitch", "pressureSwitch", "meterSensor"] }
 ];
 
 export const READOUT_MODES = [

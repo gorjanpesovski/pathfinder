@@ -41,7 +41,7 @@
   import { APPS, appById, GENERAL_TOOLS } from "$lib/apps.js";
   import HydronicLayer from "$lib/components/HydronicLayer.svelte";
   import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, DEFAULT_PROTOCOL, DEFAULT_WIRE, familyOf, isElectricType, mediumOf, isHydronicType, isInlineType, isDeviceType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
-  import { branchDefaults, alignBranch, snapBranch, branchRiders, isBranch, branchParams } from "$lib/hydronic/branch.js";
+  import { branchDefaults, alignBranch, snapBranch, branchRiders, isBranch, branchParams, createBranch, rebuildBranch, ownedPipes, branchPipeIds, branchLegEnds, migrateBranches, isLeg, keepLegDistances, legSpan } from "$lib/hydronic/branch.js";
   import { connectNetwork, placeDevices } from "$lib/hydronic/network.js";
   import { readoutLayout, readoutSpec } from "$lib/hydronic/readout.js";
   import { findPort, endpointPose, manhattanRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, findPipePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
@@ -269,6 +269,7 @@
     if (!drawing) {
       if (tool === "select" && beginMove(event)) return;
       if (tool === "select" && beginMarquee(event)) return;
+      openBranch = null;
       selectedId = null;
       return;
     }
@@ -437,7 +438,20 @@
       if (!units.has(key)) units.set(key, []);
       units.get(key).push(shape);
     }
-    return [...units.values()];
+    const chosen = new Set(selectionIds);
+    return [...units.values()].map((members) => {
+      const owned = branchPipeIds(shapes, members.filter(isBranch).map((shape) => shape.id)).filter((id) => !chosen.has(id)).map(shapeById);
+      return owned.length ? [...members, ...owned] : members;
+    });
+  }
+
+  function memberBox(shape){
+    return shape.kind === "pipe" ? routeBox(shape) : shapeBox(shape);
+  }
+
+  function unitBox(members){
+    const boxes = members.map(memberBox).filter(Boolean);
+    return boxes.length ? unionBox(boxes) : shapeBox(members[0]);
   }
 
   function groupSelection(){
@@ -650,18 +664,23 @@
     return route?.length ? polygonBounds(route) : null;
   }
 
+  let openBranch = $state(null);
+  let branchSelected = $derived(selectedShapes.some(isBranch));
+
   let transformBox = $derived.by(() => {
     if (tool === "select" && !selectedShapes.length && partGroup.length) {
       const boxes = partGroup.map(partBox).filter(Boolean);
       return boxes.length ? unionBox(boxes) : null;
     }
     if (tool !== "select" || activePoints.length || activeEdges.length || !selectedShapes.length) return null;
-    const boxes = selectedShapes.map((shape) => shape.kind === "pipe" ? routeBox(shape) : shapeBox(shape)).filter(Boolean);
+    const owned = branchPipeIds(shapes, selectionIds).filter((id) => !selectionIds.includes(id)).map(shapeById);
+    const boxes = [...selectedShapes, ...owned].map((shape) => shape.kind === "pipe" ? routeBox(shape) : shapeBox(shape)).filter(Boolean);
     return boxes.length ? unionBox(boxes) : null;
   });
 
   function transformGroup(){
-    const carried = [...selectionIds, ...branchRiders(shapes, selectionIds)];
+    const riders = [...selectionIds, ...branchRiders(shapes, selectionIds)];
+    const carried = [...new Set([...riders, ...branchPipeIds(shapes, riders)])];
     const ids = [...new Set([...carried, ...ridingPipes(shapes, carried)])];
     const entries = ids.map(shapeById).filter(Boolean).map((shape) => ({ shape, original: $state.snapshot(shape) }));
     const elements = new Map(entries.filter((entry) => entry.shape.kind === "equipment").map((entry) => [entry.shape.id, entry.original]));
@@ -675,8 +694,21 @@
     return { entries, ends };
   }
 
+  function onGrid(shape){
+    const spec = HYDRONIC_ELEMENTS[shape.type];
+    if (!snapToGrid || shape.kind !== "equipment" || !spec || spec.branch || spec.electric || spec.bar) return {};
+    const width = Math.max(gridSize, Math.round(shape.width / gridSize) * gridSize);
+    const height = Math.max(gridSize, Math.round(shape.height / gridSize) * gridSize);
+    const cx = Math.round((shape.x + shape.width / 2) / gridSize) * gridSize;
+    const cy = Math.round((shape.y + shape.height / 2) / gridSize) * gridSize;
+    return { width, height, x: cx - width / 2, y: cy - height / 2 };
+  }
+
   function applyTransformation({ entries, ends }, t){
-    for (const entry of entries) Object.assign(entry.shape, transformShape(entry.original, t));
+    for (const entry of entries) {
+      Object.assign(entry.shape, transformShape(entry.original, t));
+      if (t.kind === "scale") Object.assign(entry.shape, onGrid(entry.shape));
+    }
     for (const item of ends) item.pipe[item.key] = transformPort(item.end, item.element, shapeById(item.end.id), t);
   }
 
@@ -689,7 +721,7 @@
   function beginTransform(event, handle){
     const box = transformBox;
     if (!box) return;
-    if (handle !== "rotate" && handle.length === 2 && selectedShapes.length === 1 && selectedShapes[0].kind === "equipment") {
+    if (handle !== "rotate" && handle.length === 2 && selectedShapes.length === 1 && selectedShapes[0].kind === "equipment" && !isBranch(selectedShapes[0])) {
       beginElementScale(event, selectedShapes[0], handle);
       return;
     }
@@ -715,9 +747,9 @@
           x: handle.includes("w") ? box.x + box.width : handle.includes("e") ? box.x : center.x,
           y: handle.includes("n") ? box.y + box.height : handle.includes("s") ? box.y : center.y
         };
-        let sx = handle.includes("w") || handle.includes("e") ? scaleRatio(point.x, start.x, anchor.x) : 1;
+        let sx = !branchSelected && (handle.includes("w") || handle.includes("e")) ? scaleRatio(point.x, start.x, anchor.x) : 1;
         let sy = handle.includes("n") || handle.includes("s") ? scaleRatio(point.y, start.y, anchor.y) : 1;
-        if (handle.length === 2 && !next.shiftKey) sx = sy = Math.max(sx, sy);
+        if (handle.length === 2 && !next.shiftKey && !branchSelected) sx = sy = Math.max(sx, sy);
         apply(scaling(anchor, sx, sy));
       },
       onend: () => history.endGesture()
@@ -755,7 +787,7 @@
 
   function rotateSelection(){
     const box = transformBox;
-    if (!box) return;
+    if (!box || selectedShapes.some(isBranch)) return;
     const t = rotating({ x: box.x + box.width / 2, y: box.y + box.height / 2 }, 90);
     if (!selectedShapes.length) transformParts(partEntries(), t);
     else applyTransformation(transformGroup(), t);
@@ -775,10 +807,19 @@
       beginTransform(event, handle.dataset.transform);
       return true;
     }
-    const target = event.target instanceof Element ? event.target.closest("[data-shape-id]") : null;
-    const shape = target ? shapeById(Number(target.dataset.shapeId)) : null;
-    if (!shape) return false;
+    let target = event.target instanceof Element ? event.target.closest("[data-shape-id]") : null;
+    let shape = target ? shapeById(Number(target.dataset.shapeId)) : null;
+    if (!shape) {
+      openBranch = null;
+      return false;
+    }
     const additive = event.ctrlKey || event.metaKey;
+    const owner = shape.kind === "pipe" && shape.branchOf !== undefined ? shapeById(shape.branchOf) : null;
+    if (owner && openBranch !== owner.id) {
+      shape = owner;
+      target = { dataset: { shapeId: String(owner.id) } };
+    }
+    if (openBranch !== null && shape.id !== openBranch && shape.branchOf !== openBranch) openBranch = null;
 
     if (target.dataset.furnitureId !== undefined) {
       beginFurnitureDrag(event, shape, Number(target.dataset.furnitureId));
@@ -801,8 +842,24 @@
       }
       lastFittingPress = { key, time: now };
     }
+    if (target.dataset.fittingId !== undefined && target.dataset.fittingLabel !== undefined && !additive) {
+      beginNameDrag(event, shape, Number(target.dataset.fittingId));
+      return true;
+    }
     if (target.dataset.fittingId !== undefined) {
       beginFittingDrag(event, shape, Number(target.dataset.fittingId));
+      return true;
+    }
+    if (target.dataset.elementLabel !== undefined && !additive) {
+      const now = performance.now();
+      if (lastPress.id === shape.id && now - lastPress.time < 400) {
+        lastPress = { id: null, time: 0 };
+        selectShape(shape.id);
+        renamingElementId = shape.id;
+        return true;
+      }
+      lastPress = { id: shape.id, time: now };
+      beginNameDrag(event, shape, null);
       return true;
     }
     if (target.dataset.waypointIndex !== undefined) {
@@ -859,7 +916,14 @@
       renameRoom();
       return true;
     }
-    if (repeated && (isBranch(shape) || isDeviceType(shape.type))) {
+    if (repeated && isBranch(shape)) {
+      openBranch = shape.id;
+      selectedId = null;
+      selectedIds = [];
+      clearSubSelection();
+      return true;
+    }
+    if (repeated && isDeviceType(shape.type)) {
       selectShape(shape.id);
       setTimeout(() => document.querySelector("input.branch-name")?.select(), 0);
       return true;
@@ -886,10 +950,13 @@
 
     const start = toCanvas(event);
     if (!start) return true;
-    const carried = [...selectionIds, ...branchRiders(shapes, selectionIds)];
-    const group = [...carried, ...ridingPipes(shapes, carried)].map(shapeById).map((entry) => ({ shape: entry, original: $state.snapshot(entry) }));
+    const riders = [...selectionIds, ...branchRiders(shapes, selectionIds)];
+    const carried = [...new Set([...riders, ...branchPipeIds(shapes, riders)])];
+    const group = [...new Set([...carried, ...ridingPipes(shapes, carried)])].map(shapeById).map((entry) => ({ shape: entry, original: $state.snapshot(entry) }));
+    const movingIds = new Set(group.map((entry) => entry.shape.id));
     const solids = group.filter((entry) => entry.shape.kind !== "pipe");
     const lonelyBranch = solids.length === 1 && isBranch(solids[0].shape) ? solids[0] : null;
+    const lonelyEnds = lonelyBranch ? branchLegEnds(shapes, lonelyBranch.shape) : {};
     const resting = lonelyBranch ? shapes.filter((entry) => !group.some((member) => member.shape === entry)) : [];
     const framed = group.filter((entry) => entry.shape.kind !== "pipe").map((entry) => shapeBox(entry.original));
     const box = framed.length ? unionBox(framed) : null;
@@ -910,12 +977,12 @@
         const dy = still ? 0 : centre ? round2(Math.round((centre.y + point.y - start.y) / step) * step - centre.y) : Math.round((point.y - start.y) / step) * step;
         let delta = box ? clampDelta(box, dx, dy, boardWidth, boardHeight) : { dx, dy };
         if (lonelyBranch) {
-          const shifted = { ...lonelyBranch.original, ...translateShape(lonelyBranch.original, delta.dx, delta.dy) };
-          const snapped = snapBranch(shifted, resting, snapRadius);
-          delta = { dx: delta.dx, dy: delta.dy + snapped.y - shifted.y };
+          const ends = {};
+          for (const [role, end] of Object.entries(lonelyEnds)) ends[role] = { x: end.x + delta.dx, y: end.y + delta.dy };
+          delta = { dx: delta.dx, dy: delta.dy + snapBranch(ends, resting, snapRadius) };
         }
         if (delta.dx !== 0 || delta.dy !== 0) moved = true;
-        for (const entry of group) Object.assign(entry.shape, translateShape(entry.original, delta.dx, delta.dy));
+        for (const entry of group) Object.assign(entry.shape, translateShape(entry.original, delta.dx, delta.dy, movingIds));
       },
       onend: () => {
         history.endGesture();
@@ -1164,10 +1231,11 @@
   }
 
   function moveShapesBy(group, offsets){
+    const moving = new Set(group.map((shape) => shape.id));
     group.forEach((shape, index) => {
       const { dx, dy } = offsets[index];
       if (dx === 0 && dy === 0) return;
-      Object.assign(shape, translateShape($state.snapshot(shape), round2(dx), round2(dy)));
+      Object.assign(shape, translateShape($state.snapshot(shape), round2(dx), round2(dy), moving));
     });
   }
 
@@ -1200,7 +1268,7 @@
     }
     const units = selectionUnits();
     if (units.length === 0) return;
-    const boxes = units.map((members) => unionBox(members.map(shapeBox)));
+    const boxes = units.map((members) => unitBox(members));
     const frame = units.length === 1 ? { x: 0, y: 0, width: boardWidth, height: boardHeight } : unionBox(boxes);
     moveUnitsBy(units, alignOffsets(boxes, mode, frame));
   }
@@ -1212,7 +1280,7 @@
   function mixedMembers(){
     const members = fittingGroup.map(({ pipe, fitting }) => ({ route: pipeRoutes.get(pipe.id), fitting })).filter((member) => member.route);
     const units = selectionUnits();
-    const boxes = [...units.map((list) => unionBox(list.map(shapeBox))), ...members.map((member) => fittingBox(member.route, member.fitting))];
+    const boxes = [...units.map((list) => unitBox(list)), ...members.map((member) => fittingBox(member.route, member.fitting))];
     return { members, units, boxes };
   }
 
@@ -1254,7 +1322,7 @@
     }
     const units = selectionUnits();
     if (points.length >= 2 || units.length < 3) return;
-    moveUnitsBy(units, distributeOffsets(units.map((members) => unionBox(members.map(shapeBox))), axis));
+    moveUnitsBy(units, distributeOffsets(units.map((members) => unitBox(members)), axis));
   }
 
   function thermostatState(list){
@@ -1516,7 +1584,8 @@
     if (typingInto(event.target) || selectionIds.length === 0) return;
     clipboardFurniture = null;
     clipboardFittings = null;
-    clipboardShapes = $state.snapshot(selectedShapes);
+    const owned = branchPipeIds(shapes, selectionIds).filter((id) => !selectionIds.includes(id)).map(shapeById);
+    clipboardShapes = $state.snapshot([...selectedShapes, ...owned]);
     clipboardToken = `${Date.now()}`;
     pasteCount = 0;
     event.clipboardData?.setData("text/plain", CLIPBOARD_PREFIX + clipboardToken);
@@ -1564,7 +1633,7 @@
       created.push(copy);
     }
 
-    const linked = linkPastedPipes(created, idMap, offset);
+    const linked = linkPastedPipes(created, idMap, offset).map((shape) => shape.branchOf !== undefined && idMap.has(shape.branchOf) ? { ...shape, branchOf: idMap.get(shape.branchOf) } : shape).filter((shape) => shape.branchOf === undefined || created.some((entry) => entry.id === shape.branchOf));
     if (tool !== "select") pickTool("select");
     shapes.push(...linked);
     selectedIds = linked.map((shape) => shape.id);
@@ -2355,7 +2424,6 @@
 
   function setBranchName(value){
     for (const element of selectedElements()) {
-      if (!isBranch(element) && !isDeviceType(element.type) && !isElectricType(element.type)) continue;
       const others = shapes.filter((shape) => shape !== element);
       element.name = value.trim() || (isElectricType(element.type) ? nextElectricName(element.type, others) : nextElementName(element.type, others));
     }
@@ -2365,7 +2433,61 @@
     for (const element of selectedElements()) {
       if (!isBranch(element)) continue;
       element.params = { ...branchDefaults(), ...$state.snapshot(element.params ?? {}), [name]: value };
+      refreshBranch(element);
     }
+  }
+
+  function refreshBranch(element){
+    const owned = ownedPipes(shapes, element.id);
+    if (!owned.length) return;
+    const rebuilt = rebuildBranch($state.snapshot(element), $state.snapshot(owned), () => nextId++);
+    const keep = new Set(rebuilt.map((pipe) => pipe.id));
+    const updates = new Map(rebuilt.map((pipe) => [pipe.id, pipe]));
+    const next = [];
+    for (const shape of shapes) {
+      if (shape.kind === "pipe" && shape.branchOf === element.id) {
+        if (keep.has(shape.id)) next.push(updates.get(shape.id));
+        continue;
+      }
+      next.push(shape);
+    }
+    for (const pipe of rebuilt) if (!shapes.some((shape) => shape.id === pipe.id)) next.push(pipe);
+    shapes = pruneDangling(next);
+  }
+
+  function beginNameDrag(event, owner, fittingId){
+    const target = fittingId === null ? owner : owner.fittings?.find((entry) => entry.id === fittingId);
+    if (!target) return;
+    if (fittingId === null) {
+      if (!selectionIds.includes(owner.id)) selectShape(owner.id);
+    } else {
+      selectedId = null;
+      clearSubSelection();
+      selectedFitting = { pipeId: owner.id, fittingId };
+    }
+    const start = toCanvas(event);
+    if (!start) return;
+    const origin = { x: target.nameOffset?.x ?? 0, y: target.nameOffset?.y ?? 0 };
+    history.beginGesture();
+    dragPointer(svgEl, event, {
+      onmove: (next) => {
+        const point = toCanvas(next);
+        if (!point) return;
+        target.nameOffset = { x: Math.round(origin.x + point.x - start.x), y: Math.round(origin.y + point.y - start.y) };
+      },
+      onend: () => history.endGesture()
+    });
+  }
+
+  function setFittingName(value){
+    const entry = activeFitting;
+    if (!entry) return;
+    entry.fitting.name = value.trim() || nextFittingName(entry.fitting.type, shapes);
+  }
+
+  function setReadoutScale(value){
+    editKey = "readoutScale";
+    for (const { fitting } of fittingGroup) if (readoutSpec(fitting.type)) fitting.readoutScale = value;
   }
 
   function beginReadoutDrag(event, pipe, fittingId){
@@ -2471,7 +2593,37 @@
     return snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value);
   }
 
+  function beginLegDrag(event, pipe, end){
+    const original = $state.snapshot(pipe[end]);
+    if (!isFreeEnd(original)) return;
+    const start = toCanvas(event);
+    if (!start) return;
+    const branch = shapeById(pipe.branchOf);
+    const top = branch ? endpointPose(pipe.role === "supply" ? pipe.to : pipe.from, shapeIndex)?.point : null;
+    const bars = shapes.filter((shape) => shape.kind === "equipment" && HYDRONIC_ELEMENTS[shape.type]?.bar);
+    history.beginGesture();
+    dragPointer(svgEl, event, {
+      onmove: (next) => {
+        const point = toCanvas(next);
+        if (!point) return;
+        let y = snapValue(original.y + point.y - start.y, boardHeight);
+        const x = top?.x ?? original.x;
+        const bar = bars.find((entry) => x > entry.x && x < entry.x + entry.width && Math.abs(entry.y - y) <= snapRadius);
+        if (bar) y = bar.y;
+        if (top) y = Math.max(y, top.y + 40);
+        const before = branch ? legSpan(branch, pipe) : null;
+        pipe[end] = { x, y: round2(y) };
+        if (branch) pipe.fittings = keepLegDistances(branch, $state.snapshot(pipe), before);
+      },
+      onend: () => history.endGesture()
+    });
+  }
+
   function beginPipeEndDrag(event, pipe, end){
+    if (isLeg(pipe)) {
+      beginLegDrag(event, pipe, end);
+      return;
+    }
     const original = $state.snapshot(pipe[end]);
     const fixed = $state.snapshot(end === "from" ? pipe.to : pipe.from);
     const points = $state.snapshot(pipe.points ?? []);
@@ -2695,7 +2847,7 @@
   }
 
   function flipFitting(){
-    for (const { fitting } of fittingGroup) if (!readoutSpec(fitting.type)) fitting.flip = !fitting.flip;
+    for (const { fitting } of fittingGroup) if (HYDRONIC_ELEMENTS[fitting.type]?.orient !== "upright") fitting.flip = !fitting.flip;
   }
 
   function removeFitting(){
@@ -2759,15 +2911,37 @@
     if (spec.bar) element.medium = pipeMedium;
     if (spec.branch) {
       element.params = branchDefaults();
-      const aligned = alignBranch(element, (value) => snapValue(value, boardWidth));
-      return { kind: "equipment", element: { ...aligned, ...snapBranch(aligned, shapes, snapRadius) }, valid: true };
+      let aligned = { ...alignBranch(element, (value) => snapValue(value, boardWidth)), id: -1 };
+      let ghostId = -1;
+      let pipes = createBranch(aligned, () => --ghostId);
+      const shift = snapBranch(legEndsOf(pipes), shapes, snapRadius);
+      if (shift) {
+        aligned = { ...aligned, y: aligned.y + shift };
+        ghostId = -1;
+        pipes = createBranch(aligned, () => --ghostId);
+      }
+      const { id, ...placed } = aligned;
+      return { kind: "equipment", element: placed, pipes, valid: true };
     }
     return { kind: "equipment", element, valid: true };
   }
 
+  function legEndsOf(pipes){
+    const ends = {};
+    for (const pipe of pipes) {
+      if (pipe.role === "supply") ends.supply = pipe.from;
+      if (pipe.role === "return") ends.return = pipe.to;
+    }
+    return ends;
+  }
+
   function placeHydronic(target, keep){
     const id = nextId++;
-    if (target.kind === "equipment") shapes.push({ id, kind: "equipment", ...target.element, name: isElectricType(target.element.type) ? nextElectricName(target.element.type, shapes) : nextElementName(target.element.type, shapes) });
+    if (target.kind === "equipment") {
+      const element = { id, kind: "equipment", ...target.element, name: isElectricType(target.element.type) ? nextElectricName(target.element.type, shapes) : nextElementName(target.element.type, shapes) };
+      shapes.push(element);
+      if (isBranch(element)) shapes.push(...createBranch(element, () => nextId++));
+    }
     else target.pipe.fittings = [...(target.pipe.fittings ?? []), { id, ...target.fitting, name: nextFittingName(target.fitting.type, shapes) }];
     if (keep) return;
     pickTool("select");
@@ -2851,7 +3025,7 @@
     }
     if (tool === "select" && app === "hydronic" && !ctrl && key === "r" && selectedShapes.some((shape) => shape.kind === "equipment" && !shape.locked)) {
       event.preventDefault();
-      rotateElements();
+      if (!selectedShapes.some(isBranch)) rotateElements();
       return true;
     }
     if (tool === "select" && app === "hydronic" && !ctrl && !event.altKey && key === "f" && selectedShapes.some((shape) => shape.kind === "pipe")) {
@@ -3162,16 +3336,17 @@
     editingTextId = null;
     documents = {};
     const next = APPS.some((entry) => entry.id === doc.app) ? doc.app : app;
-    for (const [id, list] of Object.entries(doc.apps)) if (id !== next) documents[id] = { shapes: nameFittings(list), history: null };
+    nextId = highestId(doc.apps) + 1;
+    const ready = (list) => nameFittings(migrateBranches(list, () => nextId++));
+    for (const [id, list] of Object.entries(doc.apps)) if (id !== next) documents[id] = { shapes: ready(list), history: null };
     app = next;
     history.load(null);
-    shapes = nameFittings(doc.apps[next] ?? []);
+    shapes = ready(doc.apps[next] ?? []);
     if (doc.canvas) {
       if (doc.canvas.width > 0) canvasWidth = doc.canvas.width;
       if (doc.canvas.height > 0) canvasHeight = doc.canvas.height;
       if (typeof doc.canvas.fill === "string") canvasFill = doc.canvas.fill;
     }
-    nextId = highestId(doc.apps) + 1;
     documentName = doc.name ?? null;
     ioPoints = doc.io?.points ?? [];
     ioOthers = doc.io?.others ?? [];
@@ -4636,7 +4811,7 @@
                    onfittingreadout={setFittingReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName} ondeviceparam={setDeviceParam}
                    network={networkSelection} onconnect={connectSelected} onadddevices={addDevices}
                    onelementrotate={rotateElements} onelementsize={setElementSize} ontankprobe={toggleTankProbe}
-                   groups={selectionGroups} onnamesize={setNameSize} onfittingnamesize={setFittingNameSize}
+                   groups={selectionGroups} onnamesize={setNameSize} onfittingnamesize={setFittingNameSize} onreadoutscale={setReadoutScale} onfittingname={setFittingName}
                    onradius={setCornerRadius} onflip={flipSelection}
                    parts={partOptions} onpartsremove={removeParts} onkind={setShapeKind} onlabelsize={setLabelSize} onhideedges={hideEdges} onshowname={showRoomNames} onrotate={rotateSelection}
                    onname={(value) => selectedShape && setRoomName(selectedShape, value)}/>
@@ -4778,8 +4953,13 @@
                          edges={activeEdges.filter((key) => key.id === shape.id).map((key) => key.index)}/>
         {/each}
 
+        {#if openBranch !== null && shapeById(openBranch)}
+          {@const open = unitBox([shapeById(openBranch), ...ownedPipes(shapes, openBranch)])}
+          <rect x={open.x - 16} y={open.y - 16} width={open.width + 32} height={open.height + 32} rx="6" fill="none"
+                stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" pointer-events="none"/>
+        {/if}
         {#if transformBox}
-          <TransformFrame box={transformBox} zoom={viewport.zoom} rotate={selectedShapes.length > 0 || furnitureGroup.length > 0}/>
+          <TransformFrame box={transformBox} zoom={viewport.zoom} rotate={(selectedShapes.length > 0 && !branchSelected) || furnitureGroup.length > 0} vertical={branchSelected}/>
         {/if}
 
         {#if placement}

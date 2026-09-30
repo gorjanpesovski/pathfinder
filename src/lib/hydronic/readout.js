@@ -1,14 +1,19 @@
 import { HYDRONIC_ELEMENTS } from "./elements.js";
 import { routePoint } from "./route.js";
 import { fittingPose, fittingSize } from "./geometry.js";
+import { fittingBox } from "./fittingAlign.js";
 
 export const READOUT = {
-  labelWidth: 28,
+  labelWidth: 38,
   boxWidth: 100,
   rowHeight: 40,
   rowGap: 4,
   gap: 10
 };
+
+export function readoutScaleOf(fitting){
+  return fitting.readoutScale ?? (fitting.auto ? 1 : fitting.scale ?? 1);
+}
 
 export function readoutSpec(type){
   return HYDRONIC_ELEMENTS[type]?.readout ?? null;
@@ -18,8 +23,9 @@ export function readoutRows(fitting){
   const spec = readoutSpec(fitting.type);
   const mode = fitting.readout ?? "none";
   if (!spec || mode === "none") return [];
-  const setpoint = { kind: "setpoint", label: "S:", unit: spec.unit };
-  const value = { kind: "value", label: spec.label, unit: spec.unit };
+  const decimals = spec.decimals ?? 1;
+  const setpoint = { kind: "setpoint", label: "S:", unit: spec.unit, decimals };
+  const value = { kind: "value", label: spec.label, unit: spec.unit, decimals };
   if (mode === "setpoint") return [{ ...setpoint, label: "" }];
   if (mode === "value") return [{ ...value, label: "" }];
   return [setpoint, value];
@@ -95,8 +101,9 @@ export function readoutLayout(shapes, routes, bounds = null){
       const rows = readoutRows(fitting);
       if (!rows.length) continue;
       const pose = fittingPose(route, fitting);
-      const size = fittingSize(fitting);
-      const scale = fitting.scale ?? 1;
+      const turned = fittingBox(route, fitting);
+      const size = { width: Math.max(turned.width, Math.abs(turned.pose.x - turned.x) * 2), height: Math.max(turned.height, Math.abs(turned.pose.y - turned.y) * 2) };
+      const scale = readoutScaleOf(fitting);
       const extent = readoutExtent(rows, scale);
       let box;
       if (fitting.readoutOffset) {

@@ -1,8 +1,7 @@
 import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, mediumOf } from "./elements.js";
 import { computeRoutes } from "./route.js";
 import { touchRoute } from "./outline.js";
-import { branchArgs, branchGaps } from "./branch.js";
-import { branchParts } from "./branchParts.js";
+import { branchGaps, branchHeaderParts, meterWires } from "./branch.js";
 import { readoutLayout, readoutRowBoxes, READOUT } from "./readout.js";
 import { rotationOf, uprightSize } from "./frame.js";
 import { tankParts } from "./tank.js";
@@ -17,7 +16,6 @@ const LABEL_FORMATS = ["app", "pgd"];
 
 function elementArgs(element){
   const spec = HYDRONIC_ELEMENTS[element.type];
-  if (spec?.branch) return branchArgs(element);
   if (spec?.device) return deviceArgs(element);
   return (spec?.params ?? []).includes("name") && element.name ? { name: element.name } : {};
 }
@@ -170,9 +168,10 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
     });
   }
 
+  const plainPipes = new Set(pipes.filter(({ pipe }) => pipe.branchOf !== undefined && (pipe.role === "bypass" || pipe.role === "mix")).map(({ pipe }) => pipe.id));
   const networkPipes = new Set(pipes.filter(({ pipe }) => mediumOf(pipe.medium).network).map(({ pipe }) => pipe.id));
   junctions.forEach((junction, index) => {
-    if (networkPipes.has(junction.pipeId)) return;
+    if (networkPipes.has(junction.pipeId) || plainPipes.has(junction.pipeId)) return;
     if (electricPipes.has(junction.pipeId)) {
       items.push({ kind: "junction", id: `junction_${index + 1}`, x: junction.x, y: junction.y, radius: 3.5, dot: true });
       return;
@@ -186,6 +185,13 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
 
   branchGaps(shapes, style.gapSize).forEach((entry, index) => {
     items.push({ kind: "gap", id: `branch_${entry.branchId}_gap_${index + 1}`, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
+    const leg = byId.get(entry.pipeId);
+    if (!leg) return;
+    items.push({ kind: "pipe", id: `branch_${entry.branchId}_gap_${index + 1}_pipe`, pipeId: leg.id, points: [{ x: entry.line.x, y: entry.line.top }, { x: entry.line.x, y: entry.line.bottom }], color: mediumOf(leg.medium).color, width: pipeWidthOf(leg, style), dash: false, dashArray: null, overlay: true });
+  });
+
+  meterWires(shapes, routes).forEach((points, index) => {
+    items.push({ kind: "pipe", id: `meter_wire_${index + 1}`, points, color: "#414142", width: 1.5, dash: false, dashArray: "4 3", overlay: true });
   });
 
   for (const element of solids) {
@@ -204,7 +210,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
     };
     const spec = HYDRONIC_ELEMENTS[element.type];
     items.push(spec.electric ? { kind: "electric", ...base, svg: electricSvg(element, refsOf(element)) }
-      : spec.branch ? { kind: "branch", ...base, element, parts: branchParts(element) }
+      : spec.branch ? { kind: "branch", ...base, element, parts: branchHeaderParts(element) }
       : spec.device ? { kind: "device", ...base, device: spec.device, x: element.x, y: element.y, name: element.name ?? "", address: base.args.ip ?? "" }
       : { kind: "icon", ...base });
   }
@@ -238,7 +244,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
 
   for (const { pipe, route } of pipes) {
     for (const fitting of pipe.fittings ?? []) {
-      if (!fitting.name || !HYDRONIC_ELEMENTS[fitting.type]) continue;
+      if (!fitting.name || fitting.nameHidden || !HYDRONIC_ELEMENTS[fitting.type]) continue;
       const label = fittingLabel(route, fitting);
       const width = 160 * label.size / 13;
       items.push({
@@ -278,7 +284,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
           box: { x: row.labelX, y: row.box.y, width: (READOUT.labelWidth - 2) * row.scale, height: row.box.height }
         });
       }
-      items.push({ kind: "field", id, x: row.box.x, y: row.box.y, width: row.box.width, height: row.box.height, unit: row.unit, decimals: 1 });
+      items.push({ kind: "field", id, x: row.box.x, y: row.box.y, width: row.box.width, height: row.box.height, unit: row.unit, decimals: row.decimals ?? 1 });
     }
   }
 

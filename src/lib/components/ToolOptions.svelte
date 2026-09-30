@@ -20,6 +20,8 @@
     groups = null,
     onnamesize,
     onfittingnamesize,
+    onreadoutscale,
+    onfittingname,
     medium = "supply",
     onmedium,
     onfittingflip,
@@ -384,7 +386,7 @@
     {#if groups}
       <SelectionOptions {groups} bind:keepRatio {onelementsize} {onelementrotate} {onresetsize} {onnamesize} {ontankprobe}
                         {onbranchparam} {onbranchname} {ondeviceparam} {network} {onconnect} {onadddevices} {onmedium} {onpipewidth} {onreverse} {onpipelayer} {onfittingreadout} {onreadoutreset}
-                        {onfittingflip} {onfittingscale} {onfittingremove} {onfittingnamesize} {onedittext} {ontextstyle}/>
+                        {onfittingflip} {onfittingscale} {onfittingremove} {onfittingnamesize} {onreadoutscale} {onfittingname} {onedittext} {ontextstyle}/>
     {:else if furniture}
       <span>{furniture.label} · {furniture.roomName}</span>
       <button type="button" onclick={onfurnitureremove}>Remove</button>
