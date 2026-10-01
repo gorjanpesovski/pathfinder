@@ -25,9 +25,11 @@
     medium = "supply",
     onmedium,
     onfittingflip,
+    onfittingturn,
     onfittingremove,
     onfittingscale,
     onfittingreadout,
+    onmeterreadout,
     onreadoutreset,
     onbranchparam,
     onbranchname,
@@ -95,6 +97,19 @@
   const TARGET_TOOLS = ["room-rect", "room-poly", "curve"];
 
   let keepRatio = $state(true);
+
+  function readLive(event, min, max){
+    const value = Number(event.currentTarget.value);
+    if (event.currentTarget.value === "" || !Number.isFinite(value) || value < min || value > max) return null;
+    return Math.round(value);
+  }
+
+  function commitNumber(event, min, max, apply){
+    const next = readNumber(event, min, max);
+    if (next === null) return;
+    event.currentTarget.value = String(next);
+    apply(next);
+  }
 
   function readNumber(event, min, max){
     const value = Number(event.currentTarget.value);
@@ -385,8 +400,8 @@
     {/if}
     {#if groups}
       <SelectionOptions {groups} bind:keepRatio {onelementsize} {onelementrotate} {onresetsize} {onnamesize} {ontankprobe}
-                        {onbranchparam} {onbranchname} {ondeviceparam} {network} {onconnect} {onadddevices} {onmedium} {onpipewidth} {onreverse} {onpipelayer} {onfittingreadout} {onreadoutreset}
-                        {onfittingflip} {onfittingscale} {onfittingremove} {onfittingnamesize} {onreadoutscale} {onfittingname} {onedittext} {ontextstyle}/>
+                        {onbranchparam} {onbranchname} {ondeviceparam} {network} {onconnect} {onadddevices} {onmedium} {onpipewidth} {onreverse} {onpipelayer} {onfittingreadout} {onmeterreadout} {onreadoutreset}
+                        {onfittingflip} {onfittingturn} {onfittingscale} {onfittingremove} {onfittingnamesize} {onreadoutscale} {onfittingname} {onedittext} {ontextstyle}/>
     {:else if furniture}
       <span>{furniture.label} · {furniture.roomName}</span>
       <button type="button" onclick={onfurnitureremove}>Remove</button>
@@ -434,7 +449,8 @@
           <input type="range" min="0" max={selection.maxRadius} step="1" value={selection.radius}
                  oninput={(e) => onradius(Number(e.currentTarget.value))}>
           <input type="number" min="0" max={selection.maxRadius} step="1" value={selection.radius}
-                 oninput={(e) => { const next = readNumber(e, 0, selection.maxRadius); if (next !== null) onradius(next); }}>
+                 oninput={(e) => { const next = readLive(e, 0, selection.maxRadius); if (next !== null) onradius(next); }}
+                 onchange={(e) => commitNumber(e, 0, selection.maxRadius, (value) => onradius(value))}>
           <span class="unit">cm</span>
         </label>
         <button type="button" disabled={selection.radius === 0} onclick={() => onradius(0)}>Square corner</button>
@@ -468,7 +484,8 @@
         <label>
           Stroke (all traces)
           <input type="number" min="1" max={MAX_WIDTH} step="1" value={lineWidth}
-                 oninput={(e) => { const next = readNumber(e, 1, MAX_WIDTH); if (next !== null) onlinewidth(next); }}>
+                 oninput={(e) => { const next = readLive(e, 1, MAX_WIDTH); if (next !== null) onlinewidth(next); }}
+                 onchange={(e) => commitNumber(e, 1, MAX_WIDTH, (value) => onlinewidth(value))}>
         </label>
       {/if}
       {#if selection.shape.kind === "image"}
@@ -535,7 +552,8 @@
     <label>
       Width
       <input type="number" min="1" max="40" step="1" value={pipewidth}
-             oninput={(e) => { const next = readNumber(e, 1, 40); if (next !== null) onpipewidth(next); }}>
+             oninput={(e) => { const next = readLive(e, 1, 40); if (next !== null) onpipewidth(next); }}
+             onchange={(e) => commitNumber(e, 1, 40, (value) => onpipewidth(value))}>
     </label>
   {:else if tool !== "pan" && tool !== "text"}
     <span class="sep" aria-hidden="true"></span>
@@ -554,7 +572,8 @@
       <label>
         Stroke
         <input type="number" min="1" max={MAX_WIDTH} step="1" value={lineWidth}
-               oninput={(e) => { const next = readNumber(e, 1, MAX_WIDTH); if (next !== null) onlinewidth(next); }}>
+               oninput={(e) => { const next = readLive(e, 1, MAX_WIDTH); if (next !== null) onlinewidth(next); }}
+               onchange={(e) => commitNumber(e, 1, MAX_WIDTH, (value) => onlinewidth(value))}>
       </label>
     {/if}
     {#if tool === "line"}

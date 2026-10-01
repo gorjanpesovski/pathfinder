@@ -63,6 +63,14 @@ function arrowSvg(color, size){
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><polygon points="0,0 ${size},${size / 2} 0,${size}" fill="${color}"/></svg>\n`;
 }
 
+function genericSvg(width, height){
+  const w = Math.round(width);
+  const h = Math.round(height);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="10" ry="10" fill="#FFFFFF" stroke="#9CA9BF" stroke-width="1"/></svg>
+`;
+}
+
 function junctionSvg(style){
   const size = (style.junctionRadius + style.junctionWidth) * 2;
   const middle = size / 2;
@@ -124,7 +132,7 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
    "font-sizepx": Math.round(sizePx),
    cx: w / 2,
    cy: h / 2,
-   alignment: options.align === "center" ? "center" : undefined,
+   alignment: options.align === "center" || options.align === "right" ? options.align : undefined,
    x,
    y,
    "vert-align": "middle",
@@ -192,7 +200,7 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
     image(`pf_${type}`, cleanIcon(source), cx, cy, w, h, rotation);
   };
 
-  const caption = (item) => label(item.text, item.box.x, item.box.y, item.box.width, item.box.height, item.size, { align: item.anchor === "middle" ? "center" : undefined, bold: item.bold, color: item.color });
+  const caption = (item) => label(item.text, item.box.x, item.box.y, item.box.width, item.box.height, item.size, { align: item.anchor === "middle" ? "center" : item.anchor === "end" ? "right" : undefined, bold: item.bold, color: item.color });
 
   const branchPart = (part) => {
     if (part.kind === "drain") {
@@ -223,6 +231,10 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
     },
     icon: (item) => iconImage(item.type, item.cx, item.cy, item.width, item.height, item.rotation),
     branch: (item) => item.parts.forEach(branchPart),
+    generic: (item) => {
+      image(`pf_generic_${Math.round(item.width)}x${Math.round(item.height)}`, genericSvg(item.width, item.height), item.cx, item.cy, item.width, item.height, item.rotation ?? 0);
+      label(item.name, item.cx - item.width / 2, item.cy - item.height / 2, item.width, item.height, item.fontSize, { align: "center", color: "#475569" });
+    },
     field: (item) => numeric(item.x, item.y, item.width, item.height, item.unit, item.decimals),
     label: caption
   };

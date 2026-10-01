@@ -1,11 +1,12 @@
 import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, mediumOf } from "./elements.js";
 import { computeRoutes } from "./route.js";
 import { touchRoute } from "./outline.js";
-import { branchGaps, branchHeaderParts, meterWires } from "./branch.js";
+import { branchHeaderParts, meterWires } from "./branch.js";
+import { barGaps, calorimeterWires } from "./meter.js";
 import { readoutLayout, readoutRowBoxes, READOUT } from "./readout.js";
 import { rotationOf, uprightSize } from "./frame.js";
 import { tankParts } from "./tank.js";
-import { elementLabel, hasNameLabel } from "./label.js";
+import { elementLabel, hasNameLabel, labelBox, textWidth } from "./label.js";
 import { fittingLabel } from "./fittingLabel.js";
 import { fittingPose, fittingSize, pipeDecorations, pipeWidthOf } from "./geometry.js";
 import { electricSvg } from "../electric/symbols.js";
@@ -17,7 +18,12 @@ const LABEL_FORMATS = ["app", "pgd"];
 function elementArgs(element){
   const spec = HYDRONIC_ELEMENTS[element.type];
   if (spec?.device) return deviceArgs(element);
+  if (spec?.generic) return { name: element.name ?? "", font_size: genericFont(element) };
   return (spec?.params ?? []).includes("name") && element.name ? { name: element.name } : {};
+}
+
+export function genericFont(element){
+  return element.fontSize > 0 ? element.fontSize : HYDRONIC_ELEMENTS[element.type]?.fontSize ?? 24;
 }
 
 export function deviceArgs(element){
@@ -183,14 +189,13 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
     items.push({ kind: "bar", id: `${bar.type}_${bar.id}`, elementId: bar.id, x: bar.x, y: bar.y, width: bar.width, height: bar.height, color: mediumOf(bar.medium).color });
   }
 
-  branchGaps(shapes, style.gapSize).forEach((entry, index) => {
-    items.push({ kind: "gap", id: `branch_${entry.branchId}_gap_${index + 1}`, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
-    const leg = byId.get(entry.pipeId);
-    if (!leg) return;
-    items.push({ kind: "pipe", id: `branch_${entry.branchId}_gap_${index + 1}_pipe`, pipeId: leg.id, points: [{ x: entry.line.x, y: entry.line.top }, { x: entry.line.x, y: entry.line.bottom }], color: mediumOf(leg.medium).color, width: pipeWidthOf(leg, style), dash: false, dashArray: null, overlay: true });
+  barGaps(pipes.filter(({ pipe }) => !mediumOf(pipe.medium).network && !mediumOf(pipe.medium).electric), bars, style).forEach((entry, index) => {
+    const id = `bar_${entry.barId}_gap_${index + 1}`;
+    items.push({ kind: "gap", id, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
+    items.push({ kind: "pipe", id: `${id}_pipe`, pipeId: entry.pipe.id, points: entry.line, color: mediumOf(entry.pipe.medium).color, width: pipeWidthOf(entry.pipe, style), dash: false, dashArray: null, overlay: true });
   });
 
-  meterWires(shapes, routes).forEach((points, index) => {
+  [...meterWires(shapes, routes), ...calorimeterWires(shapes, routes)].forEach((points, index) => {
     items.push({ kind: "pipe", id: `meter_wire_${index + 1}`, points, color: "#414142", width: 1.5, dash: false, dashArray: "4 3", overlay: true });
   });
 
@@ -211,6 +216,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
     const spec = HYDRONIC_ELEMENTS[element.type];
     items.push(spec.electric ? { kind: "electric", ...base, svg: electricSvg(element, refsOf(element)) }
       : spec.branch ? { kind: "branch", ...base, element, parts: branchHeaderParts(element) }
+      : spec.generic ? { kind: "generic", ...base, x: element.x, y: element.y, name: element.name ?? "", fontSize: genericFont(element) }
       : spec.device ? { kind: "device", ...base, device: spec.device, x: element.x, y: element.y, name: element.name ?? "", address: base.args.ip ?? "" }
       : { kind: "icon", ...base });
   }
@@ -226,9 +232,10 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   for (const element of solids) {
     if (!element.name || !hasNameLabel(element)) continue;
     const label = elementLabel(element);
+    const width = label.anchor === "middle" ? Math.max(element.width + 40, textWidth(element.name, label.size)) : textWidth(element.name, label.size) + 8;
     items.push({
-      kind: "label", id: `${element.type}_${element.id}_name`, text: element.name, x: label.x, y: label.y, size: label.size, anchor: "middle", color: INK,
-      box: { x: element.x - 20, y: label.top, width: element.width + 40, height: label.height },
+      kind: "label", id: `${element.type}_${element.id}_name`, text: element.name, x: label.x, y: label.y, size: label.size, anchor: label.anchor, color: INK,
+      box: labelBox(label, width),
       ref: { elementId: element.id }, formats: LABEL_FORMATS
     });
   }
@@ -246,10 +253,10 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
     for (const fitting of pipe.fittings ?? []) {
       if (!fitting.name || fitting.nameHidden || !HYDRONIC_ELEMENTS[fitting.type]) continue;
       const label = fittingLabel(route, fitting);
-      const width = 160 * label.size / 13;
+      const width = Math.max(label.anchor === "middle" ? 160 * label.size / 13 : 0, textWidth(fitting.name, label.size) + 8);
       items.push({
         kind: "label", id: `${fitting.type}_${fitting.id}_name`, text: fitting.name, x: label.x, y: label.y, size: label.size, anchor: label.anchor, color: INK,
-        box: { x: label.anchor === "middle" ? label.x - width / 2 : label.x, y: label.top, width, height: label.height },
+        box: labelBox(label, width),
         ref: { pipeId: pipe.id, fittingId: fitting.id }, formats: LABEL_FORMATS
       });
     }

@@ -8,7 +8,3 @@ export function alignToAnchor(point, anchor, tolerance){
   }
   return { point, guide: null, aligned: false };
 }
-
-export function trimLastStretch(points, count = 2){
-  return points.slice(0, Math.max(0, points.length - count));
-}

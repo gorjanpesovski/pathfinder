@@ -1,23 +1,11 @@
 import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE } from "./elements.js";
-import { routePoint, pipeCrossings, arrowMarks } from "./route.js";
+import { routePoint, pipeCrossings, arrowMarks, orientAngle, fittingRotation, fittingSpot } from "./route.js";
 
-export function orientAngle(type, angle, flip = false){
-  const orient = HYDRONIC_ELEMENTS[type]?.orient ?? "flow";
-  if (orient === "upright") return 0;
-  if (orient === "stem") {
-    const vertical = Math.abs(Math.abs(angle) - 90) < 1;
-    return ((vertical ? 0 : 90) + (flip ? 180 : 0)) % 360;
-  }
-  if (orient === "axis") {
-    const vertical = Math.abs(Math.abs(angle) - 90) < 1;
-    return ((vertical ? 270 : 0) + (flip ? 180 : 0)) % 360;
-  }
-  return (angle + (flip ? 180 : 0) + 720) % 360;
-}
+export { orientAngle };
 
 export function fittingPose(route, fitting){
-  const point = routePoint(route, fitting.t);
-  return { x: point.x, y: point.y, rotation: orientAngle(fitting.type, point.angle, fitting.flip) };
+  const point = fittingSpot(route, fitting);
+  return { x: point.x, y: point.y, rotation: fittingRotation(route, fitting, point) };
 }
 
 export function fittingSize(fitting){

@@ -1,4 +1,4 @@
-import { HYDRONIC_ELEMENTS } from "./elements.js";
+import { HYDRONIC_ELEMENTS, METER_MEASURES } from "./elements.js";
 import { routePoint } from "./route.js";
 import { fittingPose, fittingSize } from "./geometry.js";
 import { fittingBox } from "./fittingAlign.js";
@@ -19,7 +19,25 @@ export function readoutSpec(type){
   return HYDRONIC_ELEMENTS[type]?.readout ?? null;
 }
 
+export function meterOptions(type){
+  const ids = HYDRONIC_ELEMENTS[type]?.measures ?? [];
+  return METER_MEASURES.filter((measure) => ids.includes(measure.id));
+}
+
+export function meterReadouts(fitting){
+  if (Array.isArray(fitting.readouts)) return fitting.readouts;
+  const first = meterOptions(fitting.type)[0];
+  return first && fitting.readout && fitting.readout !== "none" ? [first.id] : [];
+}
+
 export function readoutRows(fitting){
+  const options = meterOptions(fitting.type);
+  if (options.length) {
+    const chosen = meterReadouts(fitting);
+    const rows = options.filter((measure) => chosen.includes(measure.id))
+      .map((measure) => ({ kind: measure.id, label: measure.label, unit: measure.unit, decimals: measure.decimals }));
+    return rows.length > 1 ? rows : rows.map((row) => ({ ...row, label: "" }));
+  }
   const spec = readoutSpec(fitting.type);
   const mode = fitting.readout ?? "none";
   if (!spec || mode === "none") return [];

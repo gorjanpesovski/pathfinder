@@ -1,29 +1,54 @@
 import { HYDRONIC_ELEMENTS } from "./elements.js";
-import { routePoint } from "./route.js";
+import { computeRoutes, routePoint } from "./route.js";
 import { fittingBox } from "./fittingAlign.js";
-import { NAME_SIZE, nameSizeOf } from "./label.js";
+import { NAME_SIZE, legacyElementAnchor, nameAnchorAt, nameSizeOf, placeName, textWidth } from "./label.js";
 
-export function fittingLabel(route, fitting){
-  const label = baseLabel(route, fitting);
-  const dx = fitting.nameOffset?.x ?? 0;
-  const dy = fitting.nameOffset?.y ?? 0;
-  if (!dx && !dy) return label;
-  return { ...label, x: label.x + dx, y: label.y + dy, top: label.top + dy, middle: label.middle + dy, center: label.center + dx };
+function isHorizontal(route, fitting){
+  const angle = routePoint(route, fitting.t).angle;
+  return angle === 0 || Math.abs(angle) === 180;
 }
 
-function baseLabel(route, fitting){
-  const size = nameSizeOf(fitting);
+function defaultPlace(route, fitting, size){
   const scale = size / NAME_SIZE;
+  return isHorizontal(route, fitting) ? { side: "bottom", gap: 4 * scale } : { side: "right", gap: 6 * scale };
+}
+
+export function fittingLabel(route, fitting){
+  const size = nameSizeOf(fitting);
+  return placeName(fittingBox(route, fitting), fitting.nameAnchor ?? defaultPlace(route, fitting, size), size);
+}
+
+function legacyFittingAnchor(route, fitting){
+  const size = nameSizeOf(fitting);
   const box = fittingBox(route, fitting);
-  const angle = routePoint(route, fitting.t).angle;
-  const horizontal = angle === 0 || Math.abs(angle) === 180;
-  if (horizontal) {
-    const y = box.y + box.height + 18 * scale;
-    return { x: box.pose.x, y, size, anchor: "middle", top: box.y + box.height + 4 * scale, height: 18 * scale, middle: y - size * 0.35, center: box.pose.x };
-  }
-  const x = box.x + box.width + 6 * scale;
-  const y = box.pose.y + size * 0.35;
-  return { x, y, size, anchor: "start", top: box.pose.y - 9 * scale, height: 18 * scale, middle: box.pose.y, center: x + size * 3 };
+  const base = placeName(box, defaultPlace(route, fitting, size), size);
+  const width = textWidth(fitting.name, size);
+  const centre = {
+    x: (base.anchor === "start" ? base.x + width / 2 : base.x) + (fitting.nameOffset?.x ?? 0),
+    y: base.middle + (fitting.nameOffset?.y ?? 0)
+  };
+  return nameAnchorAt(box, centre, width, base.height);
+}
+
+export function anchorNames(shapes){
+  if (!shapes.some((shape) => shape.nameOffset || (shape.fittings ?? []).some((fitting) => fitting.nameOffset))) return shapes;
+  const routes = computeRoutes(shapes);
+  return shapes.map((shape) => {
+    if (shape.kind === "equipment" && shape.nameOffset) {
+      const { nameOffset, ...rest } = shape;
+      return { ...rest, nameAnchor: legacyElementAnchor(shape) };
+    }
+    const route = routes.get(shape.id);
+    if (shape.kind !== "pipe" || !route || !(shape.fittings ?? []).some((fitting) => fitting.nameOffset)) return shape;
+    return {
+      ...shape,
+      fittings: shape.fittings.map((fitting) => {
+        if (!fitting.nameOffset || !HYDRONIC_ELEMENTS[fitting.type]) return fitting;
+        const { nameOffset, ...rest } = fitting;
+        return { ...rest, nameAnchor: legacyFittingAnchor(route, fitting) };
+      })
+    };
+  });
 }
 
 export function takenNames(shapes){
@@ -44,16 +69,20 @@ export function nextFittingName(type, shapes, extra = []){
   return `${label} ${index}`;
 }
 
+function unnamed(fitting){
+  return typeof fitting.name !== "string" && !!HYDRONIC_ELEMENTS[fitting.type];
+}
+
 export function nameFittings(shapes){
   const given = [];
   let changed = false;
   const next = shapes.map((shape) => {
-    if (shape.kind !== "pipe" || !(shape.fittings ?? []).some((fitting) => !fitting.name && HYDRONIC_ELEMENTS[fitting.type])) return shape;
+    if (shape.kind !== "pipe" || !(shape.fittings ?? []).some(unnamed)) return shape;
     changed = true;
     return {
       ...shape,
       fittings: shape.fittings.map((fitting) => {
-        if (fitting.name || !HYDRONIC_ELEMENTS[fitting.type]) return fitting;
+        if (!unnamed(fitting)) return fitting;
         const name = nextFittingName(fitting.type, shapes, given);
         given.push(name);
         return { ...fitting, name };

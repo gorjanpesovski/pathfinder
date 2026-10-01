@@ -5,6 +5,7 @@
   import NetworkActions from "./NetworkActions.svelte";
   import { HYDRONIC_ELEMENTS } from "$lib/hydronic/elements.js";
   import BranchOptions from "./BranchOptions.svelte";
+  import MeterReadouts from "./MeterReadouts.svelte";
   import { formatSlots, parseSlots } from "$lib/electric/symbols.js";
 
   let {
@@ -26,8 +27,10 @@
     onreverse,
     onpipelayer,
     onfittingreadout,
+    onmeterreadout,
     onreadoutreset,
     onfittingflip,
+    onfittingturn,
     onfittingscale,
     onfittingremove,
     onfittingnamesize,
@@ -41,6 +44,19 @@
   let pipes = $derived(groups.pipes);
   let fittings = $derived(groups.fittings);
   let texts = $derived(groups.texts);
+
+  function readLive(event, min, max){
+    const value = Number(event.currentTarget.value);
+    if (event.currentTarget.value === "" || !Number.isFinite(value) || value < min || value > max) return null;
+    return Math.round(value);
+  }
+
+  function commitNumber(event, min, max, apply){
+    const next = readNumber(event, min, max);
+    if (next === null) return;
+    event.currentTarget.value = String(next);
+    apply(next);
+  }
 
   function readNumber(event, min, max){
     const value = Number(event.currentTarget.value);
@@ -284,6 +300,14 @@
              onkeydown={blurOnEnter}>
     </label>
   {/if}
+  {#if elements.generics}
+    <label>
+      Font size
+      <input type="number" min="6" max="200" step="1" value={elements.fontSize ?? ""} placeholder="–"
+             onchange={(e) => { const next = readNumber(e, 6, 200); if (next !== null) onnamesize(next); }}
+             onkeydown={blurOnEnter}>
+    </label>
+  {/if}
   {#if elements.tanks}
     <span>Probes</span>
     <div class="segmented" role="group" aria-label="Temperature probes in the tank">
@@ -351,7 +375,8 @@
   <label>
     Width
     <input type="number" min="1" max="40" step="1" value={pipes.width ?? ""} placeholder="–"
-           oninput={(e) => { const next = readNumber(e, 1, 40); if (next !== null) onpipewidth(next); }}>
+           oninput={(e) => { const next = readLive(e, 1, 40); if (next !== null) onpipewidth(next); }}
+           onchange={(e) => commitNumber(e, 1, 40, (value) => onpipewidth(value))}>
   </label>
   <button type="button" title="Reverse the flow direction (F)" onclick={onreverse}>Reverse flow</button>
   <div class="segmented" role="group" aria-label="Crossing order">
@@ -379,6 +404,11 @@
                 onclick={() => onfittingreadout(mode.id)}>{mode.id === "value" ? fittings.measure ?? mode.label : mode.label}</button>
       {/each}
     </div>
+  {/if}
+  {#if fittings.meters}
+    <MeterReadouts options={fittings.meters} onchange={onmeterreadout}/>
+  {/if}
+  {#if fittings.sized}
     <label title="Size of the value boxes, independent of the element size">
       Readout size
       <input type="range" min="40" max="200" step="5" value={Math.round((fittings.readoutScale ?? 1) * 100)}
@@ -391,6 +421,9 @@
   {/if}
   {#if fittings.flippable}
     <button type="button" onclick={onfittingflip}>Flip</button>
+  {/if}
+  {#if fittings.turnable}
+    <button type="button" title="Swap which pipe runs straight through the valve" onclick={onfittingturn}>Turn 90°</button>
   {/if}
   <label>
     Size
@@ -418,7 +451,8 @@
   <label>
     Size
     <input type="number" min="6" max="200" step="1" value={texts.fontSize ?? ""} placeholder="–"
-           oninput={(e) => { const next = readNumber(e, 6, 200); if (next !== null) ontextstyle("fontSize", next); }}>
+           oninput={(e) => { const next = readLive(e, 6, 200); if (next !== null) ontextstyle("fontSize", next); }}
+           onchange={(e) => commitNumber(e, 6, 200, (value) => ontextstyle("fontSize", value))}>
   </label>
   <label>
     Color

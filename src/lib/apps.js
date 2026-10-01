@@ -31,6 +31,7 @@ export const APPS = [
     special: ["pipe"],
     specialShortcuts: { p: "pipe" },
     elements: HYDRONIC_GROUPS,
+    views: [{ id: "drawing", label: "Drawing" }, { id: "io", label: "IO list" }],
     automations: false,
     exports: ["svg", "pgd"]
   }),

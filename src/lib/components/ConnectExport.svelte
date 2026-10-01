@@ -1,15 +1,14 @@
 <script>
   import { connectFiles } from "$lib/hydronic/connect.js";
   import { zipFiles } from "$lib/export/zip.js";
-  import { portal } from "$lib/actions/portal.js";
+  import Modal from "./Modal.svelte";
 
-  let { shapes, name = null, onnotice } = $props();
+  let { shapes, name = null, onnotice, onclose } = $props();
 
   const ADAPTER_KEY = "pathfinder.connectAdapter";
 
-  let menu = $state(null);
   let adapter = $state(read());
-  let preview = $derived(menu ? connectFiles(shapes, { adapter: adapter.trim() }) : null);
+  let preview = $derived(connectFiles(shapes, { adapter: adapter.trim() }));
   let groups = $derived.by(() => {
     const map = new Map();
     for (const connection of preview?.connections ?? []) {
@@ -35,15 +34,6 @@
     } catch {}
   }
 
-  function toggle(event){
-    const box = event.currentTarget.getBoundingClientRect();
-    menu = menu ? null : { x: Math.max(8, box.right - 340), y: box.bottom + 6 };
-  }
-
-  function close(event){
-    if (menu && !event.target.closest?.(".connect-menu, .connect-toggle")) menu = null;
-  }
-
   function download(){
     const result = connectFiles(shapes, { adapter: adapter.trim() });
     remember();
@@ -53,57 +43,18 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    menu = null;
+    onclose();
     onnotice?.(`Saved atvise connect config with ${result.connections.length} connection${result.connections.length === 1 ? "" : "s"}${result.skipped.length ? ` · ${result.skipped.length} skipped` : ""}`);
   }
 </script>
 
-<svelte:window onpointerdown={close} onkeydown={(event) => menu && event.key === "Escape" && (menu = null)}/>
-
 <style>
-  .connect-toggle {
-    padding: 6px 14px;
-    border: 1px solid #bfdbfe;
-    border-radius: 6px;
-    background: #ffffff;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    color: #1d4ed8;
-    cursor: pointer;
-  }
-
-  .connect-toggle:hover:not(:disabled) {
-    background: #eff6ff;
-  }
-
-  .connect-toggle:disabled {
-    background: #cbd5e1;
-    border-color: #cbd5e1;
-    color: #ffffff;
-    cursor: not-allowed;
-  }
-
-  .connect-menu {
-    position: fixed;
-    z-index: 60;
+  .content {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    width: 340px;
-    padding: 14px;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    background: #ffffff;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
-    font-size: 12px;
-    color: #334155;
-  }
-
-  h3 {
-    margin: 0;
+    gap: 12px;
     font-size: 13px;
-    color: #0f172a;
+    color: #334155;
   }
 
   p {
@@ -119,7 +70,7 @@
   }
 
   input {
-    height: 28px;
+    height: 32px;
     padding: 2px 8px;
     border: 1px solid #cbd5e1;
     border-radius: 5px;
@@ -129,9 +80,12 @@
 
   ul {
     margin: 0;
-    padding-left: 16px;
-    max-height: 120px;
+    padding: 8px 10px 8px 26px;
+    max-height: 260px;
     overflow: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
   }
 
   ul ul {
@@ -148,7 +102,8 @@
   }
 
   .go {
-    height: 30px;
+    height: 32px;
+    padding: 0 16px;
     border: 1px solid #2563eb;
     border-radius: 6px;
     background: #2563eb;
@@ -167,13 +122,9 @@
   }
 </style>
 
-<button class="connect-toggle" type="button" onclick={toggle} disabled={!shapes.length}
-        title="Download an atvise connect configuration for the devices in this topology">atvise connect</button>
-
-{#if menu && preview}
-  <div class="connect-menu" role="dialog" aria-label="atvise connect configuration" use:portal style="left: {menu.x}px; top: {menu.y}px">
-    <h3>atvise connect configuration</h3>
-    <p>{preview.connections.length} Modbus TCP connection{preview.connections.length === 1 ? "" : "s"}. RTU devices use the IP of the gateway they are wired to and their own slave ID.</p>
+<Modal title="atvise connect configuration" subtitle="{preview.connections.length} Modbus TCP connection{preview.connections.length === 1 ? '' : 's'} from the devices in this topology" width={620} {onclose}>
+  <div class="content">
+    <p>RTU devices use the IP of the gateway they are wired to and their own slave ID.</p>
     {#if preview.connections.length}
       <ul>
         {#each groups as [group, members]}
@@ -206,6 +157,8 @@
       <input type="text" bind:value={adapter} placeholder="<B7 68 00 62 EB AE 9D 41 …>">
     </label>
     <p>Copy the Adapter_1 value from a connection in the DeviceConfig.netparameter of the atvise connect PC. Leave it empty to let atvise connect choose.</p>
-    <button type="button" class="go" disabled={!preview.connections.length} onclick={download}>Download config (.zip)</button>
   </div>
-{/if}
+  {#snippet footer()}
+    <button type="button" class="go" disabled={!preview.connections.length} onclick={download}>Download config (.zip)</button>
+  {/snippet}
+</Modal>

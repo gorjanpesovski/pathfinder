@@ -231,6 +231,8 @@ export function rebuildBranch(element, pipes, nextId){
         scale: scaleOf(type, element),
         flip: type === "energyValve" ? false : role === "return",
         readout: params.energy_metering ? (oldValve?.readout ?? "value") : "none",
+        ...(oldValve?.type === type && oldValve.readouts ? { readouts: oldValve.readouts } : {}),
+        ...(oldValve?.type === type && oldValve.flip !== undefined ? { flip: oldValve.flip } : {}),
         readoutOffset: oldValve?.readoutOffset ?? readoutAt(element, role, type === "energyValve" ? 14 * scaleOf(type, element) : 50 * scaleOf(type, element), 100)
       }));
     }
@@ -297,8 +299,9 @@ export function meterWires(shapes, routes){
     if (!valve || !otherLeg || !routes.get(valveLeg.id) || !routes.get(otherLeg.id)) continue;
     const pose = fittingPose(routes.get(valveLeg.id), valve);
     const k = valve.scale ?? 1;
+    const up = valve.type === "energyValve" && valve.flip ? -1 : 1;
     const head = valve.type === "energyValve"
-      ? { x: pose.x, y: pose.y - (101.8 - 36.35) * k, half: 20 * k }
+      ? { x: pose.x, y: pose.y - up * (101.8 - 36.35) * k, half: 20 * k }
       : { x: pose.x, y: pose.y, half: 10 * k };
     const same = valveLeg.fittings.find((fitting) => fitting.auto && fitting.meter === "same");
     const other = otherLeg.fittings.find((fitting) => fitting.auto && fitting.meter === "other");
@@ -312,7 +315,7 @@ export function meterWires(shapes, routes){
       const target = fittingPose(routes.get(valveLeg.id), same);
       const radius = 11 * (same.scale ?? 1);
       const inner = head.x + inward * (head.half + 4 * k);
-      const start = head.y + 16 * k;
+      const start = head.y + up * 16 * k;
       wires.push([
         { x: head.x + inward * head.half, y: start },
         { x: inner, y: start },
@@ -362,27 +365,6 @@ export function branchRiders(shapes, ids){
     })
     .map((shape) => shape.id);
   return [...riders, ...branchPipeIds(shapes, riders)];
-}
-
-export function branchGaps(shapes, size){
-  const gaps = [];
-  const bars = shapes.filter(isBar);
-  for (const pipe of shapes) {
-    if (pipe.kind !== "pipe" || !isLeg(pipe)) continue;
-    const branch = shapes.find((shape) => shape.id === pipe.branchOf);
-    if (!branch) continue;
-    const top = portPose(branch, pipe.role === "supply" ? pipe.to : pipe.from).point;
-    const end = legEnd(pipe);
-    if (!end || end.y === undefined) continue;
-    const low = Math.min(top.y, end.y);
-    const high = Math.max(top.y, end.y);
-    for (const bar of bars) {
-      if (top.x <= bar.x || top.x >= bar.x + bar.width) continue;
-      if (bar.y <= low + 0.5 || bar.y + bar.height >= high - 0.5) continue;
-      gaps.push({ branchId: branch.id, barId: bar.id, pipeId: pipe.id, x: top.x - size / 2, y: bar.y, width: size, height: bar.height, line: { x: top.x, top: bar.y - 1, bottom: bar.y + bar.height + 1 } });
-    }
-  }
-  return gaps;
 }
 
 export function refreshBranches(shapes, nextId){

@@ -140,6 +140,25 @@ function device(item, style){
   }, argumentsOf(item.args));
 }
 
+function generic(item, style){
+  const spec = HYDRONIC_ELEMENTS[item.type];
+  const native = spec.native;
+  const sx = item.width / native.boxWidth;
+  const sy = item.height / native.boxHeight;
+  const turn = item.rotation ?? 0;
+  return svgElement("svg", {
+    "atv:refpx": round(item.cx),
+    "atv:refpy": round(item.cy),
+    height: native.height,
+    id: item.id,
+    transform: elementMatrix(item.cx, item.cy, native.width, native.height, turn, sx, sy),
+    width: native.width,
+    x: 0,
+    y: 0,
+    "xlink:href": `${style.library}.${spec.atv}`
+  }, argumentsOf({ ...item.args, font_size: round(item.fontSize / sy) }));
+}
+
 const RENDER = {
   gap: (item, style) => rect(item, style.background),
   bar: (item) => rect(item, item.color),
@@ -181,6 +200,7 @@ const RENDER = {
   icon: reference,
   branch: branchHeader,
   device,
+  generic,
   field: valueField,
   label: (item) => svgElement("text", {
     "atv:refpx": round(item.box.x + item.box.width / 2),

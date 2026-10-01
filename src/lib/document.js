@@ -2,7 +2,7 @@ export const DOCUMENT_FORMAT = "pathfinder";
 export const DOCUMENT_VERSION = 1;
 export const AUTOSAVE_KEY = "pathfinder.autosave";
 
-export function serializeDocument({ app, apps, canvas, name = null, io = null }){
+export function serializeDocument({ app, apps, pages = null, canvas, name = null, io = null, settings = null, images = null }){
   return JSON.stringify({
     format: DOCUMENT_FORMAT,
     version: DOCUMENT_VERSION,
@@ -11,7 +11,10 @@ export function serializeDocument({ app, apps, canvas, name = null, io = null })
     app,
     canvas,
     apps,
-    io
+    pages,
+    io,
+    settings,
+    images
   });
 }
 
@@ -24,7 +27,12 @@ export function parseDocument(text){
     points: Array.isArray(data.io?.points) ? data.io.points : [],
     others: Array.isArray(data.io?.others) ? data.io.others : []
   };
-  return { app: data.app, canvas: data.canvas ?? null, apps, io, name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : null };
+  const pages = data.pages && typeof data.pages === "object" ? data.pages : null;
+  const settings = data.settings && typeof data.settings === "object" ? data.settings : null;
+  const images = data.images && typeof data.images === "object"
+    ? Object.fromEntries(Object.entries(data.images).filter(([, source]) => typeof source === "string" && source.startsWith("data:image/")))
+    : {};
+  return { app: data.app, canvas: data.canvas ?? null, apps, pages, io, settings, images, name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : null };
 }
 
 export function highestId(apps){

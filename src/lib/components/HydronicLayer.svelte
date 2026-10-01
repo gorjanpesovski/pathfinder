@@ -7,6 +7,7 @@
   import { contactPoint, touchRoute } from "$lib/hydronic/outline.js";
   import BranchGraphic from "./BranchGraphic.svelte";
   import DeviceGraphic from "./DeviceGraphic.svelte";
+  import GenericGraphic from "./GenericGraphic.svelte";
   import { buildScene } from "$lib/hydronic/scene.js";
 
   let {
@@ -28,6 +29,7 @@
     renaming = null,
     renamingFitting = null,
     guide = null,
+    branchEditing = false,
     style = HYDRONIC_STYLE
   } = $props();
 
@@ -57,6 +59,12 @@
   function portSpot(spot){
     const element = spot?.id !== undefined ? byId.get(spot.id) : null;
     return element ? contactPoint(element, spot) : spot.point;
+  }
+
+  function endEditable(pipe, end){
+    if (pipe[end]?.fitting !== undefined) return false;
+    if (pipe.branchOf === undefined) return true;
+    return branchEditing && pipe[end]?.pipe === undefined && pipe[end]?.id === undefined;
   }
 
   function edgeCursor(a, b){
@@ -218,6 +226,8 @@
     <BranchGraphic parts={item.parts}/>
   {:else if item.kind === "device"}
     <DeviceGraphic {item}/>
+  {:else if item.kind === "generic"}
+    <GenericGraphic {item}/>
   {:else if item.kind === "electric"}
     <g>{@html item.svg}</g>
   {:else if item.kind === "icon"}
@@ -306,7 +316,7 @@
   {#if interactive}
     {#each pipes as pipe (pipe.id)}
       {@const route = drawn.get(pipe.id)}
-      {#each [["from", route[0]], ["to", route[route.length - 1]]] as [end, point]}
+      {#each [["from", route[0]], ["to", route[route.length - 1]]].filter(([end]) => endEditable(pipe, end)) as [end, point]}
         {@const junction = pipe[end]?.pipe !== undefined}
         {@const loose = pipe[end]?.pipe === undefined && pipe[end]?.id === undefined}
         <g class="pipe-end">

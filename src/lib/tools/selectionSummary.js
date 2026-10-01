@@ -1,6 +1,6 @@
-import { HYDRONIC_ELEMENTS, mediumOf } from "../hydronic/elements.js";
+import { HYDRONIC_ELEMENTS, METER_MEASURES, mediumOf } from "../hydronic/elements.js";
 import { TANK_PROBES, hasTankProbes } from "../hydronic/tank.js";
-import { readoutSpec, readoutScaleOf } from "../hydronic/readout.js";
+import { meterOptions, meterReadouts, readoutSpec, readoutScaleOf } from "../hydronic/readout.js";
 import { hasNameLabel, nameSizeOf } from "../hydronic/label.js";
 
 function common(list, read){
@@ -41,8 +41,12 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
   const tanks = elements.filter(hasTankProbes);
   const bars = elements.filter((element) => HYDRONIC_ELEMENTS[element.type].bar);
   const labelled = elements.filter(hasNameLabel);
+  const generics = elements.filter((element) => HYDRONIC_ELEMENTS[element.type].generic);
   const measured = fittings.filter((entry) => readoutSpec(entry.fitting.type));
-  const measures = [...new Set(measured.map((entry) => readoutSpec(entry.fitting.type).measure))];
+  const meters = measured.filter((entry) => meterOptions(entry.fitting.type).length);
+  const plain = measured.filter((entry) => !meterOptions(entry.fitting.type).length);
+  const measures = [...new Set(plain.map((entry) => readoutSpec(entry.fitting.type).measure))];
+  const offered = new Set(meters.flatMap((entry) => meterOptions(entry.fitting.type).map((measure) => measure.id)));
 
   return {
     total: shapes.length + fittings.length,
@@ -54,6 +58,8 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
       height: common(elements, (element) => tenth(element.height)),
       labelled: labelled.length,
       nameSize: common(labelled, nameSizeOf),
+      generics: generics.length,
+      fontSize: common(generics, (element) => element.fontSize > 0 ? element.fontSize : HYDRONIC_ELEMENTS[element.type].fontSize),
       tanks: tanks.length ? Object.fromEntries(TANK_PROBES.map((probe) => [probe.id, state(tanks, (tank) => !!tank.probes?.[probe.id])])) : null,
       bars: bars.length,
       barMedium: common(bars, (bar) => mediumOf(bar.medium).id),
@@ -74,13 +80,19 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
       label: common(fittings, (entry) => HYDRONIC_ELEMENTS[entry.fitting.type]?.label ?? entry.fitting.type),
       scale: common(fittings, (entry) => entry.fitting.scale ?? 1),
       shownScale: fittings[0].fitting.scale ?? 1,
-      measured: measured.length,
+      measured: plain.length,
       measure: measures.length === 1 ? measures[0] : null,
-      readout: common(measured, (entry) => entry.fitting.readout ?? "none"),
+      readout: common(plain, (entry) => entry.fitting.readout ?? "none"),
+      meters: meters.length ? METER_MEASURES.filter((measure) => offered.has(measure.id)).map((measure) => {
+        const able = meters.filter((entry) => meterOptions(entry.fitting.type).some((option) => option.id === measure.id));
+        return { id: measure.id, name: measure.name, unit: measure.unit, state: state(able, (entry) => meterReadouts(entry.fitting).includes(measure.id)) };
+      }) : null,
+      sized: measured.length,
       readoutScale: common(measured, (entry) => readoutScaleOf(entry.fitting)),
       moved: measured.some((entry) => entry.fitting.readoutOffset),
       nameSize: common(fittings, (entry) => nameSizeOf(entry.fitting)),
-      flippable: fittings.length - measured.length
+      turnable: fallback.turnable ?? 0,
+      flippable: fittings.filter((entry) => HYDRONIC_ELEMENTS[entry.fitting.type]?.orient !== "upright").length
     } : null,
     texts: texts.length ? {
       count: texts.length,

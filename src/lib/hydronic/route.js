@@ -71,19 +71,104 @@ export function endpointPose(end, byId, hostRoute = null, toward = null){
     if (!route) return null;
     const host = end.fitting !== undefined ? byId.get(end.pipe) : null;
     const valve = host?.fittings?.find((entry) => entry.id === end.fitting);
-    const hit = projectOnRoute(route, valve ? routePoint(route, valve.t) : end, 0);
+    const hit = projectOnRoute(route, valve ? fittingSpot(route, valve) : end, 0);
     if (!hit) return null;
     const point = { x: hit.x, y: hit.y };
-    const horizontal = hit.angle === 0 || Math.abs(hit.angle) === 180;
-    const aim = toward ?? point;
-    const normal = horizontal
-      ? { x: 0, y: Math.sign(aim.y - point.y) || 1 }
-      : { x: Math.sign(aim.x - point.x) || 1, y: 0 };
-    return { point, normal };
+    if (valve && HYDRONIC_ELEMENTS[valve.type]?.junction) {
+      const taken = takenDirections(route, point);
+      const free = valvePorts(fittingRotation(route, valve)).filter((port) => !taken.some((entry) => entry.x === port.x && entry.y === port.y));
+      const aim = toward ?? point;
+      const dx = aim.x - point.x;
+      const dy = aim.y - point.y;
+      if (free.length) return { point, normal: free.reduce((best, port) => port.x * dx + port.y * dy > best.x * dx + best.y * dy ? port : best) };
+    }
+    return { point, normal: branchNormal(route, point, toward ?? point, hit.angle) };
   }
   const element = byId.get(end.id);
   if (!element || element.kind !== "equipment") return null;
   return portPose(element, end);
+}
+
+export function orientAngle(type, angle, flip = false){
+  const orient = HYDRONIC_ELEMENTS[type]?.orient ?? "flow";
+  if (orient === "upright") return 0;
+  if (orient === "stem") {
+    const vertical = Math.abs(Math.abs(angle) - 90) < 1;
+    return ((vertical ? 0 : 90) + (flip ? 180 : 0)) % 360;
+  }
+  if (orient === "axis") {
+    const vertical = Math.abs(Math.abs(angle) - 90) < 1;
+    return ((vertical ? 270 : 0) + (flip ? 180 : 0)) % 360;
+  }
+  return (angle + (flip ? 180 : 0) + 720) % 360;
+}
+
+function heading(vector){
+  return Math.round(Math.atan2(vector.y, vector.x) * 180 / Math.PI);
+}
+
+export function cornerLegs(route, point){
+  for (let index = 1; index < route.length - 1; index += 1) {
+    const corner = route[index];
+    if (Math.hypot(corner.x - point.x, corner.y - point.y) > 0.5) continue;
+    const incoming = { x: Math.sign(corner.x - route[index - 1].x), y: Math.sign(corner.y - route[index - 1].y) };
+    const outgoing = { x: Math.sign(route[index + 1].x - corner.x), y: Math.sign(route[index + 1].y - corner.y) };
+    if (incoming.x * outgoing.x + incoming.y * outgoing.y !== 0) return null;
+    return { corner, incoming, outgoing };
+  }
+  return null;
+}
+
+export function fittingSpot(route, fitting){
+  const point = routePoint(route, fitting.t);
+  const legs = fitting.leg ? cornerLegs(route, point) : null;
+  return legs ? { ...point, x: legs.corner.x, y: legs.corner.y } : point;
+}
+
+export function fittingRotation(route, fitting, point = routePoint(route, fitting.t)){
+  const legs = fitting.leg ? cornerLegs(route, point) : null;
+  const angle = legs ? heading(fitting.leg === "after" ? legs.outgoing : legs.incoming) : point.angle;
+  return orientAngle(fitting.type, angle, fitting.flip);
+}
+
+export function valvePorts(rotation){
+  const radians = rotation * Math.PI / 180;
+  const cos = Math.round(Math.cos(radians));
+  const sin = Math.round(Math.sin(radians));
+  return [{ x: cos, y: sin }, { x: -cos, y: -sin }, { x: -sin, y: cos }];
+}
+
+const DIRECTIONS = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+
+function takenDirections(route, point){
+  const taken = [];
+  for (let index = 1; index < route.length; index += 1) {
+    const a = route[index - 1];
+    const b = route[index];
+    const onSegment = Math.abs((b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x)) < 0.5
+      && point.x >= Math.min(a.x, b.x) - 0.5 && point.x <= Math.max(a.x, b.x) + 0.5
+      && point.y >= Math.min(a.y, b.y) - 0.5 && point.y <= Math.max(a.y, b.y) + 0.5;
+    if (!onSegment) continue;
+    for (const far of [a, b]) {
+      const dx = Math.sign(Math.round(far.x - point.x));
+      const dy = Math.sign(Math.round(far.y - point.y));
+      if (dx || dy) taken.push({ x: dx, y: dy });
+    }
+  }
+  return taken;
+}
+
+function branchNormal(route, point, aim, angle){
+  const taken = takenDirections(route, point);
+  const free = DIRECTIONS.filter((direction) => !taken.some((entry) => entry.x === direction.x && entry.y === direction.y));
+  const dx = aim.x - point.x;
+  const dy = aim.y - point.y;
+  if (free.length && (dx || dy)) {
+    return free.reduce((best, direction) => direction.x * dx + direction.y * dy > best.x * dx + best.y * dy ? direction : best);
+  }
+  if (free.length) return free[0];
+  const horizontal = angle === 0 || Math.abs(angle) === 180;
+  return horizontal ? { x: 0, y: Math.sign(dy) || 1 } : { x: Math.sign(dx) || 1, y: 0 };
 }
 
 export function rawPoint(end, byId){
@@ -248,22 +333,32 @@ export function computeRoutes(shapes){
 
 export function findPipePoint(point, routes, radius, exclude = null, step = PORT_STEP){
   let best = null;
+  const clearance = Math.min(step > 0 ? step : 1, PORT_STEP);
   for (const [id, route] of routes) {
     if (id === exclude) continue;
-    const hit = projectOnRoute(route, point, 0);
-    if (!hit || hit.gap > radius) continue;
-    const horizontal = hit.angle === 0 || Math.abs(hit.angle) === 180;
-    const snapped = !(step > 0)
-      ? { x: hit.x, y: hit.y }
-      : horizontal
-        ? { x: Math.round(hit.x / step) * step, y: hit.y }
-        : { x: hit.x, y: Math.round(hit.y / step) * step };
-    const again = projectOnRoute(route, snapped, 0);
-    const spot = { x: again.x, y: again.y };
-    const ends = [route[0], route[route.length - 1]];
-    const clearance = Math.min(step > 0 ? step : 1, PORT_STEP);
-    if (ends.some((end) => Math.hypot(end.x - spot.x, end.y - spot.y) < clearance)) continue;
-    if (!best || hit.gap < best.gap) best = { pipe: id, x: spot.x, y: spot.y, point: spot, normal: null, gap: hit.gap };
+    const last = route.length - 1;
+    for (let index = 1; index <= last; index += 1) {
+      const a = route[index - 1];
+      const b = route[index];
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      if (length === 0) continue;
+      const head = index === 1 ? clearance : 0;
+      const tail = index === last ? clearance : 0;
+      if (length <= head + tail) continue;
+      const ux = (b.x - a.x) / length;
+      const uy = (b.y - a.y) / length;
+      let along = (point.x - a.x) * ux + (point.y - a.y) * uy;
+      if (step > 0 && (ux === 0 || uy === 0)) {
+        const origin = ux === 0 ? a.y : a.x;
+        const sign = ux === 0 ? uy : ux;
+        along = (Math.round((origin + sign * along) / step) * step - origin) * sign;
+      }
+      along = Math.min(length - tail, Math.max(head, along));
+      const spot = { x: round(a.x + ux * along), y: round(a.y + uy * along) };
+      const gap = Math.hypot(point.x - spot.x, point.y - spot.y);
+      if (gap > radius || (best && gap >= best.gap)) continue;
+      best = { pipe: id, x: spot.x, y: spot.y, point: spot, normal: null, gap };
+    }
   }
   return best;
 }

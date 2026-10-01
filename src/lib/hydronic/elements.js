@@ -4,19 +4,33 @@ import { electricSize } from "../electric/symbols.js";
 const HUB_NODES = [0.1507, 0.3243, 0.4979, 0.6715, 0.8451];
 const HUB_PORTS = { top: HUB_NODES, bottom: HUB_NODES, left: [0.5], right: [0.5] };
 
+export const METER_MEASURES = [
+  { id: "position", label: "Y:", name: "Valve position", unit: "%", decimals: 0 },
+  { id: "power", label: "Q:", name: "Power", unit: "kW", decimals: 1 },
+  { id: "flow", label: "q:", name: "Flow", unit: "l/h", decimals: 0 },
+  { id: "energy", label: "E:", name: "Energy", unit: "kWh", decimals: 0 },
+  { id: "supplyTemp", label: "Ts:", name: "Supply temperature", unit: "°C", decimals: 1 },
+  { id: "returnTemp", label: "Tr:", name: "Return temperature", unit: "°C", decimals: 1 },
+  { id: "deltaT", label: "ΔT:", name: "Temperature difference", unit: "K", decimals: 1 }
+];
+
+const METER_ONLY = METER_MEASURES.filter((measure) => measure.id !== "position").map((measure) => measure.id);
+
 export const HYDRONIC_ELEMENTS = {
   boiler: { label: "Boiler", atv: "Bojler", width: 205, height: 330 },
   heatPump: { label: "Heat pump", atv: "Toplotna_Crpalka", width: 330, height: 235, params: ["name"] },
   bufferTank: { label: "Buffer tank", atv: "Zalogovnik", width: 163, height: 330, tankProbes: true },
   heatExchanger: { label: "Heat exchanger", atv: "Toplotni_Izmenjevalnik", width: 101, height: 201 },
   electricHeater: { label: "Electric heater", atv: "Elektricni_Grelec", width: 101, height: 221 },
+  generic: { label: "Generic element", atv: "Genericni_Element", width: 280, height: 100, ownLabel: true, generic: true, fontSize: 24, native: { width: 301, height: 121, boxX: 10.5, boxY: 10.5, boxWidth: 280, boxHeight: 100 } },
   manifold: { label: "Manifold", atv: "Manifold", width: 300, height: 40, bar: true, fixedHeight: true },
   branch: { label: "Branch", width: 240, height: 210, branch: true, ownLabel: true, ports: { bottom: [90 / 240, 150 / 240] } },
   pump: { label: "Pump", atv: "Crpalka", native: { width: 55, height: 55 }, width: 52, height: 52, inline: true, orient: "flow" },
   valve: { label: "Valve", atv: "Valve", width: 56, height: 32, inline: true, orient: "axis" },
   controlValve: { label: "Motorized valve", atv: "Dvosmerni_Ventil", native: { width: 22, height: 26.05, axisY: 19.545 }, width: 60, height: 100, inline: true, orient: "axis", readout: { measure: "Position", label: "", unit: "%", decimals: 0 } },
   threeWayValve: { label: "Three-way valve", atv: "Trismerni_Ventil", native: { width: 22, height: 30.6, axisY: 19.545 }, width: 60, height: 100, inline: true, orient: "axis", junction: true, readout: { measure: "Position", label: "", unit: "%", decimals: 0 } },
-  energyValve: { label: "Energy valve", atv: "Energijski_Ventil", native: { width: 50, height: 130, axisY: 101.8 }, width: 50, height: 203.6, inline: true, orient: "stem", readout: { measure: "Position", label: "", unit: "%", decimals: 0 } },
+  energyValve: { label: "Energy valve", atv: "Energijski_Ventil", native: { width: 50, height: 130, axisY: 101.8 }, width: 50, height: 203.6, inline: true, orient: "stem", readout: { measure: "Position", label: "", unit: "%", decimals: 0 }, measures: ["position", ...METER_ONLY] },
+  calorimeter: { label: "Energy meter", atv: "Kalorimeter", native: { width: 44, height: 44 }, width: 40, height: 40, inline: true, orient: "upright", readout: { measure: "Power", label: "", unit: "kW", decimals: 1 }, measures: METER_ONLY, sensors: true },
   checkValve: { label: "Check valve", atv: "Nepovratna_Loputa", native: { width: 83.01, height: 43.02 }, width: 52, height: 32, inline: true, orient: "flow" },
   tempProbe: { label: "Temperature probe", atv: "Temperaturni_Senzor", native: { width: 35, height: 35 }, width: 40, height: 40, inline: true, orient: "upright", readout: { measure: "Temperature", label: "T:", unit: "°C" } },
   pressureProbe: { label: "Pressure probe", atv: "Tlacni_Senzor", width: 40, height: 40, inline: true, orient: "upright", readout: { measure: "Pressure", label: "P:", unit: "bar" } },
@@ -55,8 +69,8 @@ export function isDeviceType(type){
 }
 
 export const HYDRONIC_GROUPS = [
-  { id: "equipment", label: "Equipment", items: ["heatPump", "boiler", "bufferTank", "heatExchanger", "electricHeater", "manifold", "branch"] },
-  { id: "inline", label: "On pipes", items: ["pump", "valve", "controlValve", "threeWayValve", "checkValve"] },
+  { id: "equipment", label: "Equipment", items: ["heatPump", "boiler", "bufferTank", "heatExchanger", "electricHeater", "manifold", "branch", "generic"] },
+  { id: "inline", label: "On pipes", items: ["pump", "valve", "controlValve", "threeWayValve", "checkValve", "calorimeter"] },
   { id: "sensors", label: "Sensors", items: ["tempProbe", "pressureProbe", "tempSwitch", "pressureSwitch", "meterSensor"] }
 ];
 

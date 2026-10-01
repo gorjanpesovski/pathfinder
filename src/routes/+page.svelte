@@ -40,21 +40,26 @@
   import { WALL_STYLE, describeWall, openEnds } from "$lib/tools/walls.js";
   import { APPS, appById, GENERAL_TOOLS } from "$lib/apps.js";
   import HydronicLayer from "$lib/components/HydronicLayer.svelte";
+  import PageTabs from "$lib/components/PageTabs.svelte";
   import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, DEFAULT_PROTOCOL, DEFAULT_WIRE, familyOf, isElectricType, mediumOf, isHydronicType, isInlineType, isDeviceType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
   import { branchDefaults, alignBranch, snapBranch, branchRiders, isBranch, branchParams, createBranch, rebuildBranch, ownedPipes, branchPipeIds, branchLegEnds, migrateBranches, isLeg, keepLegDistances, legSpan } from "$lib/hydronic/branch.js";
   import { connectNetwork, placeDevices } from "$lib/hydronic/network.js";
-  import { readoutLayout, readoutSpec } from "$lib/hydronic/readout.js";
-  import { findPort, endpointPose, manhattanRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, findPipePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
+  import { readoutLayout, readoutSpec, readoutRows, readoutExtent, readoutScaleOf, meterOptions, meterReadouts } from "$lib/hydronic/readout.js";
+  import { placeSensors } from "$lib/hydronic/meter.js";
+  import { findPort, endpointPose, manhattanRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, findPipePoint, cornerLegs, routePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
   import { hydronicToSvg } from "$lib/hydronic/export.js";
   import { orientAngle, fittingPose } from "$lib/hydronic/geometry.js";
   import { isFreeEnd, portStep } from "$lib/hydronic/route.js";
-  import { findValvePort } from "$lib/hydronic/valvePorts.js";
+  import { findValvePort, valveCorner, cornerFlip } from "$lib/hydronic/valvePorts.js";
   import { serializeDocument, parseDocument, highestId, loadAutosave, saveAutosave } from "$lib/document.js";
   import { rotationOf, isTurned, footprint, turnPort } from "$lib/hydronic/frame.js";
   import { fittingBox, fittingTargets } from "$lib/hydronic/fittingAlign.js";
   import { HYDRONIC_SPRITE, ICON_SIZES, ICON_SOURCES } from "$lib/hydronic/iconSprite.js";
   import { hydronicToPgd } from "$lib/hydronic/pgd.js";
-  import SaveDialog from "$lib/components/SaveDialog.svelte";
+  import HeaderMenu from "$lib/components/HeaderMenu.svelte";
+  import Modal from "$lib/components/Modal.svelte";
+  import ProjectStatus from "$lib/components/ProjectStatus.svelte";
+  import { rememberFile, recallFile, fileAccess, hashText } from "$lib/fileStore.js";
   import IoView from "$lib/components/IoView.svelte";
   import ConnectExport from "$lib/components/ConnectExport.svelte";
   import WiringActions from "$lib/components/WiringActions.svelte";
@@ -64,10 +69,10 @@
   import { electricSize, electricDefaults, nextElectricName } from "$lib/electric/symbols.js";
   import { summarizeSelection } from "$lib/tools/selectionSummary.js";
   import { junctionMedium } from "$lib/hydronic/inherit.js";
-  import { alignToAnchor, trimLastStretch } from "$lib/hydronic/alignEnd.js";
-  import { fittingLabel, nextFittingName, nameFittings } from "$lib/hydronic/fittingLabel.js";
+  import { alignToAnchor } from "$lib/hydronic/alignEnd.js";
+  import { fittingLabel, nextFittingName, nameFittings, anchorNames } from "$lib/hydronic/fittingLabel.js";
   import { copyFittings, pasteTargets } from "$lib/hydronic/fittingPaste.js";
-  import { elementLabel, hasNameLabel } from "$lib/hydronic/label.js";
+  import { elementLabel, elementBox, hasNameLabel, labelCentre, nameAnchorAt, textWidth } from "$lib/hydronic/label.js";
   import { hasTankProbes } from "$lib/hydronic/tank.js";
   import { defaultDocumentName, cleanDocumentName, fileNameFor } from "$lib/document.js";
   import { zipFiles } from "$lib/export/zip.js";
@@ -76,7 +81,6 @@
   import { shapeBox, translateShape, clampDelta, dragPointer, unionBox } from "$lib/tools/move.js";
   import { atviseDocument } from "$lib/export/atvise.js";
 
-  const FA_GEAR_PATH = "M495.9 166.6c3.2 8.7 .5 18.4-6.4 24.6l-43.3 39.4c1.1 8.3 1.7 16.8 1.7 25.4s-.6 17.1-1.7 25.4l43.3 39.4c6.9 6.2 9.6 15.9 6.4 24.6c-4.4 11.9-9.7 23.3-15.8 34.3l-4.7 8.1c-6.6 11-14 21.4-22.1 31.2c-5.9 7.2-15.7 9.6-24.5 6.8l-55.7-17.7c-13.4 10.3-28.2 18.9-44 25.4l-12.5 57.1c-2 9.1-9 16.3-18.2 17.8c-13.8 2.3-28 3.5-42.5 3.5s-28.7-1.2-42.5-3.5c-9.2-1.5-16.2-8.7-18.2-17.8l-12.5-57.1c-15.8-6.5-30.6-15.1-44-25.4L83.1 425.9c-8.8 2.8-18.6 .3-24.5-6.8c-8.1-9.8-15.5-20.2-22.1-31.2l-4.7-8.1c-6.1-11-11.4-22.4-15.8-34.3c-3.2-8.7-.5-18.4 6.4-24.6l43.3-39.4C64.6 273.1 64 264.6 64 256s.6-17.1 1.7-25.4L22.4 191.2c-6.9-6.2-9.6-15.9-6.4-24.6c4.4-11.9 9.7-23.3 15.8-34.3l4.7-8.1c6.6-11 14-21.4 22.1-31.2c5.9-7.2 15.7-9.6 24.5-6.8l55.7 17.7c13.4-10.3 28.2-18.9 44-25.4l12.5-57.1c2-9.1 9-16.3 18.2-17.8C227.3 1.2 241.5 0 256 0s28.7 1.2 42.5 3.5c9.2 1.5 16.2 8.7 18.2 17.8l12.5 57.1c15.8 6.5 30.6 15.1 44 25.4l55.7-17.7c8.8-2.8 18.6-.3 24.5 6.8c8.1 9.8 15.5 20.2 22.1 31.2l4.7 8.1c6.1 11 11.4 22.4 15.8 34.3zM256 336a80 80 0 1 0 0-160 80 80 0 1 0 0 160z";
 
   const ELBOWS = [
     { id: "h", label: "Horizontal first" },
@@ -139,6 +143,7 @@
   let shapes = $state([]);
   let draft = $state(null);
   let cursor = $state(null);
+  let aim = $state(null);
   let selectedId = $state(null);
   let nextId = 1;
   let electricBoard = $derived(app === "electrical" ? boardSize(shapes) : null);
@@ -253,6 +258,7 @@
     pointer = toCanvas(event);
     if (!drawing) return;
     const raw = toCanvas(event);
+    aim = raw;
     if (raw) cursor = snapPoint(raw);
     if (raw && isRoomTool(tool)) cursor = roomPoint(raw, event);
     if (raw && tool === "curve") cursor = roomPoint(raw, event);
@@ -269,7 +275,7 @@
     if (!drawing) {
       if (tool === "select" && beginMove(event)) return;
       if (tool === "select" && beginMarquee(event)) return;
-      openBranch = null;
+      branchEditing = false;
       selectedId = null;
       return;
     }
@@ -664,8 +670,10 @@
     return route?.length ? polygonBounds(route) : null;
   }
 
-  let openBranch = $state(null);
+  let branchEditing = $state(false);
   let branchSelected = $derived(selectedShapes.some(isBranch));
+  let singleBar = $derived(selectedShapes.length === 1 && selectedShapes[0].kind === "equipment" && HYDRONIC_ELEMENTS[selectedShapes[0].type]?.bar ? selectedShapes[0] : null);
+  let editedBranches = $derived(branchEditing ? shapes.filter(isBranch).map((branch) => unitBox([branch, ...ownedPipes(shapes, branch.id)])) : []);
 
   let transformBox = $derived.by(() => {
     if (tool === "select" && !selectedShapes.length && partGroup.length) {
@@ -721,6 +729,10 @@
   function beginTransform(event, handle){
     const box = transformBox;
     if (!box) return;
+    if (handle !== "rotate" && singleBar) {
+      beginBarScale(event, singleBar, handle);
+      return;
+    }
     if (handle !== "rotate" && handle.length === 2 && selectedShapes.length === 1 && selectedShapes[0].kind === "equipment" && !isBranch(selectedShapes[0])) {
       beginElementScale(event, selectedShapes[0], handle);
       return;
@@ -809,17 +821,14 @@
     }
     let target = event.target instanceof Element ? event.target.closest("[data-shape-id]") : null;
     let shape = target ? shapeById(Number(target.dataset.shapeId)) : null;
-    if (!shape) {
-      openBranch = null;
-      return false;
-    }
+    if (!shape) return false;
     const additive = event.ctrlKey || event.metaKey;
     const owner = shape.kind === "pipe" && shape.branchOf !== undefined ? shapeById(shape.branchOf) : null;
-    if (owner && openBranch !== owner.id) {
+    if (owner && !branchEditing) {
       shape = owner;
       target = { dataset: { shapeId: String(owner.id) } };
     }
-    if (openBranch !== null && shape.id !== openBranch && shape.branchOf !== openBranch) openBranch = null;
+    if (branchEditing && !isBranch(shape) && shape.branchOf === undefined) branchEditing = false;
 
     if (target.dataset.furnitureId !== undefined) {
       beginFurnitureDrag(event, shape, Number(target.dataset.furnitureId));
@@ -917,13 +926,13 @@
       return true;
     }
     if (repeated && isBranch(shape)) {
-      openBranch = shape.id;
+      branchEditing = true;
       selectedId = null;
       selectedIds = [];
       clearSubSelection();
       return true;
     }
-    if (repeated && isDeviceType(shape.type)) {
+    if (repeated && (isDeviceType(shape.type) || HYDRONIC_ELEMENTS[shape.type]?.generic)) {
       selectShape(shape.id);
       setTimeout(() => document.querySelector("input.branch-name")?.select(), 0);
       return true;
@@ -1200,7 +1209,7 @@
         };
         if (box.width * viewport.zoom < 3 && box.height * viewport.zoom < 3) return;
         marquee = box;
-        const hits = withGroups(shapes.filter((shape) => !shape.locked && contains(box, shapeBox(shape))).map((shape) => shape.id));
+        const hits = branchEditing ? [] : withGroups(shapes.filter((shape) => !shape.locked && contains(box, shapeBox(shape))).map((shape) => shape.id));
         const ids = [...base, ...hits.filter((id) => !base.includes(id))];
         selectedIds = ids;
         selectedId = ids[ids.length - 1] ?? null;
@@ -1212,6 +1221,7 @@
         }
       },
       onend: () => {
+        if (!marquee && !additive) branchEditing = false;
         marquee = null;
       }
     });
@@ -1447,12 +1457,15 @@
       count: pasteCount
     });
     const placed = [];
+    const renamed = new Map(clipboardFittings.map((item) => [item.fitting.id, nextId++]));
     clipboardFittings.forEach((item, index) => {
       const target = targets[index];
       const host = target ? byId.get(target.pipeId) : null;
       if (!host) return;
-      const id = nextId++;
-      host.fittings = [...(host.fittings ?? []), { ...structuredClone(item.fitting), id, t: target.t, name: nextFittingName(item.fitting.type, shapes) }];
+      const id = renamed.get(item.fitting.id);
+      const { meterOf, ...copy } = structuredClone(item.fitting);
+      const name = item.fitting.name === "" ? "" : nextFittingName(item.fitting.type, shapes);
+      host.fittings = [...(host.fittings ?? []), { ...copy, id, t: target.t, name, ...(renamed.has(meterOf) ? { meterOf: renamed.get(meterOf) } : {}) }];
       placed.push({ pipeId: host.id, fittingId: id });
     });
     if (!placed.length) return;
@@ -2058,7 +2071,7 @@
 
   let placement = $derived.by(() => {
     if (tool !== "place" || !placing || !cursor) return null;
-    if (isHydronicType(placing.type)) return hydronicPlacement(placing.type, cursor);
+    if (isHydronicType(placing.type)) return hydronicPlacement(placing.type, isInlineType(placing.type) ? aim ?? cursor : cursor);
     if (isDoorElement(placing.type)) return doorPlacement(cursor, DOOR_ELEMENTS[placing.type]);
     const room = roomAt(cursor);
     let item = newFurniture(placing.type, cursor.x, cursor.y, placing.rotation);
@@ -2118,20 +2131,27 @@
   let shapeIndex = $derived(new Map(shapes.map((shape) => [shape.id, shape])));
   let pipeRoutes = $derived(computeRoutes(shapes));
   let snapRadius = $derived(Math.max(20, 16 / viewport.zoom));
+  let hoverRadius = $derived(Math.max(6, 7 / viewport.zoom));
   let pipeTargeting = $derived(tool === "pipe" || !!pipeDraft?.rewire);
   let pipeAnchor = $derived.by(() => {
     if (!pipeTargeting || !pipeDraft) return null;
-    const last = pipeDraft.points[pipeDraft.points.length - 1];
+    const last = pipeDraft.points[pipeDraft.points.length - (pipeDraft.follow ? 2 : 1)];
     if (last) return last;
     return endpointPose(pipeDraft.from, shapeIndex, (id) => pipeRoutes.get(id), cursor)?.point ?? null;
   });
   let pipeAim = $derived(alignToAnchor(cursor, pipeAnchor, 8 / viewport.zoom));
   let pipeCursor = $derived(pipeAim.point);
-  let portTarget = $derived(pipeTargeting && pipeCursor
-    ? findPort(pipeCursor, shapes, snapRadius)
-      ?? findValvePort(pipeCursor, shapes, pipeRoutes, snapRadius, pipeDraft?.rewire?.pipeId ?? null)
-      ?? findPipePoint(pipeCursor, pipeRoutes, snapRadius, pipeDraft?.rewire?.pipeId ?? null, pipeAim.aligned || !snapToGrid ? 0 : gridSize)
-    : null);
+  let portTarget = $derived(pipeTargeting && pipeCursor ? pipeTargetAt(pipeAim.aligned ? pipeCursor : aim ?? pipeCursor) : null);
+
+  function pipeTargetAt(point){
+    const exclude = pipeDraft?.rewire?.pipeId ?? null;
+    const valve = findValvePort(point, shapes, pipeRoutes, hoverRadius, exclude);
+    if (valve) return valve;
+    const port = findPort(point, shapes, hoverRadius);
+    const pipe = findPipePoint(point, pipeRoutes, hoverRadius, exclude, pipeAim.aligned || !snapToGrid ? 0 : gridSize);
+    if (!port || !pipe) return port ?? pipe;
+    return pipe.gap < Math.hypot(port.point.x - point.x, port.point.y - point.y) ? pipe : port;
+  }
 
   let pipePreview = $derived.by(() => {
     if (!pipeTargeting || !pipeDraft || !cursor) return null;
@@ -2317,7 +2337,10 @@
 
   function setNameSize(value){
     editKey = "name-size";
-    for (const element of selectedElements()) if (hasNameLabel(element)) element.nameSize = value;
+    for (const element of selectedElements()) {
+      if (hasNameLabel(element)) element.nameSize = value;
+      else if (HYDRONIC_ELEMENTS[element.type]?.generic) element.fontSize = value;
+    }
   }
 
   function setMedium(value){
@@ -2345,7 +2368,7 @@
   });
 
   let selectionGroups = $derived(tool === "select" && activePoints.length === 0 && activeEdges.length === 0
-    ? summarizeSelection(selectedShapes, fittingGroup, { pipeWidth: HYDRONIC_STYLE.pipeWidth })
+    ? summarizeSelection(selectedShapes, fittingGroup, { pipeWidth: HYDRONIC_STYLE.pipeWidth, turnable: turnable.length })
     : null);
 
   let fittingOptions = $derived(activeFitting ? {
@@ -2362,9 +2385,29 @@
   function setFittingReadout(value){
     if (!activeFitting) return;
     for (const { fitting } of fittingGroup) {
-      if (!readoutSpec(fitting.type)) continue;
+      if (!readoutSpec(fitting.type) || meterOptions(fitting.type).length) continue;
       fitting.readout = value;
       if (value === "none") delete fitting.readoutOffset;
+    }
+  }
+
+  function keepReadoutGap(offset, before, after){
+    const shift = (value, from, to) => Math.abs(value) >= from / 2 ? value + Math.sign(value) * (to - from) / 2 : value;
+    return { x: Math.round(shift(offset.x, before.width, after.width)), y: Math.round(shift(offset.y, before.height, after.height)) };
+  }
+
+  function setMeterReadout(id){
+    const meters = fittingGroup.filter(({ fitting }) => meterOptions(fitting.type).some((option) => option.id === id));
+    if (!meters.length) return;
+    const on = !meters.every(({ fitting }) => meterReadouts(fitting).includes(id));
+    for (const { fitting } of meters) {
+      const scale = readoutScaleOf(fitting);
+      const before = readoutExtent(readoutRows(fitting), scale);
+      const kept = meterReadouts(fitting).filter((entry) => entry !== id);
+      fitting.readouts = meterOptions(fitting.type).map((option) => option.id).filter((entry) => kept.includes(entry) || (on && entry === id));
+      fitting.readout = fitting.readouts.length ? "value" : "none";
+      const after = readoutExtent(readoutRows(fitting), scale);
+      if (fitting.readoutOffset && after.height && before.height) fitting.readoutOffset = keepReadoutGap(fitting.readoutOffset, before, after);
     }
   }
 
@@ -2425,7 +2468,7 @@
   function setBranchName(value){
     for (const element of selectedElements()) {
       const others = shapes.filter((shape) => shape !== element);
-      element.name = value.trim() || (isElectricType(element.type) ? nextElectricName(element.type, others) : nextElementName(element.type, others));
+      element.name = value.trim() || (isElectricType(element.type) ? nextElectricName(element.type, others) : "");
     }
   }
 
@@ -2458,6 +2501,9 @@
   function beginNameDrag(event, owner, fittingId){
     const target = fittingId === null ? owner : owner.fittings?.find((entry) => entry.id === fittingId);
     if (!target) return;
+    const frame = () => fittingId === null ? elementBox(owner) : fittingBox(pipeRoutes.get(owner.id), target);
+    const label = fittingId === null ? elementLabel(owner) : fittingLabel(pipeRoutes.get(owner.id), target);
+    const width = event.target instanceof SVGGraphicsElement ? event.target.getBBox().width : textWidth(target.name, label.size);
     if (fittingId === null) {
       if (!selectionIds.includes(owner.id)) selectShape(owner.id);
     } else {
@@ -2467,13 +2513,14 @@
     }
     const start = toCanvas(event);
     if (!start) return;
-    const origin = { x: target.nameOffset?.x ?? 0, y: target.nameOffset?.y ?? 0 };
+    const origin = labelCentre(label, width);
     history.beginGesture();
     dragPointer(svgEl, event, {
       onmove: (next) => {
         const point = toCanvas(next);
         if (!point) return;
-        target.nameOffset = { x: Math.round(origin.x + point.x - start.x), y: Math.round(origin.y + point.y - start.y) };
+        delete target.nameOffset;
+        target.nameAnchor = nameAnchorAt(frame(), { x: origin.x + point.x - start.x, y: origin.y + point.y - start.y }, width, label.height);
       },
       onend: () => history.endGesture()
     });
@@ -2482,7 +2529,7 @@
   function setFittingName(value){
     const entry = activeFitting;
     if (!entry) return;
-    entry.fitting.name = value.trim() || nextFittingName(entry.fitting.type, shapes);
+    entry.fitting.name = value.trim();
   }
 
   function setReadoutScale(value){
@@ -2589,6 +2636,50 @@
     });
   }
 
+  function beginBarScale(event, element, handle){
+    const original = { x: element.x, y: element.y, width: element.width, height: element.height };
+    const vertical = original.height > original.width;
+    const low = vertical ? handle.includes("n") : handle.includes("w");
+    const high = vertical ? handle.includes("s") : handle.includes("e");
+    if (!low && !high) return;
+    const key = vertical ? "y" : "x";
+    const size = vertical ? "height" : "width";
+    const limit = vertical ? boardHeight : boardWidth;
+    const anchor = low ? original[key] + original[size] : original[key];
+    const grabbed = low ? original[key] : original[key] + original[size];
+    const minimum = snapToGrid ? gridSize * 2 : 40;
+    const entries = attachedEnds(element);
+    const start = toCanvas(event);
+    if (!start) return;
+
+    history.beginGesture();
+    dragPointer(svgEl, event, {
+      onmove: (next) => {
+        const point = toCanvas(next);
+        if (!point) return;
+        const edge = snapValue(grabbed + point[key] - start[key], limit);
+        const length = Math.max(minimum, low ? anchor - edge : edge - anchor);
+        element[key] = low ? anchor - length : anchor;
+        element[size] = length;
+        keepBarEnds(element, entries, original, vertical);
+      },
+      onend: () => history.endGesture()
+    });
+  }
+
+  function keepBarEnds(element, entries, original, vertical){
+    const shift = vertical ? original.y - element.y : original.x - element.x;
+    const length = vertical ? element.height : element.width;
+    for (const entry of entries) {
+      for (const key of ["from", "to"]) {
+        const end = entry[key];
+        if (!end || end.id !== element.id) continue;
+        const along = vertical ? end.side === "left" || end.side === "right" : end.side === "top" || end.side === "bottom";
+        if (along) entry.pipe[key] = { ...end, offset: Math.min(length, Math.max(0, round2(end.offset + shift))) };
+      }
+    }
+  }
+
   function centred(value){
     return snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value);
   }
@@ -2619,6 +2710,31 @@
     });
   }
 
+  function keptCorners(pipe, end){
+    const route = pipeRoutes.get(pipe.id);
+    if (!route || route.length < 3) return { points: [], follow: null };
+    const ordered = (end === "from" ? [...route].reverse() : route).map((point) => ({ x: point.x, y: point.y }));
+    const tip = ordered[ordered.length - 1];
+    let corners = ordered.slice(1, -1);
+    let near = tip;
+    const last = corners[corners.length - 1];
+    if (Math.hypot(last.x - tip.x, last.y - tip.y) <= 20.5 && endpointPose(pipe[end], shapeIndex, (id) => pipeRoutes.get(id), last)?.normal) {
+      near = last;
+      corners = corners.slice(0, -1);
+    }
+    if (!corners.length) return { points: [], follow: null };
+    const corner = corners[corners.length - 1];
+    const follow = Math.abs(corner.y - near.y) < 0.5 ? "y" : Math.abs(corner.x - near.x) < 0.5 ? "x" : null;
+    return { points: corners, follow };
+  }
+
+  function followEnd(){
+    const draft = pipeDraft;
+    if (!draft?.follow || !draft.points.length) return;
+    const spot = portTarget?.point ?? pipeCursor;
+    if (spot) draft.points[draft.points.length - 1][draft.follow] = round2(spot[draft.follow]);
+  }
+
   function beginPipeEndDrag(event, pipe, end){
     if (isLeg(pipe)) {
       beginLegDrag(event, pipe, end);
@@ -2626,7 +2742,7 @@
     }
     const original = $state.snapshot(pipe[end]);
     const fixed = $state.snapshot(end === "from" ? pipe.to : pipe.from);
-    const points = $state.snapshot(pipe.points ?? []);
+    const { points, follow } = keptCorners(pipe, end);
     const junction = original?.pipe !== undefined;
     const free = isFreeEnd(original);
     const start = toCanvas(event);
@@ -2634,8 +2750,9 @@
     let moved = false;
     selectedId = null;
     clearSubSelection();
-    pipeDraft = { from: fixed, points: trimLastStretch(end === "from" ? [...points].reverse() : points), rewire: { pipeId: pipe.id, end } };
+    pipeDraft = { from: fixed, points, follow, rewire: { pipeId: pipe.id, end } };
     cursor = snapPoint(start);
+    aim = start;
 
     dragPointer(svgEl, event, {
       onmove: (next) => {
@@ -2643,7 +2760,9 @@
         if (!raw) return;
         if (!moved && Math.hypot(raw.x - start.x, raw.y - start.y) * viewport.zoom < 4) return;
         moved = true;
+        aim = raw;
         cursor = snapPoint(raw);
+        followEnd();
       },
       onend: () => {
         const target = moved ? portTarget : null;
@@ -2829,30 +2948,87 @@
     selectedId = null;
     clearSubSelection();
     selectedFitting = { pipeId: pipe.id, fittingId };
-    const fitting = pipe.fittings?.find((entry) => entry.id === fittingId);
+    let fitting = pipe.fittings?.find((entry) => entry.id === fittingId);
     if (!fitting) return;
     const size = (HYDRONIC_ELEMENTS[fitting.type]?.width ?? 0) * (fitting.scale ?? 1);
+    const roaming = fitting.meterOf !== undefined;
+    let host = pipe;
 
     history.beginGesture();
     dragPointer(svgEl, event, {
       onmove: (next) => {
         const point = toCanvas(next);
-        const route = pipeRoutes.get(pipe.id);
-        if (!point || !route) return;
+        if (!point) return;
+        if (roaming) {
+          const jump = nearestHydronicPipe(point, size);
+          if (jump && jump.pipe !== host) {
+            const moved = { ...$state.snapshot(fitting), t: round4(jump.hit.t) };
+            host.fittings = host.fittings.filter((entry) => entry.id !== moved.id);
+            jump.pipe.fittings = [...(jump.pipe.fittings ?? []), moved];
+            host = jump.pipe;
+            fitting = host.fittings.find((entry) => entry.id === moved.id);
+            selectedFitting = { pipeId: host.id, fittingId };
+            return;
+          }
+        }
+        const route = pipeRoutes.get(host.id);
+        if (!route) return;
+        const corner = HYDRONIC_ELEMENTS[fitting.type]?.junction
+          ? valveCorner(point, new Map([[host.id, route]]), Math.max(10, 14 / viewport.zoom), fitting.type, orientAngle, fitting.leg ?? "before")
+          : null;
+        if (corner) {
+          Object.assign(fitting, { t: corner.t, flip: corner.flip, leg: corner.leg });
+          return;
+        }
         const hit = projectOnRoute(route, point, size);
-        if (hit) fitting.t = round4(hit.t);
+        if (!hit) return;
+        fitting.t = round4(hit.t);
+        delete fitting.leg;
       },
       onend: () => history.endGesture()
     });
   }
 
+  function nearestHydronicPipe(point, size){
+    const radius = Math.max(24, 30 / viewport.zoom);
+    let best = null;
+    for (const [pipeId, route] of pipeRoutes) {
+      const candidate = shapeById(pipeId);
+      if (!candidate || candidate.locked || familyOf(mediumOf(candidate.medium)) !== "hydronic") continue;
+      const hit = projectOnRoute(route, point, size);
+      if (hit && hit.gap <= radius && (!best || hit.gap < best.hit.gap)) best = { pipe: candidate, hit };
+    }
+    return best;
+  }
+
+  let turnable = $derived(fittingGroup.filter(({ pipe, fitting }) => {
+    const route = pipeRoutes.get(pipe.id);
+    return HYDRONIC_ELEMENTS[fitting.type]?.junction && route && cornerLegs(route, routePoint(route, fitting.t));
+  }));
+
+  function turnFitting(){
+    for (const { pipe, fitting } of turnable) {
+      const route = pipeRoutes.get(pipe.id);
+      const legs = cornerLegs(route, routePoint(route, fitting.t));
+      const leg = fitting.leg === "after" ? "before" : "after";
+      const flip = cornerFlip(fitting.type, legs, leg, orientAngle);
+      if (flip === undefined) continue;
+      Object.assign(fitting, { leg, flip });
+    }
+  }
+
   function flipFitting(){
-    for (const { fitting } of fittingGroup) if (HYDRONIC_ELEMENTS[fitting.type]?.orient !== "upright") fitting.flip = !fitting.flip;
+    const corners = new Set(turnable.map(({ fitting }) => fitting.id));
+    for (const { fitting } of fittingGroup) if (HYDRONIC_ELEMENTS[fitting.type]?.orient !== "upright" && !corners.has(fitting.id)) fitting.flip = !fitting.flip;
   }
 
   function removeFitting(){
     if (!activeFitting) return;
-    for (const { pipe, fitting } of fittingGroup) pipe.fittings = pipe.fittings.filter((entry) => entry.id !== fitting.id);
+    const gone = new Set(fittingGroup.map(({ fitting }) => fitting.id));
+    for (const shape of shapes) {
+      if (shape.kind !== "pipe" || !(shape.fittings ?? []).some((entry) => gone.has(entry.id) || gone.has(entry.meterOf))) continue;
+      shape.fittings = shape.fittings.filter((entry) => !gone.has(entry.id) && !gone.has(entry.meterOf));
+    }
     selectedFitting = null;
     extraFittings = [];
   }
@@ -2878,8 +3054,14 @@
       const radius = Math.max(24, 30 / viewport.zoom);
       let best = null;
       for (const [pipeId, route] of pipeRoutes) {
+        const near = projectOnRoute(route, point, 0);
+        if (!near || near.gap > radius || (best && near.gap >= best.near)) continue;
         const hit = projectOnRoute(route, point, spec.width);
-        if (hit && hit.gap <= radius && (!best || hit.gap < best.hit.gap)) best = { pipe: shapeById(pipeId), hit };
+        if (hit) best = { pipe: shapeById(pipeId), hit, near: near.gap };
+      }
+      const corner = spec.junction ? valveCorner(point, pipeRoutes, Math.max(10, 14 / viewport.zoom), type, orientAngle) : null;
+      if (corner && !shapeById(corner.pipeId)?.locked) {
+        return { kind: "fitting", type, pipe: shapeById(corner.pipeId), fitting: { type, t: corner.t, flip: corner.flip, leg: corner.leg }, pose: corner.pose, valid: true };
       }
       if (!best || best.pipe.locked) return { kind: "fitting", type, pipe: null, pose: { x: point.x, y: point.y, rotation: 0 }, valid: false };
       return {
@@ -2926,6 +3108,44 @@
     return { kind: "equipment", element, valid: true };
   }
 
+  function placeFitting(id, target){
+    const spec = HYDRONIC_ELEMENTS[target.fitting.type];
+    const fitting = { id, ...target.fitting, name: nextFittingName(target.fitting.type, shapes) };
+    if (spec.measures) Object.assign(fitting, { readout: "value", readouts: [spec.measures[0]] });
+    const entries = spec.sensors ? [...pipeRoutes].map(([pipeId, route]) => ({ pipe: shapeById(pipeId), route })).filter((entry) => entry.pipe) : [];
+    const spots = spec.sensors ? placeSensors(entries, target.pipe.id, fitting) : [];
+    const across = spots.find((spot) => spot.pipeId !== target.pipe.id);
+    if (across) fitting.nameAnchor = meterNameAnchor(fitting, target.pipe.id, across);
+    target.pipe.fittings = [...(target.pipe.fittings ?? []), fitting];
+    if (spec.junction) joinValve(target.pipe, fitting);
+    for (const spot of spots) {
+      const host = shapeById(spot.pipeId);
+      host.fittings = [...(host.fittings ?? []), { id: nextId++, type: "meterSensor", t: spot.t, name: "", meterOf: id }];
+    }
+  }
+
+  function joinValve(host, fitting){
+    const route = pipeRoutes.get(host.id);
+    if (!route) return;
+    const spot = fittingPose(route, fitting);
+    for (const shape of shapes) {
+      if (shape.kind !== "pipe" || shape.id === host.id) continue;
+      for (const key of ["from", "to"]) {
+        const end = shape[key];
+        if (end?.pipe !== host.id || end.fitting !== undefined || Math.hypot(end.x - spot.x, end.y - spot.y) > 1) continue;
+        shape[key] = { pipe: host.id, x: spot.x, y: spot.y, fitting: fitting.id };
+      }
+    }
+  }
+
+  function meterNameAnchor(fitting, hostId, across){
+    const self = fittingPose(pipeRoutes.get(hostId), fitting);
+    const other = fittingPose(pipeRoutes.get(across.pipeId), { type: "meterSensor", t: across.t });
+    const box = fittingBox(pipeRoutes.get(hostId), fitting);
+    if (Math.abs(other.x - self.x) >= 1) return { side: other.x > self.x ? "right" : "left", gap: 6, shift: -Math.round(box.height / 2 + 12) };
+    return { side: other.y > self.y ? "bottom" : "top", gap: 4, shift: -Math.round(box.width / 2 + textWidth(fitting.name, 13) / 2 + 8) };
+  }
+
   function legEndsOf(pipes){
     const ends = {};
     for (const pipe of pipes) {
@@ -2942,7 +3162,7 @@
       shapes.push(element);
       if (isBranch(element)) shapes.push(...createBranch(element, () => nextId++));
     }
-    else target.pipe.fittings = [...(target.pipe.fittings ?? []), { id, ...target.fitting, name: nextFittingName(target.fitting.type, shapes) }];
+    else placeFitting(id, target);
     if (keep) return;
     pickTool("select");
     selectedId = null;
@@ -3008,8 +3228,8 @@
     }
     if (ctrl && key === "s") {
       event.preventDefault();
-      if (event.shiftKey || !fileHandle) openSaveDialog();
-      else saveDrawing(false);
+      if (event.shiftKey) saveProjectAs();
+      else saveProject();
       return true;
     }
     if (ctrl && key === "o") {
@@ -3040,6 +3260,7 @@
     }
     if (event.key === "Escape") {
       if (tool !== "select") pickTool("select");
+      branchEditing = false;
       clearSubSelection();
       renamingId = null;
       return false;
@@ -3100,14 +3321,14 @@
     const entry = renamingFittingEntry;
     renamingFitting = null;
     if (!entry) return;
-    entry.fitting.name = value.trim() || nextFittingName(entry.fitting.type, shapes);
+    entry.fitting.name = value.trim();
   }
 
   function commitElementRename(value){
     const element = renamingElement;
     renamingElementId = null;
     if (!element) return;
-    element.name = value.trim() || nextElementName(element.type, shapes.filter((shape) => shape !== element));
+    element.name = value.trim();
   }
 
   function setRoomName(room, value){
@@ -3293,38 +3514,72 @@
   }
 
   let documents = {};
+  const PAGED_APPS = ["floorplan", "hydronic", "network"];
+  let pageSets = $state({});
+  let pageSet = $derived(PAGED_APPS.includes(app) ? pageSets[app] ?? null : null);
   let ioPoints = $state([]);
   let ioOthers = $state([]);
   let ioOpen = $state(false);
   let ioVisible = $derived(ioOpen && app === "hydronic");
-  let ioBranches = $derived(ioVisible ? shapes.filter(isBranch).map((shape, index) => ({ id: shape.id, label: shape.name?.trim() || `Branch ${index + 1}`, type: branchParams(shape).branch_type })) : []);
+  let ioBranches = $derived(ioVisible ? pageShapes("hydronic").filter(isBranch).map((shape, index) => ({ id: shape.id, label: shape.name?.trim() || `Branch ${index + 1}`, type: branchParams(shape).branch_type })) : []);
   let documentName = $state(null);
   let saveDialog = $state(null);
-  let saveButton = $state(null);
   let pickedFileName = null;
 
-  function openSaveDialog(){
-    const box = saveButton?.getBoundingClientRect();
-    saveDialog = box ? { right: Math.max(8, window.innerWidth - box.right), top: box.bottom + 6 } : { right: 16, top: 52 };
+  function openSaveDialog(mode = "as"){
+    saveDialog = { mode };
   }
 
   function confirmSave(name){
+    const mode = saveDialog?.mode ?? "as";
     saveDialog = null;
-    saveDrawing(false, cleanDocumentName(name) ?? defaultDocumentName());
+    downloadProject(cleanDocumentName(name) ?? defaultDocumentName(), mode !== "copy");
+  }
+
+  function newPageId(){
+    return `page-${crypto.randomUUID().slice(0, 8)}`;
+  }
+
+  function ensurePages(appId){
+    if (!PAGED_APPS.includes(appId) || pageSets[appId]) return;
+    const id = newPageId();
+    pageSets[appId] = { active: id, list: [{ id, name: "Page 1" }] };
+  }
+
+  function stashKey(appId){
+    const set = pageSets[appId];
+    return PAGED_APPS.includes(appId) && set ? `${appId}:${set.active}` : appId;
+  }
+
+  function storedShapes(appId, pageId){
+    const set = pageSets[appId];
+    if (appId === app && (!set || set.active === pageId)) return $state.snapshot(shapes);
+    return documents[set ? `${appId}:${pageId}` : appId]?.shapes ?? [];
+  }
+
+  function pageShapes(appId){
+    const set = pageSets[appId];
+    if (!set) return appId === app ? shapes : documents[appId]?.shapes ?? [];
+    return set.list.flatMap((page) => appId === app && page.id === set.active ? shapes : documents[`${appId}:${page.id}`]?.shapes ?? []);
   }
 
   function currentApps(){
     const apps = {};
-    for (const [id, entry] of Object.entries(documents)) apps[id] = entry?.shapes ?? [];
-    apps[app] = $state.snapshot(shapes);
-    return apps;
+    const pages = {};
+    const ids = new Set([...APPS.map((entry) => entry.id), ...Object.keys(documents).map((key) => key.split(":")[0])]);
+    for (const appId of ids) {
+      const set = pageSets[appId];
+      if (set) {
+        pages[appId] = { active: set.active, list: set.list.map((page) => ({ id: page.id, name: page.name, shapes: storedShapes(appId, page.id) })) };
+        apps[appId] = storedShapes(appId, set.active);
+      } else {
+        apps[appId] = appId === app ? $state.snapshot(shapes) : documents[appId]?.shapes ?? [];
+      }
+    }
+    return { apps, pages };
   }
 
-  function currentDocument(){
-    return serializeDocument({ app, apps: currentApps(), canvas: { width: canvasWidth, height: canvasHeight, fill: canvasFill }, name: documentName, io: { points: $state.snapshot(ioPoints), others: $state.snapshot(ioOthers) } });
-  }
-
-  function applyDocument(doc){
+  function resetInteraction(){
     pickTool("select");
     selectedId = null;
     selectedIds = [];
@@ -3334,62 +3589,326 @@
     renamingElementId = null;
     renamingFitting = null;
     editingTextId = null;
+    targetChoice = null;
+    branchEditing = false;
+  }
+
+  function stashCurrent(){
+    documents[stashKey(app)] = { shapes: $state.snapshot(shapes), history: history.save() };
+  }
+
+  function loadStashed(key){
+    const next = documents[key];
+    delete documents[key];
+    resetInteraction();
+    history.load(next?.history ?? null);
+    shapes = next?.shapes ?? [];
+  }
+
+  function selectPage(pageId){
+    const set = pageSets[app];
+    if (!set || set.active === pageId) return;
+    stashCurrent();
+    set.active = pageId;
+    loadStashed(stashKey(app));
+  }
+
+  function addPage(){
+    const set = pageSets[app];
+    if (!set) return;
+    const taken = new Set(set.list.map((page) => page.name));
+    let index = set.list.length + 1;
+    while (taken.has(`Page ${index}`)) index += 1;
+    const id = newPageId();
+    stashCurrent();
+    set.list.push({ id, name: `Page ${index}` });
+    set.active = id;
+    loadStashed(stashKey(app));
+  }
+
+  function renamePage(pageId, name){
+    const page = pageSets[app]?.list.find((entry) => entry.id === pageId);
+    if (page) page.name = name;
+  }
+
+  function deletePage(pageId){
+    const set = pageSets[app];
+    if (!set || set.list.length < 2) return;
+    const index = set.list.findIndex((page) => page.id === pageId);
+    const page = set.list[index];
+    if (!page) return;
+    const filled = storedShapes(app, pageId).length > 0;
+    if (filled && !window.confirm(`Delete "${page.name}" and everything on it?`)) return;
+    const wasActive = set.active === pageId;
+    set.list.splice(index, 1);
+    delete documents[`${app}:${pageId}`];
+    if (!wasActive) return;
+    set.active = set.list[Math.min(index, set.list.length - 1)].id;
+    loadStashed(stashKey(app));
+  }
+
+  function projectSettings(){
+    return {
+      grid: { size: gridSize, majorEvery, show: showGrid, snap: snapToGrid, minorColor: gridMinorColor, majorColor: gridMajorColor },
+      drawing: { lineColor, lineWidth, rectStroke, rectFill, rectFilled },
+      rooms: {
+        roomFill, roomStroke, labelColor: roomLabelColor, floorFill, floorStroke, categoryColors: $state.snapshot(categoryColors),
+        furnitureOpacity, floorWallWidth, roomWallWidth, wallStroke, wallWidth
+      },
+      hydronic: { library: hydronicLibrary }
+    };
+  }
+
+  function applySettings(settings){
+    const number = (value, fallback) => Number.isFinite(value) ? value : fallback;
+    const text = (value, fallback) => typeof value === "string" && value ? value : fallback;
+    const flag = (value, fallback) => typeof value === "boolean" ? value : fallback;
+    const grid = settings?.grid ?? {};
+    const drawing = settings?.drawing ?? {};
+    const rooms = settings?.rooms ?? {};
+    gridSize = number(grid.size, 20);
+    majorEvery = number(grid.majorEvery, 5);
+    showGrid = flag(grid.show, true);
+    snapToGrid = flag(grid.snap, true);
+    gridMinorColor = text(grid.minorColor, "#E2E8F0");
+    gridMajorColor = text(grid.majorColor, "#CBD5E1");
+    lineColor = text(drawing.lineColor, "#2563EB");
+    lineWidth = number(drawing.lineWidth, 2);
+    rectStroke = text(drawing.rectStroke, "#0F172A");
+    rectFill = text(drawing.rectFill, "#BFDBFE");
+    rectFilled = flag(drawing.rectFilled, true);
+    roomFill = text(rooms.roomFill, ROOM_STYLE.roomFill);
+    roomStroke = text(rooms.roomStroke, ROOM_STYLE.roomStroke);
+    roomLabelColor = text(rooms.labelColor, ROOM_STYLE.labelColor);
+    floorFill = text(rooms.floorFill, ROOM_STYLE.floorFill);
+    floorStroke = text(rooms.floorStroke, ROOM_STYLE.floorStroke);
+    categoryColors = rooms.categoryColors && typeof rooms.categoryColors === "object" ? { ...defaultCategoryColors(), ...rooms.categoryColors } : defaultCategoryColors();
+    furnitureOpacity = number(rooms.furnitureOpacity, 0.5);
+    floorWallWidth = number(rooms.floorWallWidth, ROOM_STYLE.floorWidth);
+    roomWallWidth = number(rooms.roomWallWidth, ROOM_STYLE.roomWidth);
+    wallStroke = text(rooms.wallStroke, WALL_STYLE.stroke);
+    wallWidth = number(rooms.wallWidth, WALL_STYLE.width);
+    hydronicLibrary = text(settings?.hydronic?.library, HYDRONIC_STYLE.library);
+  }
+
+  function usedImages(apps, pages){
+    const ids = new Set();
+    const visit = (list) => { for (const shape of list ?? []) if (shape.kind === "image" && shape.imageId) ids.add(shape.imageId); };
+    Object.values(apps).forEach(visit);
+    Object.values(pages).forEach((set) => set.list.forEach((page) => visit(page.shapes)));
+    return Object.fromEntries([...ids].filter((id) => imageSources[id]).map((id) => [id, imageSources[id]]));
+  }
+
+  function currentDocument(withImages = true, name = documentName){
+    const { apps, pages } = currentApps();
+    return serializeDocument({
+      app, apps, pages,
+      canvas: { width: canvasWidth, height: canvasHeight, fill: canvasFill },
+      name,
+      io: { points: $state.snapshot(ioPoints), others: $state.snapshot(ioOthers) },
+      settings: projectSettings(),
+      images: withImages ? usedImages(apps, pages) : null
+    });
+  }
+
+  function applyDocument(doc){
+    resetInteraction();
     documents = {};
+    pageSets = {};
     const next = APPS.some((entry) => entry.id === doc.app) ? doc.app : app;
-    nextId = highestId(doc.apps) + 1;
-    const ready = (list) => nameFittings(migrateBranches(list, () => nextId++));
-    for (const [id, list] of Object.entries(doc.apps)) if (id !== next) documents[id] = { shapes: ready(list), history: null };
+    nextId = highestId({ apps: doc.apps, pages: doc.pages }) + 1;
+    const ready = (list) => anchorNames(nameFittings(migrateBranches(Array.isArray(list) ? list : [], () => nextId++)));
+    for (const entry of APPS) {
+      const appId = entry.id;
+      if (!PAGED_APPS.includes(appId)) {
+        if (doc.apps[appId]) documents[appId] = { shapes: ready(doc.apps[appId]), history: null };
+        continue;
+      }
+      const saved = doc.pages?.[appId];
+      const list = Array.isArray(saved?.list) && saved.list.length
+        ? saved.list.map((page, index) => ({ id: typeof page.id === "string" && page.id ? page.id : newPageId(), name: typeof page.name === "string" && page.name.trim() ? page.name.trim() : `Page ${index + 1}`, shapes: page.shapes }))
+        : [{ id: newPageId(), name: "Page 1", shapes: doc.apps[appId] ?? [] }];
+      const active = list.some((page) => page.id === saved?.active) ? saved.active : list[0].id;
+      pageSets[appId] = { active, list: list.map((page) => ({ id: page.id, name: page.name })) };
+      for (const page of list) documents[`${appId}:${page.id}`] = { shapes: ready(page.shapes), history: null };
+    }
     app = next;
-    history.load(null);
-    shapes = ready(doc.apps[next] ?? []);
+    loadStashed(stashKey(next));
     if (doc.canvas) {
       if (doc.canvas.width > 0) canvasWidth = doc.canvas.width;
       if (doc.canvas.height > 0) canvasHeight = doc.canvas.height;
       if (typeof doc.canvas.fill === "string") canvasFill = doc.canvas.fill;
     }
     documentName = doc.name ?? null;
+    applySettings(doc.settings);
+    imageSources = doc.images ?? {};
     ioPoints = doc.io?.points ?? [];
     ioOthers = doc.io?.others ?? [];
   }
 
   const autosaved = loadAutosave();
   if (autosaved) applyDocument(autosaved);
+  for (const appId of PAGED_APPS) ensurePages(appId);
 
-  let autosaveTimer;
+  function projectHash(text){
+    return hashText(text.replace(/"savedAt":"[^"]*",?/, "").replace(/"app":"[^"]*",?/, "").replace(/"active":"page-[^"]*",?/g, ""));
+  }
+
+  let documentText = $derived(currentDocument());
+  let documentHash = $derived(projectHash(documentText));
+  let savedHash = $state(loadText("pathfinder.savedHash", ""));
+  $effect(() => saveText("pathfinder.savedHash", savedHash));
+  let unsaved = $derived(documentHash !== savedHash);
+  let autosaveFile = $state(loadFlag("pathfinder.autosaveFile", false));
+  $effect(() => saveFlag("pathfinder.autosaveFile", autosaveFile));
+  let fileWriting = $state(false);
+  let projectTitle = $derived(documentName ?? "Untitled project");
+  let projectStatus = $derived(
+    fileWriting ? "saving"
+    : autosaveFile && fileHandle && fileAccessState !== "granted" ? "paused"
+    : unsaved ? (autosaveFile && fileHandle ? "pending" : fileHandle || savedHash ? "unsaved" : "unlinked")
+    : autosaveFile && fileHandle ? "autosaved" : "saved"
+  );
+
+  let fileTimer;
   $effect(() => {
-    const text = currentDocument();
-    clearTimeout(autosaveTimer);
-    autosaveTimer = setTimeout(() => saveAutosave(text), 400);
+    const hash = documentHash;
+    clearTimeout(fileTimer);
+    if (!autosaveFile || !fileHandle || fileAccessState !== "granted" || hash === savedHash) return;
+    fileTimer = setTimeout(autosaveToFile, 1500);
   });
 
-  let fileHandle = null;
-  const FILE_TYPES = [{ description: "Pathfinder drawing", accept: { "application/json": [".json"] } }];
-
-  async function saveDrawing(saveAs = false, name = documentName){
-    const fileName = fileNameFor(name);
+  async function autosaveToFile(){
+    if (fileWriting || !fileHandle) return;
     try {
-      if (typeof window.showSaveFilePicker === "function") {
-        if (!fileHandle || saveAs || fileHandle.name !== fileName) fileHandle = await window.showSaveFilePicker({ suggestedName: fileName, types: FILE_TYPES });
-        documentName = cleanDocumentName(fileHandle.name);
-        const writable = await fileHandle.createWritable();
-        await writable.write(currentDocument());
-        await writable.close();
-        showFileNotice(`Saved to ${fileHandle.name}`);
-      } else {
-        documentName = cleanDocumentName(fileName);
-        const url = URL.createObjectURL(new Blob([currentDocument()], { type: "application/json" }));
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName;
-        document.body.append(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        showFileNotice(`Downloaded ${fileName}`);
-      }
+      await writeProject(fileHandle, documentName);
     } catch (error) {
-      if (error?.name !== "AbortError") showFileNotice(`Could not save: ${error.message}`);
+      fileAccessState = await fileAccess(fileHandle);
+      if (fileAccessState === "granted") showFileNotice(`Autosave failed: ${error.message}`);
     }
+  }
+
+  let autosaveTimer;
+  let autosaveWarned = false;
+  $effect(() => {
+    const text = documentText;
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => {
+      if (saveAutosave(text)) return;
+      saveAutosave(currentDocument(false));
+      if (autosaveWarned) return;
+      autosaveWarned = true;
+      showFileNotice("Images are too large for the browser's autosave. Save the project to keep them.");
+    }, 400);
+  });
+
+  let fileHandle = $state.raw(null);
+  let fileAccessState = $state("none");
+
+  function linkFile(handle, access){
+    fileHandle = handle;
+    fileAccessState = handle ? access : "none";
+    rememberFile(handle);
+  }
+
+  async function ensureAccess(){
+    if (!fileHandle) return false;
+    if (fileAccessState !== "granted") fileAccessState = await fileAccess(fileHandle, true);
+    return fileAccessState === "granted";
+  }
+
+  async function resumeAutosave(){
+    if (await ensureAccess()) autosaveToFile();
+  }
+
+  async function setAutosaveFile(on){
+    if (!on) {
+      autosaveFile = false;
+      return;
+    }
+    if (!fileHandle) await saveProjectAs();
+    if (!fileHandle || !(await ensureAccess())) return;
+    autosaveFile = true;
+  }
+
+  recallFile().then(async (handle) => {
+    if (!handle || fileHandle || !canPickFiles || cleanDocumentName(handle.name) !== documentName) return;
+    fileHandle = handle;
+    fileAccessState = await fileAccess(handle);
+  });
+  const FILE_TYPES = [{ description: "Pathfinder drawing", accept: { "application/json": [".json"] } }];
+  const PICKER_ID = "pathfinder-project";
+  const canPickFiles = typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+
+  function saveFailed(error){
+    if (error?.name !== "AbortError") showFileNotice(`Could not save: ${error.message}`);
+  }
+
+  async function writeProject(handle, name, adopt = true){
+    const text = currentDocument(true, name);
+    const hash = projectHash(text);
+    fileWriting = true;
+    try {
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      if (adopt) savedHash = hash;
+    } finally {
+      fileWriting = false;
+    }
+  }
+
+  async function saveProject(){
+    if (!fileHandle) return saveProjectAs();
+    if (!(await ensureAccess())) return saveProjectAs();
+    try {
+      await writeProject(fileHandle, documentName);
+      showFileNotice(`Saved to ${fileHandle.name}`);
+    } catch (error) {
+      saveFailed(error);
+    }
+  }
+
+  async function saveProjectAs(copy = false){
+    if (!canPickFiles) {
+      openSaveDialog(copy ? "copy" : "as");
+      return;
+    }
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileNameFor(documentName ?? defaultDocumentName()),
+        types: FILE_TYPES,
+        id: PICKER_ID,
+        ...(fileHandle ? { startIn: fileHandle } : {})
+      });
+      const name = cleanDocumentName(handle.name);
+      if (!copy) documentName = name;
+      await writeProject(handle, name, !copy);
+      if (!copy) linkFile(handle, "granted");
+      showFileNotice(copy ? `Saved a copy to ${handle.name}` : `Saved to ${handle.name}`);
+    } catch (error) {
+      saveFailed(error);
+    }
+  }
+
+  function downloadProject(name = documentName ?? defaultDocumentName(), adopt = false){
+    const fileName = fileNameFor(name);
+    const clean = cleanDocumentName(fileName);
+    if (adopt) {
+      documentName = clean;
+      linkFile(null);
+    }
+    const text = currentDocument(true, clean);
+    if (adopt) savedHash = projectHash(text);
+    const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showFileNotice(`Downloaded ${fileName}`);
   }
 
   function pickFileText(){
@@ -3407,21 +3926,34 @@
     });
   }
 
+  function newProject(){
+    const { apps, pages } = currentApps();
+    const filled = Object.values(apps).some((list) => list.length) || Object.values(pages).some((set) => set.list.some((page) => page.shapes.length)) || ioPoints.length > 0;
+    const pending = unsaved && filled && !(autosaveFile && fileHandle && fileAccessState === "granted");
+    if (pending && !window.confirm(`Start a new project? Unsaved changes in "${projectTitle}" will be lost.`)) return;
+    applyDocument({ app, apps: {}, pages: null, settings: null, images: {}, io: { points: [], others: [] }, name: null, canvas: { width: 1920, height: 1125, fill: "#FFFFFF" } });
+    linkFile(null);
+    savedHash = "";
+    showFileNotice("New project");
+  }
+
   async function openDrawing(){
     try {
       let text;
       if (typeof window.showOpenFilePicker === "function") {
-        const [handle] = await window.showOpenFilePicker({ types: FILE_TYPES });
+        const [handle] = await window.showOpenFilePicker({ types: FILE_TYPES, id: PICKER_ID });
         text = await (await handle.getFile()).text();
         applyDocument(parseDocument(text));
-        fileHandle = handle;
         documentName = cleanDocumentName(handle.name) ?? documentName;
+        linkFile(handle, await fileAccess(handle));
+        savedHash = documentHash;
         showFileNotice(`Opened ${handle.name}`);
       } else {
         text = await pickFileText();
         applyDocument(parseDocument(text));
-        fileHandle = null;
+        linkFile(null);
         documentName = cleanDocumentName(pickedFileName) ?? documentName;
+        savedHash = documentHash;
         showFileNotice("Drawing opened");
       }
     } catch (error) {
@@ -3431,19 +3963,9 @@
 
   function switchApp(id){
     if (id === app) return;
-    documents[app] = { shapes: $state.snapshot(shapes), history: history.save() };
-    const next = documents[id];
-    pickTool("select");
-    selectedId = null;
-    selectedIds = [];
-    clearSubSelection();
-    placing = null;
-    renamingId = null;
-    renamingElementId = null;
-    renamingFitting = null;
-    targetChoice = null;
-    history.load(next?.history ?? null);
-    shapes = next?.shapes ?? [];
+    stashCurrent();
+    ensurePages(id);
+    loadStashed(stashKey(id));
     app = id;
   }
 
@@ -3522,13 +4044,37 @@
   }
 
   let showDisplaySettings = $state(false);
-  let displaySettingsEl;
 
-  function closeOnOutsideClick(event){
-    if (showDisplaySettings && !displaySettingsEl?.contains(event.target)) {
-      showDisplaySettings = false;
-    }
+  let connectOpen = $state(false);
+  let wiringOpen = $state(false);
+
+  function focusName(node){
+    node.focus();
+    node.select();
   }
+
+  let fileItems = $derived([
+    { label: "New project", hint: "Start an empty project", onclick: newProject },
+    { label: "Open…", shortcut: "Ctrl+O", onclick: openDrawing },
+    { separator: true },
+    { label: "Save", shortcut: "Ctrl+S", hint: fileHandle ? "Update the current file" : "Choose where to save the project", onclick: saveProject },
+    { label: "Save as…", shortcut: "Ctrl+Shift+S", hint: "New name or folder, keep working in the new file", onclick: () => saveProjectAs() },
+    { label: "Save a copy…", hint: "Keep working in this file", onclick: () => saveProjectAs(true) },
+    { label: "Download", hint: "Put a copy in the Downloads folder", onclick: () => downloadProject() },
+    canPickFiles
+      ? { toggle: true, label: "Autosave to file", checked: autosaveFile, onchange: setAutosaveFile, hint: autosaveFile ? "Every change is written to the project file" : "Write every change to the project file" }
+      : { note: "This browser can't pick a folder, so projects go to Downloads. Use Chrome or Edge to choose where to save." },
+    { separator: true },
+    { label: "Settings…", hint: "Canvas, grid, colours and export paths", onclick: () => showDisplaySettings = true }
+  ]);
+
+  let exportItems = $derived([
+    app !== "electrical" ? { label: "Copy SVG", hint: "atvise SVG of this page, to the clipboard", disabled: shapes.length === 0, onclick: handleExport } : null,
+    currentApp.exports.includes("pgd") ? { label: "Copy pGD page", hint: "pGD page code (wgtPage), to the clipboard", disabled: shapes.length === 0, onclick: copyPgd } : null,
+    currentApp.exports.includes("pgd") ? { label: "Download pGD images", hint: "Images this page uses, for the project's images folder", disabled: shapes.length === 0, onclick: downloadPgdImages } : null,
+    app === "network" ? { label: "atvise connect configuration…", hint: "Modbus connections for all topology pages", disabled: pageShapes("network").length === 0, onclick: () => connectOpen = true } : null,
+    app === "electrical" ? { label: "Print / Save as PDF", hint: "Choose Save as PDF in the print dialog", disabled: !shapes.some((shape) => shape.kind === "equipment"), onclick: printWiring } : null
+  ]);
 
   function readHex(event, current){
     const value = event.currentTarget.value.trim();
@@ -3537,9 +4083,6 @@
     return next;
   }
 
-  let pgdCopied = $state(false);
-  let pgdTimer;
-
   function buildPgd(){
     return hydronicToPgd(shapes, { ...hydronicStyle, iconSources: ICON_SOURCES }, { width: canvasWidth, height: canvasHeight, name: "Page1" });
   }
@@ -3547,11 +4090,9 @@
   async function copyPgd(){
     try {
       await navigator.clipboard.writeText(buildPgd().page);
-      pgdCopied = true;
-      clearTimeout(pgdTimer);
-      pgdTimer = setTimeout(() => pgdCopied = false, 2000);
+      showFileNotice("pGD page copied to the clipboard");
     } catch (err) {
-      console.log("Failed to copy:", err);
+      showFileNotice(`Could not copy: ${err.message}`);
     }
   }
 
@@ -3566,6 +4107,7 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showFileNotice(`Downloaded ${result.images.length} pGD image${result.images.length === 1 ? "" : "s"}`);
   }
 
   function buildSvg(){
@@ -3584,17 +4126,12 @@
 
   }
 
-  let copySuccess = $state(false);
-  let copyTimer;
-
   async function handleExport(){
     try {
       await navigator.clipboard.writeText(buildSvg());
-      copySuccess = true;
-      clearTimeout(copyTimer);
-      copyTimer = setTimeout(() => copySuccess = false, 2000);
+      showFileNotice("SVG copied to the clipboard");
     } catch (err) {
-      console.log("Failed to copy:", err);
+      showFileNotice(`Could not copy: ${err.message}`);
     }
   }
 </script>
@@ -3622,7 +4159,6 @@
   .header{
     display: flex;
     align-items: center;
-    justify-content: space-between;
     height: 44px;
     padding: 0 12px;
     gap: 16px;
@@ -3635,128 +4171,162 @@
     z-index: 2;
   }
 
-  .logo-section {
+  .header-left {
     display: flex;
+    flex: 1 1 auto;
     align-items: center;
-    font-size: 16px;
-    font-weight: 600;
-    color: #1E293B;
-
+    gap: 6px;
+    min-width: 0;
   }
 
-  .logo-section .title {
+  .header-right {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .header > :global(.app-switcher) {
+    flex: none;
+  }
+
+  .logo-section {
+    display: flex;
+    flex: none;
+    align-items: center;
+    margin-right: 6px;
+    color: #1E293B;
+  }
+
+  .brand {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+  }
+
+  .brand .title {
     font-family: 'Sora', 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 15px;
     font-weight: 600;
     letter-spacing: -0.02em;
   }
 
+  .brand .version {
+    font-size: 10px;
+    font-weight: 500;
+    color: #94a3b8;
+  }
+
   .logo{
-    height: 28px;
+    height: 26px;
     margin-right: 8px;
   }
 
-  .display-settings {
-    position: relative;
-  }
-
-  .view-switch {
-    display: inline-flex;
-    gap: 2px;
-    padding: 3px;
-    border-radius: 8px;
-    background: #f1f5f9;
-  }
-
-  .view-switch button {
-    height: 28px;
-    padding: 0 12px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    font-family: inherit;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: #64748b;
-    cursor: pointer;
-  }
-
-  .view-switch button:hover {
-    color: #1d4ed8;
-  }
-
-  .view-switch button.current {
-    background: #ffffff;
-    color: #1d4ed8;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
-  }
-
-  .header-actions {
+  .menus {
     display: flex;
+    flex: none;
     align-items: center;
-    gap: 10px;
-    margin-left: auto;
-    margin-right: 10px;
+    gap: 2px;
+    padding-left: 8px;
+    border-left: 1px solid #e2e8f0;
   }
 
-  button.header-export {
-    min-width: 128px;
-    padding: 6px 14px;
-    background: #2563eb;
-    border: none;
+  button.header-action {
+    height: 30px;
+    padding: 0 14px;
+    border: 1px solid #bfdbfe;
     border-radius: 6px;
+    background: #ffffff;
     font: inherit;
     font-size: 13px;
     font-weight: 600;
-    color: #ffffff;
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-  }
-
-  button.header-export:hover:not(:disabled) {
-    background: #1d4ed8;
-  }
-
-  button.header-export:disabled {
-    background: #cbd5e1;
-    cursor: not-allowed;
-  }
-
-  button.header-export.copied {
-    background: #16a34a;
-  }
-
-  button.header-export.secondary {
-    min-width: 0;
-    background: #ffffff;
-    border: 1px solid #bfdbfe;
     color: #1d4ed8;
+    white-space: nowrap;
+    cursor: pointer;
   }
 
-  button.header-export.secondary:hover:not(:disabled) {
+  button.header-action:hover {
     background: #eff6ff;
   }
 
-  .header-sep {
-    width: 1px;
-    height: 20px;
-    background: #e2e8f0;
+  .settings-grid {
+    columns: 3 250px;
+    column-gap: 14px;
   }
 
-  button.header-export.secondary.copied {
-    background: #16a34a;
-    border-color: #16a34a;
+  .settings-grid > fieldset {
+    break-inside: avoid;
+    margin-bottom: 14px;
+  }
+
+  .save-name {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+  }
+
+  .save-name label {
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .save-name-row {
+    display: flex;
+    align-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+  }
+
+  .save-name-row:focus-within {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  }
+
+  .save-name-row input {
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    padding: 2px 10px;
+    border: none;
+    outline: none;
+    background: transparent;
+    font: inherit;
+    color: #0f172a;
+  }
+
+  .save-name-row span {
+    padding-right: 10px;
+    color: #94a3b8;
+  }
+
+  button.modal-button {
+    height: 32px;
+    padding: 0 16px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+    cursor: pointer;
+  }
+
+  button.modal-button:hover {
+    background: #f1f5f9;
+  }
+
+  button.modal-button.primary {
+    border-color: #2563eb;
+    background: #2563eb;
     color: #ffffff;
   }
 
-  button.header-export.secondary:disabled {
-    background: #ffffff;
-    border-color: #e2e8f0;
-    color: #cbd5e1;
-  }
-
-  button.header-export:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+  button.modal-button.primary:hover {
+    background: #1d4ed8;
   }
 
   .category-row .category-name {
@@ -3785,63 +4355,6 @@
 
   button.reset-categories:hover {
     text-decoration: underline;
-  }
-
-  button.display-settings-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font: inherit;
-    font-size: 14px;
-    font-weight: 600;
-    color: #2563eb;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  }
-
-  button.display-settings-toggle:hover,
-  button.display-settings-toggle.open {
-    background: #eff6ff;
-    border-color: #93c5fd;
-    color: #1d4ed8;
-  }
-
-  button.display-settings-toggle:focus-visible {
-    outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
-  }
-
-  .display-settings-icon {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-  }
-
-  .display-settings-panel {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    z-index: 20;
-    width: 320px;
-    max-height: calc(100dvh - 160px);
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 16px;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
-    box-sizing: border-box;
   }
 
   .app-layout {
@@ -3905,6 +4418,70 @@
     border: 1px solid #e2e8f0;
     border-radius: 999px;
     background: #f8fafc;
+  }
+
+  .branch-banner {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: calc(100% - 32px);
+    padding: 7px 8px 7px 14px;
+    border: 1px solid #c4b5fd;
+    border-radius: 999px;
+    background: #f5f3ff;
+    box-shadow: 0 6px 20px rgba(76, 29, 149, 0.16);
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: #4c1d95;
+    white-space: nowrap;
+  }
+
+  .branch-banner span:not(.branch-dot) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #6d28d9;
+  }
+
+  .branch-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #7c3aed;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+  }
+
+  .branch-banner button {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 999px;
+    background: #7c3aed;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: #ffffff;
+    cursor: pointer;
+  }
+
+  .branch-banner button:hover {
+    background: #6d28d9;
+  }
+
+  .branch-banner kbd {
+    padding: 0 4px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    font-family: inherit;
+    font-size: 10px;
   }
 
   .svg-container {
@@ -4399,8 +4976,8 @@
 
   .selection-section input[type="text"],
   .selection-section select,
-  .display-settings-panel input[type="text"],
-  .display-settings-panel input[type="number"] {
+  .settings-grid input[type="text"],
+  .settings-grid input[type="number"] {
     width: 100%;
     height: 38px;
     padding: 8px 12px;
@@ -4433,252 +5010,36 @@
 
 </style>
 
-<title>Pathfinder</title>
+<title>{unsaved && !(autosaveFile && fileHandle) ? "• " : ""}{projectTitle} — Pathfinder</title>
 
-<svelte:window onclick={closeOnOutsideClick} onkeydown={handleKeydown} onpaste={handlePaste}
+<svelte:window onkeydown={handleKeydown} onpaste={handlePaste}
                oncopy={handleCopy} oncut={handleCut}/>
 
 {@html HYDRONIC_SPRITE}
 
 <div class="header">
-  <div class="logo-section">
-    <img class="logo" src="{base}/logo.svg" alt="Pathfinder logo">
-    <div class="title">
-      <div class="title" title="Grid Trace Editor {__APP_VERSION__} · commit {__APP_COMMIT__}">Pathfinder</div>
-    </div>
-  </div>
-
-  <AppSwitcher apps={APPS} current={app} onswitch={switchApp}/>
-  {#if app === "hydronic"}
-    <div class="view-switch" role="group" aria-label="View">
-      <button type="button" class:current={!ioOpen} aria-pressed={!ioOpen} onclick={() => ioOpen = false}>Drawing</button>
-      <button type="button" class:current={ioOpen} aria-pressed={ioOpen} onclick={() => ioOpen = true}>IO list</button>
-    </div>
-  {/if}
-
-  <div class="header-actions">
-    <button class="header-export secondary" type="button" onclick={openDrawing} title="Open a saved drawing (Ctrl+O)">Open</button>
-    <button class="header-export secondary" type="button" bind:this={saveButton} aria-haspopup="dialog" aria-expanded={!!saveDialog}
-            onclick={() => saveDialog ? saveDialog = null : openSaveDialog()}>Save</button>
-    {#if saveDialog}
-      <SaveDialog right={saveDialog.right} top={saveDialog.top} name={documentName ?? defaultDocumentName()} anchor={saveButton}
-                  onsave={confirmSave} oncancel={() => saveDialog = null}/>
-    {/if}
-    <span class="header-sep" aria-hidden="true"></span>
-    {#if app === "network"}
-      <ConnectExport {shapes} name={documentName} onnotice={showFileNotice}/>
-    {/if}
-    {#if app === "electrical"}
-      <WiringActions points={ioPoints} {shapes} ongenerate={generateWiring} onprint={printWiring}/>
-    {/if}
-    {#if currentApp.exports.includes("pgd")}
-      <button class="header-export secondary" type="button" onclick={downloadPgdImages} disabled={shapes.length === 0}
-              title="Download the images this page uses, to unzip into the project's images folder">
-        pGD images
-      </button>
-      <button class="header-export secondary" class:copied={pgdCopied} type="button" onclick={copyPgd} disabled={shapes.length === 0}
-              title="Copy the pGD page code (wgtPage) to the clipboard">
-        {pgdCopied ? "Copied" : "Copy pGD"}
-      </button>
-    {/if}
-    {#if app !== "electrical"}
-      <button class="header-export" class:copied={copySuccess} type="button"
-              onclick={handleExport} disabled={shapes.length === 0}>
-        {copySuccess ? "Copied to Clipboard" : "Copy SVG"}
-      </button>
-    {/if}
-  </div>
-
-  <div class="display-settings" bind:this={displaySettingsEl}>
-    <button class="display-settings-toggle" class:open={showDisplaySettings} type="button"
-            aria-expanded={showDisplaySettings} aria-controls="display-settings-panel"
-            aria-label="Settings" title="Settings"
-            onclick={() => showDisplaySettings = !showDisplaySettings}>
-      <svg class="display-settings-icon" viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
-        <path d={FA_GEAR_PATH}/>
-      </svg>
-    </button>
-
-    {#if showDisplaySettings}
-      <div class="display-settings-panel" id="display-settings-panel">
-        <fieldset id="select-interface">
-          <legend>Toolbar</legend>
-          <label class="checkbox" for="show-tool-hints">
-            <input id="show-tool-hints" type="checkbox" bind:checked={showToolHints}>
-            Show usage hints in tool tooltips
-          </label>
-        </fieldset>
-
-        <fieldset id="select-canvas-size" class="field-row">
-          <legend>Canvas Size</legend>
-          <label class="input-group" for="canvas-width">
-            <span class="field-hint">Width</span>
-            <input id="canvas-width" type="number" min="100" step="100" bind:value={canvasWidth}>
-          </label>
-          <span class="row-sep" aria-hidden="true">x</span>
-          <label class="input-group" for="canvas-height">
-            <span class="field-hint">Height</span>
-            <input id="canvas-height" type="number" min="100" step="100" bind:value={canvasHeight}>
-          </label>
-        </fieldset>
-
-        <fieldset id="select-grid-look">
-          <legend>Grid Appearance</legend>
-          <label class="input-group" for="major-every">
-            <span class="field-hint">Heavier line every N cells</span>
-            <input id="major-every" type="number" min="2" max="20" step="1" bind:value={majorEvery}>
-          </label>
-          <label class="input-group" for="grid-minor-color">
-            <span class="field-hint">Minor lines</span>
-            <div class="field-row">
-              <input id="grid-minor-color" type="color" bind:value={gridMinorColor}>
-              <input type="text" value={gridMinorColor}
-                     onchange={(e) => gridMinorColor = readHex(e, gridMinorColor)}>
-            </div>
-          </label>
-          <label class="input-group" for="grid-major-color">
-            <span class="field-hint">Major lines</span>
-            <div class="field-row">
-              <input id="grid-major-color" type="color" bind:value={gridMajorColor}>
-              <input type="text" value={gridMajorColor}
-                     onchange={(e) => gridMajorColor = readHex(e, gridMajorColor)}>
-            </div>
-          </label>
-          <label class="input-group" for="canvas-fill">
-            <span class="field-hint">Canvas background</span>
-            <div class="field-row">
-              <input id="canvas-fill" type="color" bind:value={canvasFill}>
-              <input type="text" value={canvasFill}
-                     onchange={(e) => canvasFill = readHex(e, canvasFill)}>
-            </div>
-          </label>
-        </fieldset>
-
-        <fieldset id="select-shape-style">
-          <legend>Shape Style</legend>
-          <label class="input-group" for="stroke-width">
-            <span class="field-hint">Stroke width</span>
-            <input id="stroke-width" type="number" min="1" max="12" step="1" bind:value={lineWidth}>
-          </label>
-          <label class="input-group" for="line-color">
-            <span class="field-hint">Trace</span>
-            <div class="field-row">
-              <input id="line-color" type="color" bind:value={lineColor}>
-              <input type="text" value={lineColor} onchange={(e) => lineColor = readHex(e, lineColor)}>
-            </div>
-          </label>
-          <label class="input-group" for="rect-stroke">
-            <span class="field-hint">Rectangle border</span>
-            <div class="field-row">
-              <input id="rect-stroke" type="color" bind:value={rectStroke}>
-              <input type="text" value={rectStroke} onchange={(e) => rectStroke = readHex(e, rectStroke)}>
-            </div>
-          </label>
-          <label class="checkbox" for="rect-filled">
-            <input id="rect-filled" type="checkbox" bind:checked={rectFilled}>
-            Fill rectangles
-          </label>
-          {#if rectFilled}
-            <label class="input-group" for="rect-fill">
-              <span class="field-hint">Rectangle fill</span>
-              <div class="field-row">
-                <input id="rect-fill" type="color" bind:value={rectFill}>
-                <input type="text" value={rectFill} onchange={(e) => rectFill = readHex(e, rectFill)}>
-              </div>
-            </label>
-          {/if}
-        </fieldset>
-
-        <fieldset id="select-room-style">
-          <legend>Rooms, Floor &amp; Walls</legend>
-          <label class="input-group" for="room-fill">
-            <span class="field-hint">Room fill</span>
-            <div class="field-row">
-              <input id="room-fill" type="color" bind:value={roomFill}>
-              <input type="text" value={roomFill} onchange={(e) => roomFill = readHex(e, roomFill)}>
-            </div>
-          </label>
-          <label class="input-group" for="room-stroke">
-            <span class="field-hint">Room border</span>
-            <div class="field-row">
-              <input id="room-stroke" type="color" bind:value={roomStroke}>
-              <input type="text" value={roomStroke} onchange={(e) => roomStroke = readHex(e, roomStroke)}>
-            </div>
-          </label>
-          <label class="input-group" for="room-label-color">
-            <span class="field-hint">Room name</span>
-            <div class="field-row">
-              <input id="room-label-color" type="color" bind:value={roomLabelColor}>
-              <input type="text" value={roomLabelColor} onchange={(e) => roomLabelColor = readHex(e, roomLabelColor)}>
-            </div>
-          </label>
-          <label class="input-group" for="floor-fill">
-            <span class="field-hint">Floor fill</span>
-            <div class="field-row">
-              <input id="floor-fill" type="color" bind:value={floorFill}>
-              <input type="text" value={floorFill} onchange={(e) => floorFill = readHex(e, floorFill)}>
-            </div>
-          </label>
-          <label class="input-group" for="floor-stroke">
-            <span class="field-hint">Floor border</span>
-            <div class="field-row">
-              <input id="floor-stroke" type="color" bind:value={floorStroke}>
-              <input type="text" value={floorStroke} onchange={(e) => floorStroke = readHex(e, floorStroke)}>
-            </div>
-          </label>
-          <div class="field-row">
-            <label class="input-group" for="floor-wall-width">
-              <span class="field-hint">Floor wall (cm)</span>
-              <input id="floor-wall-width" type="number" min="1" max="60" step="1" bind:value={floorWallWidth}>
-            </label>
-            <label class="input-group" for="room-wall-width">
-              <span class="field-hint">Room wall (cm)</span>
-              <input id="room-wall-width" type="number" min="1" max="60" step="1" bind:value={roomWallWidth}>
-            </label>
-          </div>
-          <label class="input-group" for="wall-stroke">
-            <span class="field-hint">Wall</span>
-            <div class="field-row">
-              <input id="wall-stroke" type="color" bind:value={wallStroke}>
-              <input type="text" value={wallStroke} onchange={(e) => wallStroke = readHex(e, wallStroke)}>
-              <input id="wall-width" type="number" min="1" max="60" step="1" bind:value={wallWidth}
-                     aria-label="Wall thickness (cm)" title="Wall thickness (cm)">
-            </div>
-          </label>
-          <label class="input-group" for="furniture-opacity">
-            <span class="field-hint">Furniture opacity · {Math.round(furnitureOpacity * 100)}%</span>
-            <input id="furniture-opacity" type="range" min="0.1" max="1" step="0.05" bind:value={furnitureOpacity}
-                   style="--fill: {((furnitureOpacity - 0.1) / 0.9) * 100}%">
-          </label>
-        </fieldset>
-
-        <fieldset id="select-room-categories">
-          <legend>Room Categories</legend>
-          <div class="field-row category-row category-head" aria-hidden="true">
-            <span class="category-name"></span>
-            <span class="field-hint">Fill</span>
-            <span class="field-hint">Border</span>
-          </div>
-          {#each ROOM_CATEGORIES as category}
-            <div class="field-row category-row">
-              <span class="category-name">{category.label}</span>
-              <input type="color" aria-label="{category.label} fill" bind:value={categoryColors[category.id].fill}>
-              <input type="color" aria-label="{category.label} border" bind:value={categoryColors[category.id].stroke}>
-            </div>
-          {/each}
-          <button class="reset-categories" type="button" onclick={() => categoryColors = defaultCategoryColors()}>
-            Reset category colors
-          </button>
-        </fieldset>
-
-        <fieldset id="select-hydronic">
-          <legend>Hydronic Station</legend>
-          <label class="input-group" for="hydronic-library">
-            <span class="field-hint">atvise object display folder for elements</span>
-            <input id="hydronic-library" type="text" bind:value={hydronicLibrary}>
-          </label>
-        </fieldset>
+  <div class="header-left">
+    <div class="logo-section">
+      <img class="logo" src="{base}/logo.svg" alt="Pathfinder logo">
+      <div class="brand" title="Grid Trace Editor {__APP_VERSION__} · commit {__APP_COMMIT__}">
+        <span class="title">Pathfinder</span>
+        <span class="version">{__APP_VERSION__}</span>
       </div>
+    </div>
+    <nav class="menus" aria-label="Main menu">
+      <HeaderMenu label="File" items={fileItems} width={290}
+                  status={{ label: "Saving to", value: fileHandle?.name ?? null, empty: "Not saved to a file yet" }}/>
+      <HeaderMenu label="Export" items={exportItems} width={290}/>
+    </nav>
+    <ProjectStatus name={projectTitle} fileName={fileHandle?.name ?? null} status={projectStatus} onresume={resumeAutosave}/>
+  </div>
+
+  <AppSwitcher apps={APPS} current={app} onswitch={switchApp} view={ioOpen ? "io" : "drawing"} onview={(id) => ioOpen = id === "io"}/>
+
+  <div class="header-right">
+    {#if app === "electrical"}
+      <button class="header-action" type="button" onclick={() => wiringOpen = true}
+              title="Draw the controller terminals of IO points that are not in the drawing yet">From IO list…</button>
     {/if}
   </div>
 </div>
@@ -4805,10 +5166,10 @@
                    placing={placingOptions} onrotateplacing={rotatePlacing}
                    fitting={fittingOptions} medium={pipeMedium} onmedium={setMedium}
                    pipewidth={pipeThickness} onpipewidth={setPipeWidth} onedittext={editSelectedText} ontextstyle={setTextStyle}
-                   onfittingflip={flipFitting} onfittingremove={removeFitting}
+                   onfittingflip={flipFitting} onfittingturn={turnFitting} onfittingremove={removeFitting}
                    onfittingscale={setFittingScale} onreverse={reversePipes} onpipelayer={pipeLayer}
                    onresetsize={resetElementSize}
-                   onfittingreadout={setFittingReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName} ondeviceparam={setDeviceParam}
+                   onfittingreadout={setFittingReadout} onmeterreadout={setMeterReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName} ondeviceparam={setDeviceParam}
                    network={networkSelection} onconnect={connectSelected} onadddevices={addDevices}
                    onelementrotate={rotateElements} onelementsize={setElementSize} ontankprobe={toggleTankProbe}
                    groups={selectionGroups} onnamesize={setNameSize} onfittingnamesize={setFittingNameSize} onreadoutscale={setReadoutScale} onfittingname={setFittingName}
@@ -4882,7 +5243,7 @@
                        selectedFitting={activeFitting ? { pipeId: activeFitting.pipe.id, fittingId: activeFitting.fitting.id } : null}
                        selectedFittings={fittingGroup.map((entry) => ({ pipeId: entry.pipe.id, fittingId: entry.fitting.id }))}
                        {placement} style={hydronicStyle} hidden={pipeDraft?.rewire?.pipeId ?? null}
-                       showPorts={!!pipeDraft?.rewire} readouts={readoutBoxes} renaming={renamingElementId} renamingFitting={renamingFitting} guide={pipeAim.guide}/>
+                       showPorts={!!pipeDraft?.rewire} readouts={readoutBoxes} renaming={renamingElementId} renamingFitting={renamingFitting} guide={pipeAim.guide} {branchEditing}/>
 
         <TextLayer {shapes} selectedIds={selectionIds} interactive={tool === "select"} zoom={viewport.zoom} hidden={editingTextId}/>
 
@@ -4953,13 +5314,18 @@
                          edges={activeEdges.filter((key) => key.id === shape.id).map((key) => key.index)}/>
         {/each}
 
-        {#if openBranch !== null && shapeById(openBranch)}
-          {@const open = unitBox([shapeById(openBranch), ...ownedPipes(shapes, openBranch)])}
-          <rect x={open.x - 16} y={open.y - 16} width={open.width + 32} height={open.height + 32} rx="6" fill="none"
-                stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" pointer-events="none"/>
-        {/if}
+        {#each editedBranches as open, index (index)}
+          <g pointer-events="none">
+            <rect x={open.x - 16} y={open.y - 16} width={open.width + 32} height={open.height + 32} rx="8" fill="#7C3AED" fill-opacity="0.05"
+                  stroke="#7C3AED" stroke-width="2" vector-effect="non-scaling-stroke"/>
+            <rect x={open.x - 16} y={open.y - 16 - 22 / viewport.zoom} width={58 / viewport.zoom} height={20 / viewport.zoom} rx={4 / viewport.zoom} fill="#7C3AED"/>
+            <text x={open.x - 16 + 29 / viewport.zoom} y={open.y - 16 - 8 / viewport.zoom} text-anchor="middle" font-family="'IBM Plex Sans', sans-serif"
+                  font-size={11 / viewport.zoom} font-weight="700" fill="#FFFFFF">Editing</text>
+          </g>
+        {/each}
         {#if transformBox}
-          <TransformFrame box={transformBox} zoom={viewport.zoom} rotate={(selectedShapes.length > 0 && !branchSelected) || furnitureGroup.length > 0} vertical={branchSelected}/>
+          <TransformFrame box={transformBox} zoom={viewport.zoom} rotate={(selectedShapes.length > 0 && !branchSelected) || furnitureGroup.length > 0}
+                          axis={branchSelected ? "y" : singleBar ? (singleBar.height > singleBar.width ? "y" : "x") : null}/>
         {/if}
 
         {#if placement}
@@ -4973,6 +5339,19 @@
         {/if}
         </g>
       </svg>
+
+      {#if pageSet}
+        <PageTabs pages={pageSet.list} active={pageSet.active} onselect={selectPage} onadd={addPage} onrename={renamePage} ondelete={deletePage}/>
+      {/if}
+
+      {#if branchEditing}
+        <div class="branch-banner" role="status">
+          <span class="branch-dot" aria-hidden="true"></span>
+          <strong>Editing branches</strong>
+          <span>Drag parts along their pipes · Ctrl+click or drag a box to select across branches</span>
+          <button type="button" onclick={() => branchEditing = false}>Done <kbd>Esc</kbd></button>
+        </div>
+      {/if}
 
       {#if renamingRoom && renamePosition}
         {#key renamingId}
@@ -5018,3 +5397,211 @@
     {/if}
   </div>
 </div>
+
+{#if showDisplaySettings}
+  <Modal title="Settings" subtitle="Saved with the project, except the toolbar hints" width={900} onclose={() => showDisplaySettings = false}>
+    <div class="settings-grid">
+      <fieldset id="select-interface">
+        <legend>Toolbar</legend>
+        <label class="checkbox" for="show-tool-hints">
+          <input id="show-tool-hints" type="checkbox" bind:checked={showToolHints}>
+          Show usage hints in tool tooltips
+        </label>
+      </fieldset>
+
+      <fieldset id="select-canvas-size" class="field-row">
+        <legend>Canvas Size</legend>
+        <label class="input-group" for="canvas-width">
+          <span class="field-hint">Width</span>
+          <input id="canvas-width" type="number" min="100" step="100" bind:value={canvasWidth}>
+        </label>
+        <span class="row-sep" aria-hidden="true">x</span>
+        <label class="input-group" for="canvas-height">
+          <span class="field-hint">Height</span>
+          <input id="canvas-height" type="number" min="100" step="100" bind:value={canvasHeight}>
+        </label>
+      </fieldset>
+
+      <fieldset id="select-grid-look">
+        <legend>Grid Appearance</legend>
+        <label class="input-group" for="major-every">
+          <span class="field-hint">Heavier line every N cells</span>
+          <input id="major-every" type="number" min="2" max="20" step="1" bind:value={majorEvery}>
+        </label>
+        <label class="input-group" for="grid-minor-color">
+          <span class="field-hint">Minor lines</span>
+          <div class="field-row">
+            <input id="grid-minor-color" type="color" bind:value={gridMinorColor}>
+            <input type="text" value={gridMinorColor}
+                   onchange={(e) => gridMinorColor = readHex(e, gridMinorColor)}>
+          </div>
+        </label>
+        <label class="input-group" for="grid-major-color">
+          <span class="field-hint">Major lines</span>
+          <div class="field-row">
+            <input id="grid-major-color" type="color" bind:value={gridMajorColor}>
+            <input type="text" value={gridMajorColor}
+                   onchange={(e) => gridMajorColor = readHex(e, gridMajorColor)}>
+          </div>
+        </label>
+        <label class="input-group" for="canvas-fill">
+          <span class="field-hint">Canvas background</span>
+          <div class="field-row">
+            <input id="canvas-fill" type="color" bind:value={canvasFill}>
+            <input type="text" value={canvasFill}
+                   onchange={(e) => canvasFill = readHex(e, canvasFill)}>
+          </div>
+        </label>
+      </fieldset>
+
+      <fieldset id="select-shape-style">
+        <legend>Shape Style</legend>
+        <label class="input-group" for="stroke-width">
+          <span class="field-hint">Stroke width</span>
+          <input id="stroke-width" type="number" min="1" max="12" step="1" bind:value={lineWidth}>
+        </label>
+        <label class="input-group" for="line-color">
+          <span class="field-hint">Trace</span>
+          <div class="field-row">
+            <input id="line-color" type="color" bind:value={lineColor}>
+            <input type="text" value={lineColor} onchange={(e) => lineColor = readHex(e, lineColor)}>
+          </div>
+        </label>
+        <label class="input-group" for="rect-stroke">
+          <span class="field-hint">Rectangle border</span>
+          <div class="field-row">
+            <input id="rect-stroke" type="color" bind:value={rectStroke}>
+            <input type="text" value={rectStroke} onchange={(e) => rectStroke = readHex(e, rectStroke)}>
+          </div>
+        </label>
+        <label class="checkbox" for="rect-filled">
+          <input id="rect-filled" type="checkbox" bind:checked={rectFilled}>
+          Fill rectangles
+        </label>
+        {#if rectFilled}
+          <label class="input-group" for="rect-fill">
+            <span class="field-hint">Rectangle fill</span>
+            <div class="field-row">
+              <input id="rect-fill" type="color" bind:value={rectFill}>
+              <input type="text" value={rectFill} onchange={(e) => rectFill = readHex(e, rectFill)}>
+            </div>
+          </label>
+        {/if}
+      </fieldset>
+
+      <fieldset id="select-room-style">
+        <legend>Rooms, Floor &amp; Walls</legend>
+        <label class="input-group" for="room-fill">
+          <span class="field-hint">Room fill</span>
+          <div class="field-row">
+            <input id="room-fill" type="color" bind:value={roomFill}>
+            <input type="text" value={roomFill} onchange={(e) => roomFill = readHex(e, roomFill)}>
+          </div>
+        </label>
+        <label class="input-group" for="room-stroke">
+          <span class="field-hint">Room border</span>
+          <div class="field-row">
+            <input id="room-stroke" type="color" bind:value={roomStroke}>
+            <input type="text" value={roomStroke} onchange={(e) => roomStroke = readHex(e, roomStroke)}>
+          </div>
+        </label>
+        <label class="input-group" for="room-label-color">
+          <span class="field-hint">Room name</span>
+          <div class="field-row">
+            <input id="room-label-color" type="color" bind:value={roomLabelColor}>
+            <input type="text" value={roomLabelColor} onchange={(e) => roomLabelColor = readHex(e, roomLabelColor)}>
+          </div>
+        </label>
+        <label class="input-group" for="floor-fill">
+          <span class="field-hint">Floor fill</span>
+          <div class="field-row">
+            <input id="floor-fill" type="color" bind:value={floorFill}>
+            <input type="text" value={floorFill} onchange={(e) => floorFill = readHex(e, floorFill)}>
+          </div>
+        </label>
+        <label class="input-group" for="floor-stroke">
+          <span class="field-hint">Floor border</span>
+          <div class="field-row">
+            <input id="floor-stroke" type="color" bind:value={floorStroke}>
+            <input type="text" value={floorStroke} onchange={(e) => floorStroke = readHex(e, floorStroke)}>
+          </div>
+        </label>
+        <div class="field-row">
+          <label class="input-group" for="floor-wall-width">
+            <span class="field-hint">Floor wall (cm)</span>
+            <input id="floor-wall-width" type="number" min="1" max="60" step="1" bind:value={floorWallWidth}>
+          </label>
+          <label class="input-group" for="room-wall-width">
+            <span class="field-hint">Room wall (cm)</span>
+            <input id="room-wall-width" type="number" min="1" max="60" step="1" bind:value={roomWallWidth}>
+          </label>
+        </div>
+        <label class="input-group" for="wall-stroke">
+          <span class="field-hint">Wall</span>
+          <div class="field-row">
+            <input id="wall-stroke" type="color" bind:value={wallStroke}>
+            <input type="text" value={wallStroke} onchange={(e) => wallStroke = readHex(e, wallStroke)}>
+            <input id="wall-width" type="number" min="1" max="60" step="1" bind:value={wallWidth}
+                   aria-label="Wall thickness (cm)" title="Wall thickness (cm)">
+          </div>
+        </label>
+        <label class="input-group" for="furniture-opacity">
+          <span class="field-hint">Furniture opacity · {Math.round(furnitureOpacity * 100)}%</span>
+          <input id="furniture-opacity" type="range" min="0.1" max="1" step="0.05" bind:value={furnitureOpacity}
+                 style="--fill: {((furnitureOpacity - 0.1) / 0.9) * 100}%">
+        </label>
+      </fieldset>
+
+      <fieldset id="select-room-categories">
+        <legend>Room Categories</legend>
+        <div class="field-row category-row category-head" aria-hidden="true">
+          <span class="category-name"></span>
+          <span class="field-hint">Fill</span>
+          <span class="field-hint">Border</span>
+        </div>
+        {#each ROOM_CATEGORIES as category}
+          <div class="field-row category-row">
+            <span class="category-name">{category.label}</span>
+            <input type="color" aria-label="{category.label} fill" bind:value={categoryColors[category.id].fill}>
+            <input type="color" aria-label="{category.label} border" bind:value={categoryColors[category.id].stroke}>
+          </div>
+        {/each}
+        <button class="reset-categories" type="button" onclick={() => categoryColors = defaultCategoryColors()}>
+          Reset category colors
+        </button>
+      </fieldset>
+
+      <fieldset id="select-hydronic">
+        <legend>Hydronic Station</legend>
+        <label class="input-group" for="hydronic-library">
+          <span class="field-hint">atvise object display folder for elements</span>
+          <input id="hydronic-library" type="text" bind:value={hydronicLibrary}>
+        </label>
+      </fieldset>
+    </div>
+  </Modal>
+{/if}
+
+{#if connectOpen}
+  <ConnectExport shapes={pageShapes("network")} name={documentName} onnotice={showFileNotice} onclose={() => connectOpen = false}/>
+{/if}
+
+{#if wiringOpen}
+  <WiringActions points={ioPoints} {shapes} ongenerate={generateWiring} onclose={() => wiringOpen = false}/>
+{/if}
+
+{#if saveDialog}
+  <Modal title={saveDialog.mode === "copy" ? "Save a copy" : "Save project"} subtitle="This browser saves to the Downloads folder" width={440} onclose={() => saveDialog = null}>
+    <form class="save-name" id="save-name-form" onsubmit={(e) => { e.preventDefault(); confirmSave(new FormData(e.currentTarget).get("name")); }}>
+      <label for="save-name-input">File name</label>
+      <div class="save-name-row">
+        <input id="save-name-input" name="name" type="text" value={documentName ?? defaultDocumentName()} spellcheck="false" autocomplete="off" use:focusName>
+        <span>.pathfinder.json</span>
+      </div>
+    </form>
+    {#snippet footer()}
+      <button type="button" class="modal-button" onclick={() => saveDialog = null}>Cancel</button>
+      <button type="submit" class="modal-button primary" form="save-name-form">Save</button>
+    {/snippet}
+  </Modal>
+{/if}
