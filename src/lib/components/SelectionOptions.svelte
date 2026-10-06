@@ -31,6 +31,7 @@
     onreadoutreset,
     onfittingflip,
     onfittingturn,
+    onvariables = null,
     onfittingscale,
     onfittingremove,
     onfittingnamesize,
@@ -261,7 +262,10 @@
   {/if}
 {:else if elements}
   <span>{elements.count === 1 ? elements.label : `${elements.count} elements`}</span>
-  {#if elements.single && !elements.branch && !elements.device}
+  {#if onvariables && !fittings}
+    <button type="button" title="Link this element to variables" onclick={onvariables}>Variables…</button>
+  {/if}
+  {#if elements.single && !elements.branch && !elements.device && !elements.nameless}
     <label>
       Name
       <input type="text" class="branch-name" value={elements.single.name ?? ""}
@@ -421,6 +425,9 @@
   {/if}
   {#if fittings.flippable}
     <button type="button" onclick={onfittingflip}>Flip</button>
+  {/if}
+  {#if onvariables}
+    <button type="button" title="Link this element and its value boxes to variables" onclick={onvariables}>Variables…</button>
   {/if}
   {#if fittings.turnable}
     <button type="button" title="Swap which pipe runs straight through the valve" onclick={onfittingturn}>Turn 90°</button>

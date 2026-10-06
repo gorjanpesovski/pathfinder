@@ -7,7 +7,7 @@ const GLYPH = 0.56;
 
 export function hasNameLabel(element){
   const spec = HYDRONIC_ELEMENTS[element?.type];
-  return !!spec && !spec.bar && !spec.ownLabel;
+  return !!spec && !spec.bar && !spec.ownLabel && !spec.nameless;
 }
 
 export function nameSizeOf(element){

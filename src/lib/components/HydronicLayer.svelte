@@ -30,6 +30,7 @@
     renamingFitting = null,
     guide = null,
     branchEditing = false,
+    linking = null,
     style = HYDRONIC_STYLE
   } = $props();
 
@@ -78,6 +79,16 @@
     return parts.length ? parts.join(" ") : undefined;
   }
 
+  const LINKED = "#16A34A";
+
+  let linkFields = $derived(linking ? scene.filter((item) => item.kind === "field" && item.link) : []);
+  let linkElements = $derived(linking ? equipment.filter((element) => !HYDRONIC_ELEMENTS[element.type].device && !HYDRONIC_ELEMENTS[element.type].electric) : []);
+
+  function hovered(shapeId, fittingId, key){
+    const hover = linking?.hover;
+    return !!hover && hover.shapeId === shapeId && (hover.fittingId ?? null) === (fittingId ?? null) && hover.key === key;
+  }
+
   function duration(length){
     return Math.min(0.9, 0.35 + length / 2500);
   }
@@ -95,6 +106,10 @@
 
   .readout-hit:hover {
     fill: rgba(147, 197, 253, 0.18);
+  }
+
+  .link-target {
+    cursor: copy;
   }
 
   .fitting-hit {
@@ -243,6 +258,17 @@
   {/if}
 {/snippet}
 
+{#snippet elementHit(element)}
+  {#if selectedIds.includes(element.id)}
+    <rect x={element.x - 3 * px} y={element.y - 3 * px} width={element.width + 6 * px} height={element.height + 6 * px}
+          fill="none" stroke={HIGHLIGHT} stroke-width="2" rx={3 * px} vector-effect="non-scaling-stroke" pointer-events="none"/>
+  {/if}
+  {@const area = hitArea(element)}
+  <rect class:hit={interactive && !element.locked} x={area.x} y={area.y} width={area.width} height={area.height}
+        fill="transparent" pointer-events={interactive && !element.locked ? "all" : "none"}
+        data-shape-id={element.id} role="presentation"/>
+{/snippet}
+
 {#snippet caption(item)}
   {@const owner = byId.get(item.ref.elementId ?? item.ref.pipeId)}
   {@const renamed = item.ref.fittingId === undefined
@@ -274,15 +300,8 @@
           data-shape-id={pipe.id} role="presentation"/>
   {/each}
 
-  {#each [...bars, ...others] as element (element.id)}
-    {#if selectedIds.includes(element.id)}
-      <rect x={element.x - 3 * px} y={element.y - 3 * px} width={element.width + 6 * px} height={element.height + 6 * px}
-            fill="none" stroke={HIGHLIGHT} stroke-width="2" rx={3 * px} vector-effect="non-scaling-stroke" pointer-events="none"/>
-    {/if}
-    {@const area = hitArea(element)}
-    <rect class:hit={interactive && !element.locked} x={area.x} y={area.y} width={area.width} height={area.height}
-          fill="transparent" pointer-events={interactive && !element.locked ? "all" : "none"}
-          data-shape-id={element.id} role="presentation"/>
+  {#each [...bars, ...others].filter((element) => !(element.z > 0)) as element (element.id)}
+    {@render elementHit(element)}
   {/each}
 
   {#each pipes as pipe (pipe.id)}
@@ -311,6 +330,10 @@
           fill="transparent" stroke={active ? HIGHLIGHT : "none"} stroke-width="1.5" stroke-dasharray="4 3"
           vector-effect="non-scaling-stroke" pointer-events={interactive && !pipe?.locked ? "all" : "none"}
           data-shape-id={box.pipeId} data-readout-id={fittingId} role="presentation"/>
+  {/each}
+
+  {#each [...bars, ...others].filter((element) => element.z > 0).sort((a, b) => a.z - b.z) as element (element.id)}
+    {@render elementHit(element)}
   {/each}
 
   {#if interactive}
@@ -422,6 +445,37 @@
       <rect x={-spec.width / 2 - 2} y={-spec.height / 2 - 2} width={spec.width + 4} height={spec.height + 4} rx="3"
             fill="none" stroke={placement.valid ? PORT : "#DC2626"} stroke-width="1.5" stroke-dasharray="4 3"
             vector-effect="non-scaling-stroke"/>
+    </g>
+  {/if}
+
+  {#if linking}
+    <g class="link-targets">
+      {#each linkElements as element (element.id)}
+        {@const on = hovered(element.id, null, "self")}
+        <rect class="link-target" x={element.x - 3 * px} y={element.y - 3 * px} width={element.width + 6 * px} height={element.height + 6 * px} rx={3 * px}
+              fill={on ? "rgba(37, 99, 235, 0.16)" : "transparent"} stroke={element.variable ? LINKED : PORT} stroke-width={on ? 2.5 : 1.5}
+              stroke-dasharray={element.variable ? undefined : "5 4"} vector-effect="non-scaling-stroke" pointer-events="all"
+              data-link-shape={element.id} data-link-key="self" role="presentation"/>
+      {/each}
+      {#each pipes as pipe (pipe.id)}
+        {#each (pipe.fittings ?? []).filter((fitting) => HYDRONIC_ELEMENTS[fitting.type]) as fitting (fitting.id)}
+          {@const size = fittingSize(fitting)}
+          {@const pose = fittingPose(routes.get(pipe.id), fitting)}
+          {@const on = hovered(pipe.id, fitting.id, "self")}
+          <rect class="link-target" x={-size.width / 2 - 2} y={-size.height / 2 - 2} width={size.width + 4} height={size.height + 4} rx="3"
+                transform="translate({pose.x} {pose.y}) rotate({pose.rotation})"
+                fill={on ? "rgba(37, 99, 235, 0.16)" : "transparent"} stroke={fitting.variable ? LINKED : PORT} stroke-width={on ? 2.5 : 1.5}
+                stroke-dasharray={fitting.variable ? undefined : "4 3"} vector-effect="non-scaling-stroke" pointer-events="all"
+                data-link-shape={pipe.id} data-link-fitting={fitting.id} data-link-key="self" role="presentation"/>
+        {/each}
+      {/each}
+      {#each linkFields as item (item.id)}
+        {@const on = hovered(item.link.shapeId, item.link.fittingId, item.link.key)}
+        <rect class="link-target" x={item.x - 1.5} y={item.y - 1.5} width={item.width + 3} height={item.height + 3} rx="2"
+              fill={on ? "rgba(37, 99, 235, 0.22)" : "rgba(255, 255, 255, 0.01)"} stroke={item.variable ? LINKED : PORT} stroke-width={on ? 2.5 : 1.5}
+              stroke-dasharray={item.variable ? undefined : "3 3"} vector-effect="non-scaling-stroke" pointer-events="all"
+              data-link-shape={item.link.shapeId} data-link-fitting={item.link.fittingId} data-link-key={item.link.key} role="presentation"/>
+      {/each}
     </g>
   {/if}
 </g>

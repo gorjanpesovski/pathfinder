@@ -553,7 +553,7 @@ export function ridingPipes(shapes, ids){
 export function linkPastedPipes(created, idMap, offset = 0){
   const relink = (end) => {
     if (!end) return null;
-    if (isFreeEnd(end)) return { x: end.x + offset, y: end.y + offset };
+    if (isFreeEnd(end)) return end;
     if (end.pipe !== undefined) return idMap.has(end.pipe) ? { pipe: idMap.get(end.pipe), x: end.x + offset, y: end.y + offset } : null;
     return idMap.has(end.id) ? { ...end, id: idMap.get(end.id) } : null;
   };

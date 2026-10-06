@@ -1,7 +1,7 @@
 <script>
   import { portal } from "$lib/actions/portal.js";
 
-  let { title, subtitle = null, width = 640, onclose, children, footer = null } = $props();
+  let { title, subtitle = null, width = 640, flush = false, onclose, children, footer = null } = $props();
 
   let panel = $state(null);
 
@@ -99,6 +99,12 @@
     padding: 18px 22px 22px;
   }
 
+  .body.flush {
+    display: flex;
+    overflow: hidden;
+    padding: 0;
+  }
+
   footer {
     display: flex;
     align-items: center;
@@ -143,7 +149,7 @@
       </div>
       <button type="button" class="close" aria-label="Close" onclick={onclose}>×</button>
     </header>
-    <div class="body">
+    <div class="body" class:flush>
       {@render children()}
     </div>
     {#if footer}

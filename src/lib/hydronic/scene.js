@@ -8,6 +8,7 @@ import { rotationOf, uprightSize } from "./frame.js";
 import { tankParts } from "./tank.js";
 import { elementLabel, hasNameLabel, labelBox, textWidth } from "./label.js";
 import { fittingLabel } from "./fittingLabel.js";
+import { nodePath } from "./variables.js";
 import { fittingPose, fittingSize, pipeDecorations, pipeWidthOf } from "./geometry.js";
 import { electricSvg } from "../electric/symbols.js";
 import { location } from "../electric/sheet.js";
@@ -15,11 +16,17 @@ import { location } from "../electric/sheet.js";
 const INK = "#1E293B";
 const LABEL_FORMATS = ["app", "pgd"];
 
-function elementArgs(element){
+function withBase(args, prefix, name){
+  const base = nodePath(prefix, name);
+  return base ? { ...args, base } : args;
+}
+
+function elementArgs(element, prefix){
   const spec = HYDRONIC_ELEMENTS[element.type];
   if (spec?.device) return deviceArgs(element);
-  if (spec?.generic) return { name: element.name ?? "", font_size: genericFont(element) };
-  return (spec?.params ?? []).includes("name") && element.name ? { name: element.name } : {};
+  if (spec?.generic) return withBase({ name: element.name ?? "", font_size: genericFont(element) }, prefix, element.variable);
+  if (spec?.electric) return {};
+  return withBase((spec?.params ?? []).includes("name") && element.name ? { name: element.name } : {}, prefix, element.variable);
 }
 
 export function genericFont(element){
@@ -161,7 +168,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   for (const { pipe, route } of pipes) {
     crossings.filter((crossing) => crossing.upper === pipe.id).forEach((crossing, index) => {
       const side = crossing.size ?? style.gapSize;
-      items.push({ kind: "gap", id: `pipe_${pipe.id}_gap_${index + 1}`, x: crossing.x - side / 2, y: crossing.y - side / 2, width: side, height: side });
+      items.push({ kind: "gap", id: `pipe_${pipe.id}_gap_${index + 1}`, owner: pipe.id, x: crossing.x - side / 2, y: crossing.y - side / 2, width: side, height: side });
     });
     const medium = mediumOf(pipe.medium);
     items.push({ kind: "pipe", id: `pipe_${pipe.id}`, pipeId: pipe.id, points: touchRoute(route, pipe, byId), route, color: medium.color, width: pipeWidthOf(pipe, style), dash: !!medium.dash, dashArray: medium.dashArray ?? null });
@@ -179,10 +186,10 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   junctions.forEach((junction, index) => {
     if (networkPipes.has(junction.pipeId) || plainPipes.has(junction.pipeId)) return;
     if (electricPipes.has(junction.pipeId)) {
-      items.push({ kind: "junction", id: `junction_${index + 1}`, x: junction.x, y: junction.y, radius: 3.5, dot: true });
+      items.push({ kind: "junction", id: `junction_${index + 1}`, owner: junction.pipeId, x: junction.x, y: junction.y, radius: 3.5, dot: true });
       return;
     }
-    items.push({ kind: "junction", id: `junction_${index + 1}`, x: junction.x, y: junction.y, radius: junction.radius ?? style.junctionRadius, stroke: junction.stroke ?? style.junctionWidth });
+    items.push({ kind: "junction", id: `junction_${index + 1}`, owner: junction.pipeId, x: junction.x, y: junction.y, radius: junction.radius ?? style.junctionRadius, stroke: junction.stroke ?? style.junctionWidth });
   });
 
   for (const bar of bars) {
@@ -191,7 +198,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
 
   barGaps(pipes.filter(({ pipe }) => !mediumOf(pipe.medium).network && !mediumOf(pipe.medium).electric), bars, style).forEach((entry, index) => {
     const id = `bar_${entry.barId}_gap_${index + 1}`;
-    items.push({ kind: "gap", id, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
+    items.push({ kind: "gap", id, owner: entry.pipe.id, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
     items.push({ kind: "pipe", id: `${id}_pipe`, pipeId: entry.pipe.id, points: entry.line, color: mediumOf(entry.pipe.medium).color, width: pipeWidthOf(entry.pipe, style), dash: false, dashArray: null, overlay: true });
   });
 
@@ -211,21 +218,21 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
       height: upright.height,
       rotation: rotationOf(element),
       mirror: element.mirror?.x || element.mirror?.y ? { x: !!element.mirror.x, y: !!element.mirror.y } : null,
-      args: elementArgs(element)
+      args: elementArgs(element, style.nodePrefix)
     };
     const spec = HYDRONIC_ELEMENTS[element.type];
     items.push(spec.electric ? { kind: "electric", ...base, svg: electricSvg(element, refsOf(element)) }
       : spec.branch ? { kind: "branch", ...base, element, parts: branchHeaderParts(element) }
       : spec.generic ? { kind: "generic", ...base, x: element.x, y: element.y, name: element.name ?? "", fontSize: genericFont(element) }
       : spec.device ? { kind: "device", ...base, device: spec.device, x: element.x, y: element.y, name: element.name ?? "", address: base.args.ip ?? "" }
-      : { kind: "icon", ...base });
+      : { kind: "icon", ...base, variable: element.variable ?? null });
   }
 
   for (const element of solids) {
     for (const part of tankParts(element)) {
       const id = `${element.type}_${element.id}_probe_${part.probe}`;
-      if (part.kind === "icon") items.push({ kind: "icon", id, type: part.type, cx: part.cx, cy: part.cy, width: part.width, height: part.height, rotation: part.rotation ?? 0, args: {} });
-      else items.push({ kind: "field", id: `${id}_value`, x: part.x, y: part.y, width: part.width, height: part.height, unit: part.unit, decimals: part.decimals });
+      if (part.kind === "icon") items.push({ kind: "icon", id, owner: element.id, type: part.type, cx: part.cx, cy: part.cy, width: part.width, height: part.height, rotation: part.rotation ?? 0, args: {} });
+      else items.push({ kind: "field", id: `${id}_value`, x: part.x, y: part.y, width: part.width, height: part.height, unit: part.unit, decimals: part.decimals, address: nodePath(style.nodePrefix, element.probeVariables?.[part.probe]), variable: element.probeVariables?.[part.probe] ?? null, link: { shapeId: element.id, key: `probe:${part.probe}` } });
     }
   }
 
@@ -245,7 +252,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
       if (!HYDRONIC_ELEMENTS[fitting.type]) continue;
       const pose = fittingPose(route, fitting);
       const size = fittingSize(fitting);
-      items.push({ kind: "icon", id: `${fitting.type}_${fitting.id}`, pipeId: pipe.id, fittingId: fitting.id, type: fitting.type, cx: pose.x, cy: pose.y, width: size.width, height: size.height, rotation: pose.rotation, args: {} });
+      items.push({ kind: "icon", id: `${fitting.type}_${fitting.id}`, pipeId: pipe.id, fittingId: fitting.id, type: fitting.type, cx: pose.x, cy: pose.y, width: size.width, height: size.height, rotation: pose.rotation, args: withBase({}, style.nodePrefix, fitting.variable), variable: fitting.variable ?? null });
     }
   }
 
@@ -263,7 +270,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   }
 
   for (const { pipe, route } of pipes) {
-    if (electricPipes.has(pipe.id)) items.push(...railLabels(pipe, touchRoute(route, pipe, byId)));
+    if (electricPipes.has(pipe.id)) items.push(...railLabels(pipe, touchRoute(route, pipe, byId)).map((label) => ({ ...label, owner: pipe.id })));
   }
 
   const network = pipes
@@ -277,25 +284,43 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
     const label = protocolLabel(group.filter((entry) => entry.pipe.label !== false), obstacles, boxes, taken);
     if (!label) continue;
     taken.push(label.box);
-    items.push({ kind: "label", id: `pipe_${group[0].pipe.id}_protocol`, ...label, color: "#414142" });
+    items.push({ kind: "label", id: `pipe_${group[0].pipe.id}_protocol`, owner: group[0].pipe.id, ...label, color: "#414142" });
   }
 
   const readouts = options.readouts ?? readoutLayout(shapes, routes, style.bounds ?? null);
+  const fittingById = new Map(pipes.flatMap(({ pipe }) => (pipe.fittings ?? []).map((fitting) => [fitting.id, fitting])));
   for (const [fittingId, box] of readouts) {
     if (box.pipeId === options.hidden) continue;
     for (const row of readoutRowBoxes(box)) {
       const id = `readout_${fittingId}_${row.kind}`;
       if (row.label) {
         items.push({
-          kind: "label", id: `${id}_label`, text: row.label, x: row.labelX, y: row.textY, size: 18 * row.scale, anchor: "start", bold: true, color: "#414142",
+          kind: "label", id: `${id}_label`, owner: box.pipeId, text: row.label, x: row.labelX, y: row.textY, size: 18 * row.scale, anchor: "start", bold: true, color: "#414142",
           box: { x: row.labelX, y: row.box.y, width: (READOUT.labelWidth - 2) * row.scale, height: row.box.height }
         });
       }
-      items.push({ kind: "field", id, x: row.box.x, y: row.box.y, width: row.box.width, height: row.box.height, unit: row.unit, decimals: row.decimals ?? 1 });
+      items.push({ kind: "field", id, x: row.box.x, y: row.box.y, width: row.box.width, height: row.box.height, unit: row.unit, decimals: row.decimals ?? 1, address: nodePath(style.nodePrefix, fittingById.get(fittingId)?.readoutVariables?.[row.kind]), variable: fittingById.get(fittingId)?.readoutVariables?.[row.kind] ?? null, link: { shapeId: box.pipeId, fittingId, key: `readout:${row.kind}` } });
     }
   }
 
-  return items;
+  return stacked(items, byId);
+}
+
+export function layerOf(shape, byId){
+  if (Number.isFinite(shape?.z)) return shape.z;
+  if (shape?.branchOf !== undefined) return byId.get(shape.branchOf)?.z ?? 0;
+  return 0;
+}
+
+function stacked(items, byId){
+  if (![...byId.values()].some((shape) => shape.z)) return items;
+  const layer = (item) => {
+    const owner = item.owner ?? item.elementId ?? item.pipeId ?? item.link?.shapeId ?? item.ref?.elementId ?? item.ref?.pipeId;
+    return owner === undefined ? 0 : layerOf(byId.get(owner), byId);
+  };
+  return items.map((item, index) => ({ item, index, z: layer(item) }))
+    .sort((a, b) => a.z - b.z || a.index - b.index)
+    .map((entry) => entry.item);
 }
 
 export function showsIn(item, format){

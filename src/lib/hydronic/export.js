@@ -101,7 +101,7 @@ function rect(item, fill){
 }
 
 function valueField(item){
-  const args = { postDecimal: item.decimals, decimalFraction: 0, unit: `T{${item.unit}}`, editable: "No", fillNotEditable: "#ffffff", fontSize: Math.max(8, Math.round(IN_OUT_FONT * item.height / IN_OUT_NATIVE.height)) };
+  const args = { ...(item.address ? { base: item.address } : {}), postDecimal: item.decimals, decimalFraction: 0, unit: `T{${item.unit}}`, editable: "No", fillNotEditable: "#ffffff", fontSize: Math.max(8, Math.round(IN_OUT_FONT * item.height / IN_OUT_NATIVE.height)) };
   return svgElement("svg", {
     "atv:refpx": round(item.x + item.width / 2),
     "atv:refpy": round(item.y + item.height / 2),

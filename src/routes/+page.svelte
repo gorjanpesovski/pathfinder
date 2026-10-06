@@ -35,7 +35,7 @@
   import PlacementGhost from "$lib/components/PlacementGhost.svelte";
   import ThermostatLayer from "$lib/components/ThermostatLayer.svelte";
   import WallLayer from "$lib/components/WallLayer.svelte";
-  import AppSwitcher from "$lib/components/AppSwitcher.svelte";
+  import ActivityBar from "$lib/components/ActivityBar.svelte";
   import CanvasNotice from "$lib/components/CanvasNotice.svelte";
   import { WALL_STYLE, describeWall, openEnds } from "$lib/tools/walls.js";
   import { APPS, appById, GENERAL_TOOLS } from "$lib/apps.js";
@@ -58,7 +58,13 @@
   import { hydronicToPgd } from "$lib/hydronic/pgd.js";
   import HeaderMenu from "$lib/components/HeaderMenu.svelte";
   import Modal from "$lib/components/Modal.svelte";
-  import ProjectStatus from "$lib/components/ProjectStatus.svelte";
+  import VariableList from "$lib/components/VariableList.svelte";
+  import VariablePanel from "$lib/components/VariablePanel.svelte";
+  import ArrangeMenu from "$lib/components/ArrangeMenu.svelte";
+  import { layerOf } from "$lib/hydronic/scene.js";
+  import VariableLinks from "$lib/components/VariableLinks.svelte";
+  import { elementSlots, fittingSlots, setSlot, variableUsage } from "$lib/hydronic/variables.js";
+  import ProjectCrumb from "$lib/components/ProjectCrumb.svelte";
   import { rememberFile, recallFile, fileAccess, hashText } from "$lib/fileStore.js";
   import { shiftIds, shiftImageId, importablePages, imageIdsIn } from "$lib/importPages.js";
   import IoView from "$lib/components/IoView.svelte";
@@ -131,8 +137,12 @@
   });
   let showToolHints = $state(loadFlag("pathfinder.showToolHints", true));
   $effect(() => saveFlag("pathfinder.showToolHints", showToolHints));
+  let viewsOnHover = $state(loadFlag("pathfinder.viewBarOnHover", true));
+  $effect(() => saveFlag("pathfinder.viewBarOnHover", viewsOnHover));
   let elementsOpen = $state(loadFlag("pathfinder.elementsOpen", false));
   $effect(() => saveFlag("pathfinder.elementsOpen", elementsOpen));
+  let variablePanel = $state(loadFlag("pathfinder.variablePanel", false));
+  $effect(() => saveFlag("pathfinder.variablePanel", variablePanel));
   let app = $state(loadText("pathfinder.app", "floorplan"));
   $effect(() => saveText("pathfinder.app", app));
   let currentApp = $derived(appById(app));
@@ -182,6 +192,12 @@
 
   function fitContent(){
     viewport.fit({ x: 0, y: 0, width: boardWidth, height: boardHeight });
+  }
+
+  function zoomToSelection(){
+    const box = transformBox;
+    if (!box) return;
+    viewport.fit({ x: box.x, y: box.y, width: Math.max(box.width, 1), height: Math.max(box.height, 1) }, Math.min(80, Math.min(viewport.width, viewport.height) * 0.12));
   }
 
   $effect(() => {
@@ -704,7 +720,7 @@
 
   function onGrid(shape){
     const spec = HYDRONIC_ELEMENTS[shape.type];
-    if (!snapToGrid || shape.kind !== "equipment" || !spec || spec.branch || spec.electric || spec.bar) return {};
+    if (!snapToGrid || shape.kind !== "equipment" || !spec || spec.branch || spec.electric || spec.bar || spec.noPorts) return {};
     const width = Math.max(gridSize, Math.round(shape.width / gridSize) * gridSize);
     const height = Math.max(gridSize, Math.round(shape.height / gridSize) * gridSize);
     const cx = Math.round((shape.x + shape.width / 2) / gridSize) * gridSize;
@@ -718,6 +734,22 @@
       if (t.kind === "scale") Object.assign(entry.shape, onGrid(entry.shape));
     }
     for (const item of ends) item.pipe[item.key] = transformPort(item.end, item.element, shapeById(item.end.id), t);
+  }
+
+  function scaleBranchFittings({ entries }, factor){
+    const branches = new Set(entries.filter((entry) => isBranch(entry.original)).map((entry) => entry.original.id));
+    const round = (value) => Math.round(value * 1000) / 1000;
+    for (const { shape, original } of entries) {
+      if (shape.kind !== "pipe" || !branches.has(original.branchOf)) continue;
+      if (original.width) shape.width = round(original.width * factor);
+      if (!original.fittings) continue;
+      shape.fittings = original.fittings.map((fitting) => ({
+        ...fitting,
+        scale: round((fitting.scale ?? 1) * factor),
+        ...(fitting.readoutOffset ? { readoutOffset: { x: round(fitting.readoutOffset.x * factor), y: round(fitting.readoutOffset.y * factor) } } : {}),
+        ...(readoutSpec(fitting.type) ? { readoutScale: round(readoutScaleOf(fitting) * factor) } : {})
+      }));
+    }
   }
 
   function scaleRatio(value, start, anchor){
@@ -759,10 +791,12 @@
           x: handle.includes("w") ? box.x + box.width : handle.includes("e") ? box.x : center.x,
           y: handle.includes("n") ? box.y + box.height : handle.includes("s") ? box.y : center.y
         };
-        let sx = !branchSelected && (handle.includes("w") || handle.includes("e")) ? scaleRatio(point.x, start.x, anchor.x) : 1;
+        const corner = handle.length === 2;
+        let sx = (!branchSelected || corner) && (handle.includes("w") || handle.includes("e")) ? scaleRatio(point.x, start.x, anchor.x) : 1;
         let sy = handle.includes("n") || handle.includes("s") ? scaleRatio(point.y, start.y, anchor.y) : 1;
-        if (handle.length === 2 && !next.shiftKey && !branchSelected) sx = sy = Math.max(sx, sy);
+        if (corner && (branchSelected || !next.shiftKey)) sx = sy = Math.max(sx, sy);
         apply(scaling(anchor, sx, sy));
+        if (branchSelected && group) scaleBranchFittings(group, corner ? sx : 1);
       },
       onend: () => history.endGesture()
     });
@@ -793,9 +827,57 @@
       }
       return;
     }
+    stackSelection(mode);
     const ids = new Set(selectionIds);
     shapes = moveInList(shapes, (shape) => ids.has(shape.id), mode);
   }
+
+  function stackSelection(mode){
+    const byId = new Map(shapes.map((shape) => [shape.id, shape]));
+    const layered = (shape) => shape?.kind === "equipment" || shape?.kind === "pipe";
+    const owner = (shape) => shape.kind === "pipe" && shape.branchOf !== undefined ? byId.get(shape.branchOf) ?? shape : shape;
+    const targets = [...new Set(selectedShapes.filter(layered).map(owner))];
+    if (!targets.length) return;
+    const others = shapes.filter((shape) => layered(shape) && shape.branchOf === undefined && !targets.includes(shape)).map((shape) => layerOf(shape, byId));
+    const top = Math.max(0, ...others);
+    const bottom = Math.min(0, ...others);
+    for (const shape of targets) {
+      const z = layerOf(shape, byId);
+      const next = mode === "front" ? top + 1 : mode === "back" ? bottom - 1 : mode === "forward" ? z + 1 : z - 1;
+      if (next) shape.z = next;
+      else delete shape.z;
+    }
+  }
+
+  let arrangeMenu = $state(null);
+
+  function openArrange(event){
+    event.preventDefault();
+    draft = null;
+    pipeDraft = null;
+    if (tool !== "select") return;
+    const node = event.target.closest?.("[data-shape-id]");
+    const fittingId = node?.dataset.fittingId ?? node?.dataset.readoutId;
+    if (fittingId !== undefined) {
+      if (fittingGroup.length < 2 || !fittingGroup.some((entry) => entry.fitting.id === Number(fittingId))) return;
+      arrangeMenu = { x: event.clientX, y: event.clientY, mode: "fittings" };
+      return;
+    }
+    const id = node && !partGroup.length ? Number(node.dataset.shapeId) : null;
+    if (id !== null && !selectionIds.includes(id)) selectShape(id);
+    if (!selectionIds.length && !partGroup.length) return;
+    arrangeMenu = { x: event.clientX, y: event.clientY, mode: selectionIds.length ? "shapes" : "parts" };
+  }
+
+  let arrangeContext = $derived.by(() => {
+    if (!arrangeMenu) return null;
+    if (arrangeMenu.mode === "shapes" && selection) {
+      return { mode: "shapes", canAlign: selection.canAlign, canDistribute: selection.canDistribute, canGroup: selection.canGroup, canUngroup: selection.canUngroup, alignTarget: selection.alignTarget };
+    }
+    if (arrangeMenu.mode === "parts" && partGroup.length) return { mode: "parts", canAlign: true, canDistribute: partGroup.length >= 3, alignTarget: partGroup.length > 1 ? "the selection" : "" };
+    if (arrangeMenu.mode === "fittings" && fittingGroup.length > 1) return { mode: "fittings", canAlign: true, canDistribute: fittingGroup.length >= 3, alignTarget: "the selection" };
+    return null;
+  });
 
   function rotateSelection(){
     const box = transformBox;
@@ -2124,10 +2206,11 @@
     if (family !== "electric" && pipeThickness === WIRE_WIDTH) pipeThickness = HYDRONIC_STYLE.pipeWidth;
   });
   let hydronicLibrary = $state(HYDRONIC_STYLE.library);
+  let nodePrefix = $state("");
   let freshPipes = $state([]);
   let selectedFitting = $state(null);
   let extraFittings = $state([]);
-  let hydronicStyle = $derived({ ...HYDRONIC_STYLE, library: hydronicLibrary, background: canvasFill, native: ICON_SIZES, bounds: { width: boardWidth, height: boardHeight } });
+  let hydronicStyle = $derived({ ...HYDRONIC_STYLE, library: hydronicLibrary, nodePrefix, background: canvasFill, native: ICON_SIZES, bounds: { width: boardWidth, height: boardHeight } });
   let shapeIndex = $derived(new Map(shapes.map((shape) => [shape.id, shape])));
   let pipeRoutes = $derived(computeRoutes(shapes));
   let snapRadius = $derived(Math.max(20, 16 / viewport.zoom));
@@ -2610,7 +2693,8 @@
     const top = corner.includes("n");
     const anchor = { x: left ? original.x + original.width : original.x, y: top ? original.y + original.height : original.y };
     const entries = attachedEnds(element);
-    const size = (value) => Math.max(40, snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value));
+    const free = !!HYDRONIC_ELEMENTS[element.type]?.noPorts;
+    const size = (value) => free ? Math.max(8, Math.round(value)) : Math.max(40, snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value));
 
     history.beginGesture();
     dragPointer(svgEl, event, {
@@ -3158,7 +3242,7 @@
   function placeHydronic(target, keep){
     const id = nextId++;
     if (target.kind === "equipment") {
-      const element = { id, kind: "equipment", ...target.element, name: isElectricType(target.element.type) ? nextElectricName(target.element.type, shapes) : nextElementName(target.element.type, shapes) };
+      const element = { id, kind: "equipment", ...target.element, name: isElectricType(target.element.type) ? nextElectricName(target.element.type, shapes) : HYDRONIC_ELEMENTS[target.element.type]?.nameless ? "" : nextElementName(target.element.type, shapes) };
       shapes.push(element);
       if (isBranch(element)) shapes.push(...createBranch(element, () => nextId++));
     }
@@ -3178,6 +3262,11 @@
     if (!ctrl && event.shiftKey && event.code === "Digit1") {
       event.preventDefault();
       fitContent();
+      return true;
+    }
+    if (!ctrl && event.shiftKey && event.code === "Digit2") {
+      event.preventDefault();
+      zoomToSelection();
       return true;
     }
     if (!ctrl && event.shiftKey && event.code === "Digit0") {
@@ -3514,6 +3603,7 @@
   }
 
   let documents = {};
+  let variableNames = $state([]);
   const PAGED_APPS = ["floorplan", "hydronic", "network"];
   let pageSets = $state({});
   let pageSet = $derived(PAGED_APPS.includes(app) ? pageSets[app] ?? null : null);
@@ -3655,7 +3745,7 @@
         roomFill, roomStroke, labelColor: roomLabelColor, floorFill, floorStroke, categoryColors: $state.snapshot(categoryColors),
         furnitureOpacity, floorWallWidth, roomWallWidth, wallStroke, wallWidth
       },
-      hydronic: { library: hydronicLibrary }
+      hydronic: { library: hydronicLibrary, nodePrefix }
     };
   }
 
@@ -3689,6 +3779,7 @@
     wallStroke = text(rooms.wallStroke, WALL_STYLE.stroke);
     wallWidth = number(rooms.wallWidth, WALL_STYLE.width);
     hydronicLibrary = text(settings?.hydronic?.library, HYDRONIC_STYLE.library);
+    nodePrefix = typeof settings?.hydronic?.nodePrefix === "string" ? settings.hydronic.nodePrefix : "";
   }
 
   function usedImages(apps, pages){
@@ -3707,7 +3798,8 @@
       name,
       io: { points: $state.snapshot(ioPoints), others: $state.snapshot(ioOthers) },
       settings: projectSettings(),
-      images: withImages ? usedImages(apps, pages) : null
+      images: withImages ? usedImages(apps, pages) : null,
+      variables: $state.snapshot(variableNames)
     });
   }
 
@@ -3741,6 +3833,7 @@
     }
     documentName = doc.name ?? null;
     applySettings(doc.settings);
+    variableNames = doc.variables ?? [];
     imageSources = doc.images ?? {};
     ioPoints = doc.io?.points ?? [];
     ioOthers = doc.io?.others ?? [];
@@ -4013,6 +4106,23 @@
     }
   }
 
+  function viewKeydown(event){
+    if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return false;
+    const index = /^Digit([1-9])$/.exec(event.code)?.[1];
+    const target = index ? APPS[Number(index) - 1] : null;
+    if (!target) return false;
+    event.preventDefault();
+    switchApp(target.id);
+    return true;
+  }
+
+  let viewTitle = $derived(ioVisible ? `${currentApp.label} · IO list` : currentApp.label);
+
+  function renameProject(value){
+    const clean = cleanDocumentName(value);
+    if (clean) documentName = clean;
+  }
+
   function switchApp(id){
     if (id === app) return;
     stashCurrent();
@@ -4030,6 +4140,7 @@
   function handleKeydown(event){
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) return;
+    if (viewKeydown(event)) return;
     if (ioVisible) {
       const key = event.key.toLowerCase();
       if ((event.ctrlKey || event.metaKey) && (key === "s" || key === "o")) appKeydown(event);
@@ -4096,8 +4207,89 @@
   }
 
   let showDisplaySettings = $state(false);
+  let settingsSection = $state("general");
+
+  const SETTINGS_SECTIONS = [
+    { label: "Options", items: [{ id: "general", label: "General" }, { id: "canvas", label: "Canvas" }, { id: "shapes", label: "Shapes" }] },
+    { label: "Views", items: [{ id: "floorplan", label: "Floor plan" }, { id: "hydronic", label: "Hydronic station" }] }
+  ];
 
   let connectOpen = $state(false);
+  let variablesOpen = $state(false);
+  let linksOpen = $state(false);
+  let showVariablePanel = $derived(variablePanel && app === "hydronic");
+  let draggingVariable = $state(null);
+  let linkHover = $state(null);
+  let variableUse = $derived(variablesOpen || linksOpen || showVariablePanel ? variableUsage(pageShapes("hydronic")) : new Map());
+  let linkTarget = $derived.by(() => {
+    if (fittingGroup.length === 1 && !selectedShapes.length) {
+      const { fitting } = fittingGroup[0];
+      return { target: fitting, title: fitting.name || HYDRONIC_ELEMENTS[fitting.type]?.label || "Element", slots: fittingSlots(fitting) };
+    }
+    const elements = selectedElements();
+    if (elements.length !== 1 || fittingGroup.length) return null;
+    const element = elements[0];
+    const spec = HYDRONIC_ELEMENTS[element.type];
+    if (!spec || spec.device || spec.electric) return null;
+    return { target: element, title: element.name || spec.label, slots: elementSlots(element) };
+  });
+
+  function addVariables(list){
+    variableNames = [...variableNames, ...list.filter((name) => !variableNames.includes(name))];
+    showFileNotice(`Added ${list.length} variable name${list.length === 1 ? "" : "s"}`);
+  }
+
+  function linkVariable(key, value){
+    if (linkTarget) setSlot(linkTarget.target, key, value);
+  }
+
+  function dropSpot(event){
+    const node = event.target?.closest?.("[data-link-key]");
+    if (!node) return null;
+    const fittingId = node.dataset.linkFitting;
+    return { shapeId: Number(node.dataset.linkShape), fittingId: fittingId === undefined ? null : Number(fittingId), key: node.dataset.linkKey };
+  }
+
+  function dropOwner(spot){
+    const shape = shapes.find((entry) => entry.id === spot.shapeId);
+    if (!shape) return null;
+    if (spot.fittingId === null) {
+      const spec = HYDRONIC_ELEMENTS[shape.type];
+      return { target: shape, title: shape.name || spec?.label || "Element", slots: elementSlots(shape) };
+    }
+    const fitting = shape.fittings?.find((entry) => entry.id === spot.fittingId);
+    return fitting ? { target: fitting, title: fitting.name || HYDRONIC_ELEMENTS[fitting.type]?.label || "Element", slots: fittingSlots(fitting) } : null;
+  }
+
+  function variableOver(event){
+    if (!draggingVariable) return;
+    const spot = dropSpot(event);
+    const same = spot && linkHover && spot.shapeId === linkHover.shapeId && spot.fittingId === linkHover.fittingId && spot.key === linkHover.key;
+    if (!same) linkHover = spot;
+    if (!spot) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "link";
+  }
+
+  function variableLeave(event){
+    if (!svgEl?.contains(event.relatedTarget)) linkHover = null;
+  }
+
+  function variableDrop(event){
+    const name = event.dataTransfer.getData("application/x-pathfinder-variable") || draggingVariable;
+    const spot = dropSpot(event);
+    linkHover = null;
+    draggingVariable = null;
+    if (!name || !spot) return;
+    event.preventDefault();
+    const owner = dropOwner(spot);
+    const slot = owner?.slots.find((entry) => entry.key === spot.key);
+    if (!slot) return;
+    setSlot(owner.target, spot.key, name);
+    const where = spot.key === "self" ? owner.title : `${owner.title} · ${slot.label}`;
+    showFileNotice(slot.value && slot.value !== name ? `${where}: ${slot.value} → ${name}` : `Linked ${name} to ${where}`);
+  }
+
   let wiringOpen = $state(false);
 
   function focusName(node){
@@ -4121,6 +4313,7 @@
   ]);
 
   let importItems = $derived([
+    { label: "Variable names…", hint: `${variableNames.length ? `${variableNames.length} in the project · ` : ""}names to link in the Hydronic station`, onclick: () => variablesOpen = true },
     app !== "electrical" ? { label: "Image…", hint: "A picture or plan on this page (pasting one works too)", onclick: openImagePicker } : null,
     pageSet ? { label: "Pages from another project…", hint: `Copy the ${currentApp.label} pages of another project file into this one`, onclick: importPages } : null,
     app === "electrical" ? { note: "Wiring is drawn from the IO list with From IO list… on the right." } : null
@@ -4216,7 +4409,7 @@
 
   .header{
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     height: 44px;
     padding: 0 12px;
@@ -4250,32 +4443,20 @@
     display: flex;
     flex: none;
     align-items: center;
-    margin-right: 6px;
+    margin-right: 2px;
     color: #1E293B;
-  }
-
-  .brand {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.1;
-  }
-
-  .brand .title {
-    font-family: 'Sora', 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
-    font-size: 15px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-  }
-
-  .brand .version {
-    font-size: 10px;
-    font-weight: 500;
-    color: #94a3b8;
   }
 
   .logo{
     height: 26px;
-    margin-right: 8px;
+  }
+
+  .header-divider {
+    flex: none;
+    width: 1px;
+    height: 20px;
+    margin: 0 6px;
+    background: #e2e8f0;
   }
 
   .menus {
@@ -4283,8 +4464,6 @@
     flex: none;
     align-items: center;
     gap: 2px;
-    padding-left: 8px;
-    border-left: 1px solid #e2e8f0;
   }
 
   button.header-action {
@@ -4305,14 +4484,280 @@
     background: #eff6ff;
   }
 
-  .settings-grid {
-    columns: 3 250px;
-    column-gap: 14px;
+  .settings {
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    width: 100%;
+    height: min(640px, calc(100dvh - 140px));
   }
 
-  .settings-grid > fieldset {
-    break-inside: avoid;
-    margin-bottom: 14px;
+  .settings-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 14px 10px;
+    overflow-y: auto;
+    border-right: 1px solid #e2e8f0;
+    background: #f8fafc;
+    border-radius: 0 0 0 12px;
+  }
+
+  .settings-group {
+    padding: 12px 10px 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #94a3b8;
+  }
+
+  .settings-group:first-child {
+    padding-top: 2px;
+  }
+
+  .settings-nav button {
+    height: 32px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    color: #334155;
+    cursor: pointer;
+  }
+
+  .settings-nav button:hover {
+    background: #eef2f7;
+  }
+
+  .settings-nav button.active {
+    background: #e2eaf6;
+    color: #1d4ed8;
+    font-weight: 600;
+  }
+
+  .settings-content {
+    overflow-y: auto;
+    padding: 22px 32px 32px;
+  }
+
+  .settings-content h3 {
+    margin: 0;
+    font-family: 'Sora', 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 17px;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .settings-content h4 {
+    margin: 26px 0 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .settings-note {
+    margin: 4px 0 16px;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+
+  .settings-card {
+    padding: 0 20px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+  }
+
+  .setting {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 16px 0;
+  }
+
+  .setting + .setting {
+    border-top: 1px solid #eef2f7;
+  }
+
+  .setting-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .setting-title {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #0f172a;
+  }
+
+  .setting-desc {
+    margin-top: 3px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: #64748b;
+  }
+
+  .setting-control {
+    display: flex;
+    align-items: center;
+    flex: none;
+  }
+
+  .setting-control input[type="text"],
+  .setting-control input[type="number"] {
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    font-family: inherit;
+    font-size: 13px;
+    color: #0f172a;
+    box-sizing: border-box;
+  }
+
+  .setting-control input[type="text"]:focus,
+  .setting-control input[type="number"]:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  }
+
+  .setting-control input[type="color"] {
+    width: 32px;
+    height: 32px;
+    padding: 2px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    cursor: pointer;
+  }
+
+  .color-input {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .color-input input[type="text"] {
+    width: 92px;
+    font-family: 'IBM Plex Mono', Consolas, monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+
+  .number-input,
+  .size-input,
+  .range-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: #64748b;
+  }
+
+  .number-input input,
+  .size-input input {
+    width: 88px;
+  }
+
+  .range-input input {
+    width: 160px;
+  }
+
+  .range-input span {
+    min-width: 36px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  input.text-input {
+    width: 300px;
+    font-family: 'IBM Plex Mono', Consolas, monospace;
+    font-size: 12px;
+  }
+
+  .category-colors {
+    display: flex;
+    gap: 14px;
+  }
+
+  .category-colors label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #64748b;
+  }
+
+  .settings-button {
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: #334155;
+    cursor: pointer;
+  }
+
+  .settings-button:hover {
+    background: #f1f5f9;
+  }
+
+  .switch {
+    position: relative;
+    display: inline-flex;
+    width: 40px;
+    height: 22px;
+    cursor: pointer;
+  }
+
+  .switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .switch span {
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    background: #cbd5e1;
+    transition: background-color 0.15s ease;
+  }
+
+  .switch span::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.25);
+    transition: transform 0.15s ease;
+  }
+
+  .switch input:checked + span {
+    background: #2563eb;
+  }
+
+  .switch input:checked + span::after {
+    transform: translateX(18px);
+  }
+
+  .switch input:focus-visible + span {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
   }
 
   .save-name {
@@ -4383,38 +4828,10 @@
     background: #1d4ed8;
   }
 
-  .category-row .category-name {
-    flex: 1 1 0;
-    min-width: 0;
-    font-size: 13px;
-    color: #334155;
-  }
-
-  .category-head .field-hint {
-    flex: 0 0 44px;
-    text-align: center;
-  }
-
-  button.reset-categories {
-    align-self: flex-start;
-    padding: 4px 0;
-    border: none;
-    background: none;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    color: #2563eb;
-    cursor: pointer;
-  }
-
-  button.reset-categories:hover {
-    text-decoration: underline;
-  }
-
   .app-layout {
     display: grid;
-    grid-template-columns: 52px minmax(0, 1fr) auto;
-    grid-template-areas: "tools stage panel";
+    grid-template-columns: var(--activity-width, 48px) 52px auto minmax(0, 1fr) auto;
+    grid-template-areas: "activity tools vars stage panel";
     gap: 0;
     align-items: stretch;
     height: calc(100dvh - 44px);
@@ -4453,25 +4870,6 @@
     box-sizing: border-box;
     position: relative;
     z-index: 3;
-  }
-
-  .readout {
-    display: flex;
-    flex: none;
-    align-self: stretch;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #64748b;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .readout .chip {
-    padding: 4px 9px;
-    border: 1px solid #e2e8f0;
-    border-radius: 999px;
-    background: #f8fafc;
   }
 
   .branch-banner {
@@ -4650,39 +5048,6 @@
     .viewer-section {
       animation: none;
     }
-  }
-
-  .field-row {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 12px;
-  }
-
-  .field-row > .input-group,
-  .field-row > input[type="text"] {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  .field-row > input[type="color"] {
-    flex: 0 0 44px;
-    width: 44px;
-    height: 38px;
-    padding: 2px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    background-color: #FFFFFF;
-    box-sizing: border-box;
-    cursor: pointer;
-  }
-
-  .field-row > .row-sep {
-    flex: 0 0 10px;
-    text-align: center;
-    font-size: 13px;
-    color: #94a3b8;
   }
 
   fieldset {
@@ -5029,9 +5394,7 @@
   }
 
   .selection-section input[type="text"],
-  .selection-section select,
-  .settings-grid input[type="text"],
-  .settings-grid input[type="number"] {
+  .selection-section select {
     width: 100%;
     height: 38px;
     padding: 8px 12px;
@@ -5074,11 +5437,7 @@
 <div class="header">
   <div class="header-left">
     <div class="logo-section">
-      <img class="logo" src="{base}/logo.svg" alt="Pathfinder logo">
-      <div class="brand" title="Grid Trace Editor {__APP_VERSION__} · commit {__APP_COMMIT__}">
-        <span class="title">Pathfinder</span>
-        <span class="version">{__APP_VERSION__}</span>
-      </div>
+      <img class="logo" src="{base}/logo.svg" alt="Pathfinder" title="Pathfinder {__APP_VERSION__} · commit {__APP_COMMIT__}">
     </div>
     <nav class="menus" aria-label="Main menu">
       <HeaderMenu label="File" items={fileItems} width={290}
@@ -5086,26 +5445,42 @@
       <HeaderMenu label="Import" items={importItems} width={290}/>
       <HeaderMenu label="Export" items={exportItems} width={290}/>
     </nav>
+    <span class="header-divider" aria-hidden="true"></span>
+    <ProjectCrumb name={projectTitle} view={viewTitle} fileName={fileHandle?.name ?? null} status={projectStatus}
+                  onrename={renameProject} onresume={resumeAutosave}/>
   </div>
 
-  <AppSwitcher apps={APPS} current={app} onswitch={switchApp} view={ioOpen ? "io" : "drawing"} onview={(id) => ioOpen = id === "io"}/>
-
   <div class="header-right">
-    <ProjectStatus name={projectTitle} fileName={fileHandle?.name ?? null} status={projectStatus} onresume={resumeAutosave}/>
     {#if app === "electrical"}
       <button class="header-action" type="button" onclick={() => wiringOpen = true}
               title="Draw the controller terminals of IO points that are not in the drawing yet">From IO list…</button>
     {/if}
+    <button class="panel-toggle" class:open={sidebarOpen} type="button"
+            title={sidebarOpen ? "Hide settings panel" : "Show settings panel"}
+            aria-label="Settings panel" aria-expanded={sidebarOpen} aria-controls="settings-panel"
+            onclick={() => sidebarOpen = !sidebarOpen}>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5"/>
+        <path d="M10 2.75 V13.25"/>
+      </svg>
+    </button>
   </div>
 </div>
 
-<div class="app-layout">
+<div class="app-layout" style:--activity-width={viewsOnHover ? "6px" : "40px"}>
+  <ActivityBar apps={APPS} current={app} onswitch={switchApp} view={ioOpen ? "io" : "drawing"} onview={(id) => ioOpen = id === "io"} autohide={viewsOnHover}/>
   <Toolbar {tool} onpick={pickTool} onimage={openImagePicker} showHints={showToolHints}
            {elementsOpen} ontoggleelements={() => elementsOpen = !elementsOpen}
            tools={currentApp.tools} general={GENERAL_TOOLS} special={currentApp.special} pipeLabel={currentApp.pipeLabel ?? null} automations={currentApp.automations}
            canplacedoors={shapes.some((shape) => shape.kind === "room")}
            canfurnish={shapes.some((shape) => shape.kind === "room" && FURNISHABLE.includes(shape.category))}
-           onplacedoors={placeDoors} onfurnish={furnishOffices}/>
+           onplacedoors={placeDoors} onfurnish={furnishOffices}
+           variablesOpen={showVariablePanel} ontogglevariables={app === "hydronic" ? () => variablePanel = !variablePanel : null}/>
+  {#if showVariablePanel}
+    <VariablePanel names={variableNames} usage={variableUse} dragging={draggingVariable}
+                   onmanage={() => variablesOpen = true} onclose={() => variablePanel = false}
+                   ondrag={(name) => { draggingVariable = name; if (!name) linkHover = null; }}/>
+  {/if}
   <input class="image-input" type="file" accept="image/*" bind:this={imageInput}
          onchange={(e) => { readImage(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }}>
 
@@ -5212,41 +5587,25 @@
       <ToolOptions {tool} {elbow} elbows={ELBOWS} {selection} {lineWidth} {snapToGrid} target={shapeTarget}
                    onlinewidth={(value) => lineWidth = value} onelbow={(value) => elbow = value}
                    onsnap={(value) => snapToGrid = value} ontarget={(value) => targetChoice = value}
-                   onalign={alignSelection} ondistribute={distributeSelection} onlock={lockSelection}
+                  
                    door={doorOptions} oncategory={setCategory} ondoor={updateDoor} ondoorremove={removeDoor}
-                   onthermostat={setThermostat} ongroup={groupSelection} onungroup={ungroupSelection}
+                   onthermostat={setThermostat}
                    onopacity={setImageOpacity} onfitimage={fitImage}
                    furniture={furnitureOptions} onfurnish={furnishSelected} onclearfurniture={clearFurniture}
                    onfurniturerotate={rotateFurniture} onfurnitureremove={removeFurniture}
                    placing={placingOptions} onrotateplacing={rotatePlacing}
                    fitting={fittingOptions} medium={pipeMedium} onmedium={setMedium}
                    pipewidth={pipeThickness} onpipewidth={setPipeWidth} onedittext={editSelectedText} ontextstyle={setTextStyle}
-                   onfittingflip={flipFitting} onfittingturn={turnFitting} onfittingremove={removeFitting}
+                   onfittingflip={flipFitting} onfittingturn={turnFitting} onvariables={linkTarget ? () => linksOpen = true : null} onfittingremove={removeFitting}
                    onfittingscale={setFittingScale} onreverse={reversePipes} onpipelayer={pipeLayer}
                    onresetsize={resetElementSize}
                    onfittingreadout={setFittingReadout} onmeterreadout={setMeterReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName} ondeviceparam={setDeviceParam}
                    network={networkSelection} onconnect={connectSelected} onadddevices={addDevices}
                    onelementrotate={rotateElements} onelementsize={setElementSize} ontankprobe={toggleTankProbe}
                    groups={selectionGroups} onnamesize={setNameSize} onfittingnamesize={setFittingNameSize} onreadoutscale={setReadoutScale} onfittingname={setFittingName}
-                   onradius={setCornerRadius} onflip={flipSelection}
-                   parts={partOptions} onpartsremove={removeParts} onkind={setShapeKind} onlabelsize={setLabelSize} onhideedges={hideEdges} onshowname={showRoomNames} onrotate={rotateSelection}
+                   onradius={setCornerRadius}
+                   parts={partOptions} onpartsremove={removeParts} onkind={setShapeKind} onlabelsize={setLabelSize} onhideedges={hideEdges} onshowname={showRoomNames}
                    onname={(value) => selectedShape && setRoomName(selectedShape, value)}/>
-      <div class="readout">
-        <ZoomControls {viewport} onfit={fitContent}/>
-        {#if draft}
-          <span class="chip">from {draft.start.x}, {draft.start.y}</span>
-        {/if}
-        <span class="chip">{cursor ? `${cursor.x}, ${cursor.y}` : "—"}</span>
-        <button class="panel-toggle" class:open={sidebarOpen} type="button"
-                title={sidebarOpen ? "Hide settings panel" : "Show settings panel"}
-                aria-label="Settings panel" aria-expanded={sidebarOpen} aria-controls="settings-panel"
-                onclick={() => sidebarOpen = !sidebarOpen}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5"/>
-            <path d="M10 2.75 V13.25"/>
-          </svg>
-        </button>
-      </div>
     </div>
 
     <div class="svg-container" bind:clientWidth={viewport.width} bind:clientHeight={viewport.height}>
@@ -5255,7 +5614,8 @@
            role="application" aria-label="Drawing canvas"
            use:panZoom={{ viewport, panTool: tool === "pan" }}
            onpointerdown={handleDown} onpointermove={handleMove} onpointerleave={handleLeave}
-           oncontextmenu={(e) => { e.preventDefault(); draft = null; pipeDraft = null; }}>
+           ondragover={variableOver} ondragleave={variableLeave} ondrop={variableDrop}
+           oncontextmenu={openArrange}>
         <defs>
           <pattern id="grid_minor" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
             <path d="M {gridSize} 0 L 0 0 L 0 {gridSize}" fill="none"
@@ -5298,7 +5658,8 @@
                        selectedFitting={activeFitting ? { pipeId: activeFitting.pipe.id, fittingId: activeFitting.fitting.id } : null}
                        selectedFittings={fittingGroup.map((entry) => ({ pipeId: entry.pipe.id, fittingId: entry.fitting.id }))}
                        {placement} style={hydronicStyle} hidden={pipeDraft?.rewire?.pipeId ?? null}
-                       showPorts={!!pipeDraft?.rewire} readouts={readoutBoxes} renaming={renamingElementId} renamingFitting={renamingFitting} guide={pipeAim.guide} {branchEditing}/>
+                       showPorts={!!pipeDraft?.rewire} readouts={readoutBoxes} renaming={renamingElementId} renamingFitting={renamingFitting} guide={pipeAim.guide} {branchEditing}
+                       linking={draggingVariable ? { hover: linkHover } : null}/>
 
         <TextLayer {shapes} selectedIds={selectionIds} interactive={tool === "select"} zoom={viewport.zoom} hidden={editingTextId}/>
 
@@ -5380,7 +5741,7 @@
         {/each}
         {#if transformBox}
           <TransformFrame box={transformBox} zoom={viewport.zoom} rotate={(selectedShapes.length > 0 && !branchSelected) || furnitureGroup.length > 0}
-                          axis={branchSelected ? "y" : singleBar ? (singleBar.height > singleBar.width ? "y" : "x") : null}/>
+                          corners={branchSelected} axis={branchSelected ? "y" : singleBar ? (singleBar.height > singleBar.width ? "y" : "x") : null}/>
         {/if}
 
         {#if placement}
@@ -5394,10 +5755,6 @@
         {/if}
         </g>
       </svg>
-
-      {#if pageSet}
-        <PageTabs pages={pageSet.list} active={pageSet.active} onselect={selectPage} onadd={addPage} onrename={renamePage} ondelete={deletePage}/>
-      {/if}
 
       {#if branchEditing}
         <div class="branch-banner" role="status">
@@ -5438,6 +5795,7 @@
 
       <CanvasNotice message={notice}/>
 
+      <ZoomControls {viewport} onfit={fitContent} onselection={transformBox ? zoomToSelection : null}/>
     </div>
 
     {#if ioVisible}
@@ -5450,191 +5808,195 @@
                   groups={currentApp.elements} empty="{currentApp.label} elements and drawing rules come next."
                   onclose={() => elementsOpen = false}/>
     {/if}
+
+    {#if pageSet && !ioVisible}
+      <PageTabs pages={pageSet.list} active={pageSet.active} onselect={selectPage} onadd={addPage} onrename={renamePage} ondelete={deletePage}
+                version={__APP_VERSION__} build={__APP_COMMIT__}
+                position={cursor ? `${draft ? `${draft.start.x}, ${draft.start.y} → ` : ""}${cursor.x}, ${cursor.y}` : ""}/>
+    {/if}
   </div>
 </div>
 
+{#snippet settingRow(title, description, control)}
+  <div class="setting">
+    <div class="setting-text">
+      <div class="setting-title">{title}</div>
+      {#if description}<div class="setting-desc">{description}</div>{/if}
+    </div>
+    <div class="setting-control">{@render control()}</div>
+  </div>
+{/snippet}
+
+{#snippet colorInput(value, set, label)}
+  <div class="color-input">
+    <input type="color" aria-label="{label} colour" {value} oninput={(e) => set(e.currentTarget.value.toUpperCase())}>
+    <input type="text" aria-label="{label} hex" {value} spellcheck="false" onchange={(e) => set(readHex(e, value))}>
+  </div>
+{/snippet}
+
+{#snippet colorRow(title, description, value, set)}
+  {#snippet control()}{@render colorInput(value, set, title)}{/snippet}
+  {@render settingRow(title, description, control)}
+{/snippet}
+
+{#snippet numberRow(title, description, value, set, min, max, step = 1, unit = "")}
+  {#snippet control()}
+    <div class="number-input">
+      <input type="number" aria-label={title} {min} {max} {step} {value}
+             oninput={(e) => { const next = e.currentTarget.valueAsNumber; if (Number.isFinite(next)) set(next); }}>
+      {#if unit}<span>{unit}</span>{/if}
+    </div>
+  {/snippet}
+  {@render settingRow(title, description, control)}
+{/snippet}
+
+{#snippet toggleRow(title, description, checked, set)}
+  {#snippet control()}
+    <label class="switch">
+      <input type="checkbox" role="switch" aria-label={title} {checked} onchange={(e) => set(e.currentTarget.checked)}>
+      <span aria-hidden="true"></span>
+    </label>
+  {/snippet}
+  {@render settingRow(title, description, control)}
+{/snippet}
+
+{#snippet textRow(title, description, value, set, placeholder = "")}
+  {#snippet control()}
+    <input class="text-input" type="text" aria-label={title} {value} {placeholder} spellcheck="false"
+           onchange={(e) => set(e.currentTarget.value.trim())}>
+  {/snippet}
+  {@render settingRow(title, description, control)}
+{/snippet}
+
 {#if showDisplaySettings}
-  <Modal title="Settings" subtitle="Saved with the project, except the toolbar hints" width={900} onclose={() => showDisplaySettings = false}>
-    <div class="settings-grid">
-      <fieldset id="select-interface">
-        <legend>Toolbar</legend>
-        <label class="checkbox" for="show-tool-hints">
-          <input id="show-tool-hints" type="checkbox" bind:checked={showToolHints}>
-          Show usage hints in tool tooltips
-        </label>
-      </fieldset>
-
-      <fieldset id="select-canvas-size" class="field-row">
-        <legend>Canvas Size</legend>
-        <label class="input-group" for="canvas-width">
-          <span class="field-hint">Width</span>
-          <input id="canvas-width" type="number" min="100" step="100" bind:value={canvasWidth}>
-        </label>
-        <span class="row-sep" aria-hidden="true">x</span>
-        <label class="input-group" for="canvas-height">
-          <span class="field-hint">Height</span>
-          <input id="canvas-height" type="number" min="100" step="100" bind:value={canvasHeight}>
-        </label>
-      </fieldset>
-
-      <fieldset id="select-grid-look">
-        <legend>Grid Appearance</legend>
-        <label class="input-group" for="major-every">
-          <span class="field-hint">Heavier line every N cells</span>
-          <input id="major-every" type="number" min="2" max="20" step="1" bind:value={majorEvery}>
-        </label>
-        <label class="input-group" for="grid-minor-color">
-          <span class="field-hint">Minor lines</span>
-          <div class="field-row">
-            <input id="grid-minor-color" type="color" bind:value={gridMinorColor}>
-            <input type="text" value={gridMinorColor}
-                   onchange={(e) => gridMinorColor = readHex(e, gridMinorColor)}>
-          </div>
-        </label>
-        <label class="input-group" for="grid-major-color">
-          <span class="field-hint">Major lines</span>
-          <div class="field-row">
-            <input id="grid-major-color" type="color" bind:value={gridMajorColor}>
-            <input type="text" value={gridMajorColor}
-                   onchange={(e) => gridMajorColor = readHex(e, gridMajorColor)}>
-          </div>
-        </label>
-        <label class="input-group" for="canvas-fill">
-          <span class="field-hint">Canvas background</span>
-          <div class="field-row">
-            <input id="canvas-fill" type="color" bind:value={canvasFill}>
-            <input type="text" value={canvasFill}
-                   onchange={(e) => canvasFill = readHex(e, canvasFill)}>
-          </div>
-        </label>
-      </fieldset>
-
-      <fieldset id="select-shape-style">
-        <legend>Shape Style</legend>
-        <label class="input-group" for="stroke-width">
-          <span class="field-hint">Stroke width</span>
-          <input id="stroke-width" type="number" min="1" max="12" step="1" bind:value={lineWidth}>
-        </label>
-        <label class="input-group" for="line-color">
-          <span class="field-hint">Trace</span>
-          <div class="field-row">
-            <input id="line-color" type="color" bind:value={lineColor}>
-            <input type="text" value={lineColor} onchange={(e) => lineColor = readHex(e, lineColor)}>
-          </div>
-        </label>
-        <label class="input-group" for="rect-stroke">
-          <span class="field-hint">Rectangle border</span>
-          <div class="field-row">
-            <input id="rect-stroke" type="color" bind:value={rectStroke}>
-            <input type="text" value={rectStroke} onchange={(e) => rectStroke = readHex(e, rectStroke)}>
-          </div>
-        </label>
-        <label class="checkbox" for="rect-filled">
-          <input id="rect-filled" type="checkbox" bind:checked={rectFilled}>
-          Fill rectangles
-        </label>
-        {#if rectFilled}
-          <label class="input-group" for="rect-fill">
-            <span class="field-hint">Rectangle fill</span>
-            <div class="field-row">
-              <input id="rect-fill" type="color" bind:value={rectFill}>
-              <input type="text" value={rectFill} onchange={(e) => rectFill = readHex(e, rectFill)}>
-            </div>
-          </label>
-        {/if}
-      </fieldset>
-
-      <fieldset id="select-room-style">
-        <legend>Rooms, Floor &amp; Walls</legend>
-        <label class="input-group" for="room-fill">
-          <span class="field-hint">Room fill</span>
-          <div class="field-row">
-            <input id="room-fill" type="color" bind:value={roomFill}>
-            <input type="text" value={roomFill} onchange={(e) => roomFill = readHex(e, roomFill)}>
-          </div>
-        </label>
-        <label class="input-group" for="room-stroke">
-          <span class="field-hint">Room border</span>
-          <div class="field-row">
-            <input id="room-stroke" type="color" bind:value={roomStroke}>
-            <input type="text" value={roomStroke} onchange={(e) => roomStroke = readHex(e, roomStroke)}>
-          </div>
-        </label>
-        <label class="input-group" for="room-label-color">
-          <span class="field-hint">Room name</span>
-          <div class="field-row">
-            <input id="room-label-color" type="color" bind:value={roomLabelColor}>
-            <input type="text" value={roomLabelColor} onchange={(e) => roomLabelColor = readHex(e, roomLabelColor)}>
-          </div>
-        </label>
-        <label class="input-group" for="floor-fill">
-          <span class="field-hint">Floor fill</span>
-          <div class="field-row">
-            <input id="floor-fill" type="color" bind:value={floorFill}>
-            <input type="text" value={floorFill} onchange={(e) => floorFill = readHex(e, floorFill)}>
-          </div>
-        </label>
-        <label class="input-group" for="floor-stroke">
-          <span class="field-hint">Floor border</span>
-          <div class="field-row">
-            <input id="floor-stroke" type="color" bind:value={floorStroke}>
-            <input type="text" value={floorStroke} onchange={(e) => floorStroke = readHex(e, floorStroke)}>
-          </div>
-        </label>
-        <div class="field-row">
-          <label class="input-group" for="floor-wall-width">
-            <span class="field-hint">Floor wall (cm)</span>
-            <input id="floor-wall-width" type="number" min="1" max="60" step="1" bind:value={floorWallWidth}>
-          </label>
-          <label class="input-group" for="room-wall-width">
-            <span class="field-hint">Room wall (cm)</span>
-            <input id="room-wall-width" type="number" min="1" max="60" step="1" bind:value={roomWallWidth}>
-          </label>
-        </div>
-        <label class="input-group" for="wall-stroke">
-          <span class="field-hint">Wall</span>
-          <div class="field-row">
-            <input id="wall-stroke" type="color" bind:value={wallStroke}>
-            <input type="text" value={wallStroke} onchange={(e) => wallStroke = readHex(e, wallStroke)}>
-            <input id="wall-width" type="number" min="1" max="60" step="1" bind:value={wallWidth}
-                   aria-label="Wall thickness (cm)" title="Wall thickness (cm)">
-          </div>
-        </label>
-        <label class="input-group" for="furniture-opacity">
-          <span class="field-hint">Furniture opacity · {Math.round(furnitureOpacity * 100)}%</span>
-          <input id="furniture-opacity" type="range" min="0.1" max="1" step="0.05" bind:value={furnitureOpacity}
-                 style="--fill: {((furnitureOpacity - 0.1) / 0.9) * 100}%">
-        </label>
-      </fieldset>
-
-      <fieldset id="select-room-categories">
-        <legend>Room Categories</legend>
-        <div class="field-row category-row category-head" aria-hidden="true">
-          <span class="category-name"></span>
-          <span class="field-hint">Fill</span>
-          <span class="field-hint">Border</span>
-        </div>
-        {#each ROOM_CATEGORIES as category}
-          <div class="field-row category-row">
-            <span class="category-name">{category.label}</span>
-            <input type="color" aria-label="{category.label} fill" bind:value={categoryColors[category.id].fill}>
-            <input type="color" aria-label="{category.label} border" bind:value={categoryColors[category.id].stroke}>
-          </div>
+  <Modal title="Settings" width={980} flush onclose={() => showDisplaySettings = false}>
+    <div class="settings">
+      <nav class="settings-nav" aria-label="Settings sections">
+        {#each SETTINGS_SECTIONS as group (group.label)}
+          <span class="settings-group">{group.label}</span>
+          {#each group.items as section (section.id)}
+            <button type="button" class:active={settingsSection === section.id} aria-current={settingsSection === section.id ? "page" : undefined}
+                    onclick={() => settingsSection = section.id}>{section.label}</button>
+          {/each}
         {/each}
-        <button class="reset-categories" type="button" onclick={() => categoryColors = defaultCategoryColors()}>
-          Reset category colors
-        </button>
-      </fieldset>
+      </nav>
 
-      <fieldset id="select-hydronic">
-        <legend>Hydronic Station</legend>
-        <label class="input-group" for="hydronic-library">
-          <span class="field-hint">atvise object display folder for elements</span>
-          <input id="hydronic-library" type="text" bind:value={hydronicLibrary}>
-        </label>
-      </fieldset>
+      <div class="settings-content">
+        {#if settingsSection === "general"}
+          <h3>General</h3>
+          <p class="settings-note">Saved in this browser, for every project.</p>
+          <div class="settings-card">
+            {@render toggleRow("Tool hints", "Explain each tool and its shortcuts in the toolbar tooltips.", showToolHints, (value) => showToolHints = value)}
+            {@render toggleRow("View bar on hover", "Keep the view bar hidden at the left edge until you hover it. Turn off to always show the icon rail.", viewsOnHover, (value) => viewsOnHover = value)}
+          </div>
+        {:else if settingsSection === "canvas"}
+          <h3>Canvas</h3>
+          <p class="settings-note">Saved with the project.</p>
+          <div class="settings-card">
+            {#snippet sizeControl()}
+              <div class="size-input">
+                <input type="number" aria-label="Canvas width" min="100" step="100" value={canvasWidth}
+                       oninput={(e) => { const next = e.currentTarget.valueAsNumber; if (Number.isFinite(next)) canvasWidth = next; }}>
+                <span>×</span>
+                <input type="number" aria-label="Canvas height" min="100" step="100" value={canvasHeight}
+                       oninput={(e) => { const next = e.currentTarget.valueAsNumber; if (Number.isFinite(next)) canvasHeight = next; }}>
+              </div>
+            {/snippet}
+            {@render settingRow("Canvas size", "Width and height of the drawing area in pixels. Exports use this size.", sizeControl)}
+            {@render colorRow("Background", "Fill behind the drawing, also used in exports.", canvasFill, (value) => canvasFill = value)}
+          </div>
+          <h4>Grid</h4>
+          <div class="settings-card">
+            {@render numberRow("Heavier line every", "Number of cells between the darker grid lines.", majorEvery, (value) => majorEvery = value, 2, 20, 1, "cells")}
+            {@render colorRow("Minor lines", "Colour of the regular grid lines.", gridMinorColor, (value) => gridMinorColor = value)}
+            {@render colorRow("Major lines", "Colour of the darker grid lines.", gridMajorColor, (value) => gridMajorColor = value)}
+          </div>
+        {:else if settingsSection === "shapes"}
+          <h3>Shapes</h3>
+          <p class="settings-note">Saved with the project.</p>
+          <div class="settings-card">
+            {@render numberRow("Stroke width", "Line thickness of traces and rectangles.", lineWidth, (value) => lineWidth = value, 1, 12, 1, "px")}
+            {@render colorRow("Trace", "Colour of traces drawn with the line tool.", lineColor, (value) => lineColor = value)}
+            {@render colorRow("Rectangle border", "Outline colour of rectangles.", rectStroke, (value) => rectStroke = value)}
+            {@render toggleRow("Fill rectangles", "Give rectangles a solid fill.", rectFilled, (value) => rectFilled = value)}
+            {#if rectFilled}
+              {@render colorRow("Rectangle fill", "Fill colour of rectangles.", rectFill, (value) => rectFill = value)}
+            {/if}
+          </div>
+        {:else if settingsSection === "floorplan"}
+          <h3>Floor plan</h3>
+          <p class="settings-note">Saved with the project.</p>
+          <div class="settings-card">
+            {@render colorRow("Room fill", "Fill of rooms without a category.", roomFill, (value) => roomFill = value)}
+            {@render colorRow("Room border", "Outline of rooms without a category.", roomStroke, (value) => roomStroke = value)}
+            {@render colorRow("Room name", "Colour of room names.", roomLabelColor, (value) => roomLabelColor = value)}
+            {@render colorRow("Floor fill", "Fill of the floor outline.", floorFill, (value) => floorFill = value)}
+            {@render colorRow("Floor border", "Outline of the floor.", floorStroke, (value) => floorStroke = value)}
+          </div>
+          <h4>Walls</h4>
+          <div class="settings-card">
+            {@render numberRow("Floor wall", "Thickness of the outer floor walls.", floorWallWidth, (value) => floorWallWidth = value, 1, 60, 1, "cm")}
+            {@render numberRow("Room wall", "Thickness of walls between rooms.", roomWallWidth, (value) => roomWallWidth = value, 1, 60, 1, "cm")}
+            {@render numberRow("Wall", "Thickness of walls drawn on their own.", wallWidth, (value) => wallWidth = value, 1, 60, 1, "cm")}
+            {@render colorRow("Wall colour", "Colour of walls drawn on their own.", wallStroke, (value) => wallStroke = value)}
+          </div>
+          <h4>Furniture</h4>
+          <div class="settings-card">
+            {#snippet opacityControl()}
+              <div class="range-input">
+                <input type="range" aria-label="Furniture opacity" min="0.1" max="1" step="0.05" value={furnitureOpacity}
+                       oninput={(e) => furnitureOpacity = e.currentTarget.valueAsNumber} style="--fill: {((furnitureOpacity - 0.1) / 0.9) * 100}%">
+                <span>{Math.round(furnitureOpacity * 100)}%</span>
+              </div>
+            {/snippet}
+            {@render settingRow("Furniture opacity", "How strongly furniture shows over the rooms.", opacityControl)}
+          </div>
+          <h4>Room categories</h4>
+          <div class="settings-card">
+            {#each ROOM_CATEGORIES as category (category.id)}
+              {#snippet categoryControl()}
+                <div class="category-colors">
+                  <label><span>Fill</span><input type="color" aria-label="{category.label} fill" value={categoryColors[category.id].fill}
+                         oninput={(e) => categoryColors[category.id].fill = e.currentTarget.value}></label>
+                  <label><span>Border</span><input type="color" aria-label="{category.label} border" value={categoryColors[category.id].stroke}
+                         oninput={(e) => categoryColors[category.id].stroke = e.currentTarget.value}></label>
+                </div>
+              {/snippet}
+              {@render settingRow(category.label, "", categoryControl)}
+            {/each}
+            {#snippet resetControl()}
+              <button type="button" class="settings-button" onclick={() => categoryColors = defaultCategoryColors()}>Reset</button>
+            {/snippet}
+            {@render settingRow("Reset category colours", "Go back to the default fill and border of every category.", resetControl)}
+          </div>
+        {:else if settingsSection === "hydronic"}
+          <h3>Hydronic station</h3>
+          <p class="settings-note">Saved with the project.</p>
+          <div class="settings-card">
+            {@render textRow("atvise object folder", "Library path of the object displays that elements reference in the atvise export.", hydronicLibrary, (value) => hydronicLibrary = value || HYDRONIC_STYLE.library)}
+            {@render textRow("Variable node path", "Written in front of each linked variable name, into the base parameter of the exported element.", nodePrefix, (value) => nodePrefix = value, "AGENT.OBJECTS.Toplotne_Postaje.Celica_1")}
+          </div>
+        {/if}
+      </div>
     </div>
   </Modal>
+{/if}
+
+{#if arrangeContext}
+  <ArrangeMenu x={arrangeMenu.x} y={arrangeMenu.y} context={arrangeContext} onclose={() => arrangeMenu = null}
+               onorder={reorderSelection} onalign={alignSelection} ondistribute={distributeSelection} onrotate={rotateSelection}
+               onflip={flipSelection} ongroup={groupSelection} onungroup={ungroupSelection} onlock={lockSelection}/>
+{/if}
+
+{#if variablesOpen}
+  <VariableList names={variableNames} usage={variableUse} onadd={addVariables} prefix={nodePrefix} onprefix={(value) => nodePrefix = value.trim()}
+                onremove={(name) => variableNames = variableNames.filter((entry) => entry !== name)}
+                onclear={() => variableNames = []} onclose={() => variablesOpen = false}/>
+{/if}
+
+{#if linksOpen && linkTarget}
+  <VariableLinks title="Variables · {linkTarget.title}" slots={linkTarget.slots} names={variableNames} usage={variableUse}
+                 onchange={linkVariable} onmanage={() => { linksOpen = false; variablesOpen = true; }} onclose={() => linksOpen = false}/>
 {/if}
 
 {#if connectOpen}

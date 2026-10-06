@@ -71,6 +71,44 @@ function genericSvg(width, height){
 `;
 }
 
+const PUMP_OFF = "#1E293B";
+const PUMP_ON = "#018E42";
+
+function pumpPartSvg(part){
+  const shape = part === "ring"
+    ? `<circle cx="26" cy="26" r="23.5" fill="#FFFFFF" stroke="${PUMP_OFF}" stroke-width="4"/>`
+    : `<polygon points="15.25,7.4 47.5,26 15.25,44.6" fill="${PUMP_OFF}"/>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 52 52">${shape}</svg>\n`;
+}
+
+const LED_OFF = "#475569";
+const LED_ON = "#22C55E";
+const ALARM_FILL = "#FBBF24";
+
+function partSvg(width, height, body){
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${body}</svg>
+`;
+}
+
+function alarmPartSvg(part){
+  return partSvg(40, 40, part === "body"
+    ? `<polygon points="20,4 37,34.5 3,34.5" fill="${ALARM_FILL}" stroke="${ALARM_FILL}" stroke-linejoin="round" stroke-width="4"/>`
+    : `<polygon points="20,4 37,34.5 3,34.5" fill="none" stroke="${PUMP_OFF}" stroke-linejoin="round" stroke-width="4"/><rect x="18.3" y="13" width="3.4" height="11.5" rx="1.7" fill="${PUMP_OFF}"/><circle cx="20" cy="29" r="2.1" fill="${PUMP_OFF}"/>`);
+}
+
+export function pgdTag(name){
+  return String(name ?? "").trim().replace(/\./g, "_");
+}
+
+function dataLink(name, tagType, attribute, palette = null){
+  const transform = palette
+    ? `\n   <xForms>\n    <xForm class="ColorPaletteCustomXForm" ColorPaletteCustom="${palette.join(";")}" name="ColorPaletteCustom"/>\n   </xForms>\n  `
+    : "";
+  const body = `<dataLink class="TagMgrWgt" tagType="${tagType}" sourceType="Tag" tag="${escapeXml(pgdTag(name))}" dataSource="_TagMgr" tagIndex="-1" widgetType="Project" readWrite="R" attribute="${attribute}"`;
+  return ` <dataLinks>\n  ${body}${palette ? `>${transform}</dataLink>` : "/>"}\n </dataLinks>\n`;
+}
+
 function junctionSvg(style){
   const size = (style.junctionRadius + style.junctionWidth) * 2;
   const middle = size / 2;
@@ -112,13 +150,13 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
 </object>`);
   };
 
-  const image = (name, data, cx, cy, w, h, rotation = 0, extra = {}) => {
+  const image = (name, data, cx, cy, w, h, rotation = 0, extra = {}, links = "") => {
     const turned = rotation % 360 === 0 ? null : rotationMatrix(w, h, rotation);
     const boxW = turned ? turned.width : w;
     const boxH = turned ? turned.height : h;
-    objects.push(`<object class="ImageWgt" id="${nextId("pfImg")}" static="true">
- <wgtStyle ${attributes({ width: w, imagePath: imagePath(name, data), x: cx - boxW / 2, y: cy - boxH / 2, cx: boxW / 2, cy: boxH / 2, height: h, ...extra, mtx: turned?.mtx })}/>
-</object>`);
+    objects.push(`<object class="ImageWgt" id="${nextId("pfImg")}"${links ? "" : ' static="true"'}>
+ <wgtStyle ${attributes({ width: w, imagePath: imagePath(name, data), x: cx - boxW / 2, y: cy - boxH / 2, cx: boxW / 2, cy: boxH / 2, height: h, ...extra, ...(links ? { forcePaint: 137 } : {}), mtx: turned?.mtx })}/>
+${links}</object>`);
   };
 
   const label = (value, x, y, w, h, sizePx, options = {}) => {
@@ -151,7 +189,7 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
 </object>`);
   };
 
-  const numeric = (x, y, w, h, unit, decimals) => {
+  const numeric = (x, y, w, h, unit, decimals, variable = null) => {
     const unitWidth = unit ? Math.min(28, w * 0.35) : 0;
     const fieldWidth = w - unitWidth;
     const fontPx = Math.max(8, Math.round(h * 0.42));
@@ -171,14 +209,14 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
    "vert-align": "middle",
    frameFill: rgb(PANEL),
    text: sample,
-   max: 32767,
+   max: variable ? "3.40282e+38" : 32767,
    usingFormat: "",
    decimalDigits: decimals,
    leadingDigits: 2,
    value: sample,
    "keypad-type": "Numeric",
    "font-color": "rgb(255,255,255)",
-   min: -32768,
+   min: variable ? "-3.40282e+38" : -32768,
    width: fieldWidth,
    numberFormat: 1,
    readWrite: "true",
@@ -188,7 +226,7 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
    form: "Numeric",
    frameColor: rgb(PANEL)
  })}/>
-</object>`);
+${variable ? dataLink(variable, "float", "value") : ""}</object>`);
     if (unit) label(` ${unit}`, x + fieldWidth, y, unitWidth, h, Math.max(8, Math.round(h * 0.4)), { bold: true, color: PANEL });
   };
 
@@ -229,13 +267,34 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
       const size = (item.radius + item.stroke) * 2;
       image("pf_junction", junctionSvg(style), item.x, item.y, size, size);
     },
-    icon: (item) => iconImage(item.type, item.cx, item.cy, item.width, item.height, item.rotation),
+    icon: (item) => {
+      if (item.type === "pump" && item.variable) {
+        image("pf_pump_ring", pumpPartSvg("ring"), item.cx, item.cy, item.width, item.height, item.rotation);
+        image("pf_pump_arrow", pumpPartSvg("arrow"), item.cx, item.cy, item.width, item.height, item.rotation, { fill: rgb(PUMP_OFF) },
+          dataLink(item.variable, "boolean", "fill", [PUMP_OFF, PUMP_ON]));
+        return;
+      }
+      if (item.type === "statusLed" && item.variable) {
+        image("pf_status_led", partSvg(30, 30, `<circle cx="15" cy="15" r="15" fill="${LED_OFF}"/>`), item.cx, item.cy, item.width, item.height, item.rotation, { fill: rgb(LED_OFF) },
+          dataLink(item.variable, "boolean", "fill", [LED_OFF, LED_ON]));
+        return;
+      }
+      if (item.type === "alarm" && item.variable) {
+        const hidden = style.background ?? "#FFFFFF";
+        image("pf_alarm_body", alarmPartSvg("body"), item.cx, item.cy, item.width, item.height, item.rotation, { fill: rgb(hidden) },
+          dataLink(item.variable, "boolean", "fill", [hidden, ALARM_FILL]));
+        image("pf_alarm_mark", alarmPartSvg("mark"), item.cx, item.cy, item.width, item.height, item.rotation, { fill: rgb(hidden) },
+          dataLink(item.variable, "boolean", "fill", [hidden, PUMP_OFF]));
+        return;
+      }
+      iconImage(item.type, item.cx, item.cy, item.width, item.height, item.rotation);
+    },
     branch: (item) => item.parts.forEach(branchPart),
     generic: (item) => {
       image(`pf_generic_${Math.round(item.width)}x${Math.round(item.height)}`, genericSvg(item.width, item.height), item.cx, item.cy, item.width, item.height, item.rotation ?? 0);
       label(item.name, item.cx - item.width / 2, item.cy - item.height / 2, item.width, item.height, item.fontSize, { align: "center", color: "#475569" });
     },
-    field: (item) => numeric(item.x, item.y, item.width, item.height, item.unit, item.decimals),
+    field: (item) => numeric(item.x, item.y, item.width, item.height, item.unit, item.decimals, item.variable),
     label: caption
   };
 

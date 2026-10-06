@@ -37,6 +37,8 @@ export const HYDRONIC_ELEMENTS = {
   meterSensor: { label: "Energy meter sensor", width: 22, height: 22, inline: true, orient: "upright", primitive: true },
   tempSwitch: { label: "Temperature switch", atv: "Varnostni_Termostat", width: 40, height: 40, inline: true, orient: "upright" },
   pressureSwitch: { label: "Pressure switch", atv: "Varnostno_Tlacno_Stikalo", width: 40, height: 40, inline: true, orient: "upright" },
+  statusLed: { label: "Status LED", atv: "Status_LED", native: { width: 30, height: 30 }, width: 30, height: 30, noPorts: true, nameless: true },
+  alarm: { label: "Alarm", atv: "Alarm", native: { width: 80, height: 80 }, width: 40, height: 40, noPorts: true, nameless: true },
   router: { label: "Router", atv: "Topologija.Hub", width: 240, height: 80, device: "hub", ownLabel: true, ports: HUB_PORTS },
   networkSwitch: { label: "Switch", atv: "Topologija.Hub", width: 240, height: 80, device: "hub", ownLabel: true, ports: HUB_PORTS },
   ipDevice: { label: "IP device", atv: "Topologija.IP_Naprava", width: 240, height: 80, device: "ip", ownLabel: true, centerPorts: true },
@@ -71,7 +73,8 @@ export function isDeviceType(type){
 export const HYDRONIC_GROUPS = [
   { id: "equipment", label: "Equipment", items: ["heatPump", "boiler", "bufferTank", "heatExchanger", "electricHeater", "manifold", "branch", "generic"] },
   { id: "inline", label: "On pipes", items: ["pump", "valve", "controlValve", "threeWayValve", "checkValve", "calorimeter"] },
-  { id: "sensors", label: "Sensors", items: ["tempProbe", "pressureProbe", "tempSwitch", "pressureSwitch", "meterSensor"] }
+  { id: "sensors", label: "Sensors", items: ["tempProbe", "pressureProbe", "tempSwitch", "pressureSwitch", "meterSensor"] },
+  { id: "status", label: "Status", items: ["statusLed", "alarm"] }
 ];
 
 export const READOUT_MODES = [

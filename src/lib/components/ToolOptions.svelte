@@ -1,5 +1,4 @@
 <script>
-  import { ALIGN_ACTIONS } from "$lib/tools/align.js";
   import { ROOM_CATEGORIES } from "$lib/tools/categories.js";
   import { MIN_DOOR_WIDTH, DOOR_TYPES } from "$lib/tools/doors.js";
   import SelectionOptions from "./SelectionOptions.svelte";
@@ -26,6 +25,7 @@
     onmedium,
     onfittingflip,
     onfittingturn,
+    onvariables = null,
     onfittingremove,
     onfittingscale,
     onfittingreadout,
@@ -51,9 +51,6 @@
     onelbow,
     onsnap,
     ontarget,
-    onalign,
-    ondistribute,
-    onlock,
     oncategory,
     onfurnish,
     onclearfurniture,
@@ -61,22 +58,18 @@
     onfurnitureremove,
     onrotateplacing,
     onthermostat,
-    ongroup,
-    onungroup,
     onopacity,
     onfitimage,
     ondoor,
     ondoorremove,
     onradius,
     onname,
-    onflip,
     parts = null,
     onpartsremove,
     onkind,
     onlabelsize,
     onhideedges,
-    onshowname,
-    onrotate
+    onshowname
   } = $props();
 
   const NAMES = {
@@ -211,30 +204,6 @@
     color: #94a3b8;
   }
 
-  .icon-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 1px;
-  }
-
-  .icon-group button {
-    width: 26px;
-    padding: 0;
-    border-color: transparent;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .icon-group button:hover:not(:disabled) {
-    border-color: #bfdbfe;
-  }
-
-  .icon-group svg {
-    width: 16px;
-    height: 16px;
-  }
-
   .segmented {
     display: inline-flex;
     border: 1px solid #cbd5e1;
@@ -283,37 +252,6 @@
   }
 </style>
 
-{#snippet alignIcon(id)}
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-    {#if id === "left"}
-      <path d="M2 1.5 V14.5"/><rect x="4" y="3.5" width="9" height="3" rx="0.6"/><rect x="4" y="9.5" width="5.5" height="3" rx="0.6"/>
-    {:else if id === "hcenter"}
-      <path d="M8 1.5 V14.5"/><rect x="3" y="3.5" width="10" height="3" rx="0.6"/><rect x="5" y="9.5" width="6" height="3" rx="0.6"/>
-    {:else if id === "right"}
-      <path d="M14 1.5 V14.5"/><rect x="3" y="3.5" width="9" height="3" rx="0.6"/><rect x="6.5" y="9.5" width="5.5" height="3" rx="0.6"/>
-    {:else if id === "top"}
-      <path d="M1.5 2 H14.5"/><rect x="3.5" y="4" width="3" height="9" rx="0.6"/><rect x="9.5" y="4" width="3" height="5.5" rx="0.6"/>
-    {:else if id === "vcenter"}
-      <path d="M1.5 8 H14.5"/><rect x="3.5" y="3" width="3" height="10" rx="0.6"/><rect x="9.5" y="5" width="3" height="6" rx="0.6"/>
-    {:else}
-      <path d="M1.5 14 H14.5"/><rect x="3.5" y="3" width="3" height="9" rx="0.6"/><rect x="9.5" y="6.5" width="3" height="5.5" rx="0.6"/>
-    {/if}
-  </svg>
-{/snippet}
-
-{#snippet distributeButtons(disabled)}
-  <button type="button" {disabled} aria-label="Distribute horizontally" title="Distribute horizontally (Ctrl+Shift+3)" onclick={() => ondistribute("x")}>
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-      <path d="M1.5 2 V14 M14.5 2 V14"/><rect x="6" y="4" width="4" height="8" rx="0.6"/>
-    </svg>
-  </button>
-  <button type="button" {disabled} aria-label="Distribute vertically" title="Distribute vertically (Ctrl+Shift+9)" onclick={() => ondistribute("y")}>
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-      <path d="M2 1.5 H14 M2 14.5 H14"/><rect x="4" y="6" width="8" height="4" rx="0.6"/>
-    </svg>
-  </button>
-{/snippet}
-
 {#snippet kindSwitch()}
   {#if selection?.kinds}
     <div class="segmented" role="group" aria-label="Shape type">
@@ -325,83 +263,15 @@
   {/if}
 {/snippet}
 
-{#snippet flipButtons()}
-  <button type="button" aria-label="Rotate 90°" title="Rotate 90° clockwise" onclick={onrotate}>
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M13 8 A5 5 0 1 1 8 3 H11"/><path d="M9.5 1 L11.5 3 L9.5 5"/>
-    </svg>
-  </button>
-  <button type="button" aria-label="Flip horizontally" title="Flip horizontally (Ctrl+Shift+M)" onclick={() => onflip("x")}>
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M8 1.5 V14.5" stroke-dasharray="1.6 1.6"/><path d="M6 4 L2 12 H6 Z"/><path d="M10 4 L14 12 H10 Z" fill="currentColor"/>
-    </svg>
-  </button>
-  <button type="button" aria-label="Flip vertically" title="Flip vertically (Ctrl+M)" onclick={() => onflip("y")}>
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M1.5 8 H14.5" stroke-dasharray="1.6 1.6"/><path d="M4 6 L12 2 V6 Z"/><path d="M4 10 L12 14 V10 Z" fill="currentColor"/>
-    </svg>
-  </button>
-{/snippet}
-
 <div class="tool-options">
   <span class="tool-name">{NAMES[tool] ?? tool}</span>
 
   {#if tool === "select"}
     <span class="sep" aria-hidden="true"></span>
-    {#if selection}
-      <div class="icon-group" role="group" aria-label="Align">
-        {#each ALIGN_ACTIONS as action}
-          <button type="button" disabled={!selection.canAlign} aria-label={action.label}
-                  title="{action.label} to {selection.alignTarget} ({action.shortcut})" onclick={() => onalign(action.id)}>
-            {@render alignIcon(action.id)}
-          </button>
-        {/each}
-        {@render distributeButtons(!selection.canDistribute)}
-        {@render flipButtons()}
-        <button type="button" disabled={!selection.canGroup} aria-label="Group" title="Group (Ctrl+G)" onclick={ongroup}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-            <rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke-dasharray="2 2"/>
-            <rect x="4" y="4" width="4" height="4" rx="0.6"/><rect x="8.5" y="8.5" width="3.5" height="3.5" rx="0.6"/>
-          </svg>
-        </button>
-        <button type="button" disabled={!selection.canUngroup} aria-label="Ungroup" title="Ungroup (Ctrl+Shift+G)" onclick={onungroup}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-            <rect x="1.5" y="1.5" width="6" height="6" rx="1"/><rect x="8.5" y="8.5" width="6" height="6" rx="1"/>
-          </svg>
-        </button>
-        <button type="button" aria-label="Lock selection" title="Lock (Ctrl+Shift+L)" onclick={onlock}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="3" y="7" width="10" height="7" rx="1.2"/><path d="M5.5 7 V5 a2.5 2.5 0 0 1 5 0 V7"/>
-          </svg>
-        </button>
-      </div>
-      <span class="sep" aria-hidden="true"></span>
-    {:else if parts}
-      <div class="icon-group" role="group" aria-label="Align">
-        {#each ALIGN_ACTIONS as action}
-          <button type="button" aria-label={action.label} title="{action.label} ({action.shortcut})" onclick={() => onalign(action.id)}>
-            {@render alignIcon(action.id)}
-          </button>
-        {/each}
-        {@render distributeButtons(parts.count < 3)}
-        {@render flipButtons()}
-      </div>
-      <span class="sep" aria-hidden="true"></span>
-    {:else if fitting && fitting.count > 1}
-      <div class="icon-group" role="group" aria-label="Align">
-        {#each ALIGN_ACTIONS as action}
-          <button type="button" aria-label={action.label} title="{action.label} ({action.shortcut})" onclick={() => onalign(action.id)}>
-            {@render alignIcon(action.id)}
-          </button>
-        {/each}
-        {@render distributeButtons(fitting.count < 3)}
-      </div>
-      <span class="sep" aria-hidden="true"></span>
-    {/if}
     {#if groups}
       <SelectionOptions {groups} bind:keepRatio {onelementsize} {onelementrotate} {onresetsize} {onnamesize} {ontankprobe}
                         {onbranchparam} {onbranchname} {ondeviceparam} {network} {onconnect} {onadddevices} {onmedium} {onpipewidth} {onreverse} {onpipelayer} {onfittingreadout} {onmeterreadout} {onreadoutreset}
-                        {onfittingflip} {onfittingturn} {onfittingscale} {onfittingremove} {onfittingnamesize} {onreadoutscale} {onfittingname} {onedittext} {ontextstyle}/>
+                        {onfittingflip} {onfittingturn} {onvariables} {onfittingscale} {onfittingremove} {onfittingnamesize} {onreadoutscale} {onfittingname} {onedittext} {ontextstyle}/>
     {:else if furniture}
       <span>{furniture.label} · {furniture.roomName}</span>
       <button type="button" onclick={onfurnitureremove}>Remove</button>

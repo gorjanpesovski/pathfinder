@@ -1,7 +1,7 @@
 <script>
   let { tool, onpick, onimage, elementsOpen = false, ontoggleelements, showHints = true,
         tools = null, general = null, special = null, automations = false, canplacedoors = false, canfurnish = false, onplacedoors, onfurnish,
-        pipeLabel = null } = $props();
+        pipeLabel = null, variablesOpen = false, ontogglevariables = null } = $props();
 
   const PRIMARY = [
     { id: "select", label: "Select", key: "S", ready: true,
@@ -269,6 +269,20 @@
       {#if showHints}<span class="tooltip-hint">Open the element library: doors and furniture by category. Click one, then click inside a room to place it.</span>{/if}
     </span>
   </button>
+  {#if ontogglevariables}
+    <button type="button" class:active={variablesOpen} aria-label="Variables" aria-pressed={variablesOpen} onclick={ontogglevariables}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 4.5 C5.5 4.5 5.5 6 5.5 8 C5.5 10.5 4.5 12 3.5 12 C4.5 12 5.5 13.5 5.5 16 C5.5 18 5.5 19.5 8 19.5"/>
+        <path d="M16 4.5 C18.5 4.5 18.5 6 18.5 8 C18.5 10.5 19.5 12 20.5 12 C19.5 12 18.5 13.5 18.5 16 C18.5 18 18.5 19.5 16 19.5"/>
+        <path d="M9.5 9 L14.5 15 M14.5 9 L9.5 15"/>
+      </svg>
+      <span class="tooltip" role="tooltip">
+        <span class="tooltip-title">Variables</span>
+        {#if showHints}<span class="tooltip-hint">Show the variable names next to the tools. Drag a name onto an element or a value box to link it.</span>{/if}
+      </span>
+    </button>
+  {/if}
   {#if automations}
     <div class="divider" role="separator"></div>
     <button type="button" aria-label="Place doors" aria-disabled={!canplacedoors}

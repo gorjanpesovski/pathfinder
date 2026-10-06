@@ -1,7 +1,7 @@
 <script>
   import { portal } from "$lib/actions/portal.js";
 
-  let { pages, active, onselect, onadd, onrename, ondelete } = $props();
+  let { pages, active, onselect, onadd, onrename, ondelete, version = "", build = "", position = "" } = $props();
 
   let editing = $state(null);
   let menu = $state(null);
@@ -9,6 +9,11 @@
   function openMenu(event, page){
     event.preventDefault();
     menu = { page, x: event.clientX, y: event.clientY };
+  }
+
+  function menuAt(event, extra){
+    const box = event.currentTarget.getBoundingClientRect();
+    menu = { x: box.left, y: box.top, ...extra };
   }
 
   function closeMenu(event){
@@ -51,44 +56,88 @@
 
 <style>
   .page-tabs {
-    position: absolute;
-    left: 12px;
-    bottom: 12px;
-    z-index: 4;
+    display: flex;
+    align-items: stretch;
+    flex: none;
+    gap: 2px;
+    height: 40px;
+    padding: 0 8px;
+    overflow-x: auto;
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
+  }
+
+  .meta {
+    position: sticky;
+    right: 0;
     display: flex;
     align-items: center;
-    gap: 4px;
-    max-width: calc(100% - 24px);
-    padding: 4px;
-    overflow-x: auto;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.95);
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+    gap: 14px;
+    flex: none;
+    margin-left: auto;
+    padding: 0 6px 0 12px;
+    background: #f8fafc;
+    font-size: 11px;
+    font-weight: 500;
+    color: #94a3b8;
+  }
+
+  .position {
+    font-variant-numeric: tabular-nums;
+    color: #64748b;
+  }
+
+  .tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-right: 10px;
   }
 
   .tab {
     display: inline-flex;
     align-items: center;
     flex: none;
-    height: 26px;
-    border-radius: 5px;
     color: #475569;
   }
 
   .tab.active {
-    background: #eff6ff;
+    background: #e2eaf6;
     color: #1d4ed8;
-    box-shadow: inset 0 0 0 1px #93c5fd;
   }
 
   .tab:not(.active):hover {
-    background: #f1f5f9;
+    background: #eef2f7;
+  }
+
+  .caret {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 6px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .caret:hover {
+    background: rgba(37, 99, 235, 0.12);
+  }
+
+  .caret svg,
+  .icon svg {
+    width: 14px;
+    height: 14px;
   }
 
   .name {
-    height: 26px;
-    padding: 0 10px;
+    height: 100%;
+    padding: 0 14px;
     border: none;
     background: none;
     font-family: inherit;
@@ -159,26 +208,32 @@
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
   }
 
-  .add {
-    flex: none;
-    width: 26px;
-    height: 26px;
+  .icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 0;
     border: none;
     border-radius: 5px;
     background: none;
-    font-size: 16px;
     color: #475569;
     cursor: pointer;
   }
 
-  .add:hover {
-    background: #eff6ff;
-    color: #1d4ed8;
+  .icon:hover {
+    background: #e2e8f0;
+    color: #0f172a;
   }
 </style>
 
 <div class="page-tabs" role="tablist" aria-label="Pages">
+  <div class="tools">
+    <button type="button" class="icon" aria-label="Add page" title="Add page" onclick={onadd}>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3 V13 M3 8 H13"/></svg>
+    </button>
+  </div>
   {#each pages as page (page.id)}
     <div class="tab" class:active={page.id === active}>
       {#if editing === page.id}
@@ -187,10 +242,18 @@
       {:else}
         <button type="button" class="name" role="tab" aria-selected={page.id === active} title="Double-click to rename · right-click for more"
                 onclick={() => onselect(page.id)} ondblclick={() => editing = page.id} oncontextmenu={(e) => openMenu(e, page)}>{page.name}</button>
+        {#if page.id === active}
+          <button type="button" class="caret" aria-label="{page.name} options" title="Page options" onclick={(e) => menuAt(e, { page })}>
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 6 L12 6 L8 11 Z"/></svg>
+          </button>
+        {/if}
       {/if}
     </div>
   {/each}
-  <button type="button" class="add" aria-label="Add page" title="Add page" onclick={onadd}>+</button>
+  <div class="meta">
+    {#if position}<span class="position" title="Cursor position">{position}</span>{/if}
+    {#if version}<span title="Pathfinder {version}{build ? ` · commit ${build}` : ""}">{version}</span>{/if}
+  </div>
 </div>
 
 {#if menu}

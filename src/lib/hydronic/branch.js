@@ -1,6 +1,7 @@
 import { HYDRONIC_ELEMENTS } from "./elements.js";
 import { portPose } from "./route.js";
 import { fittingPose } from "./geometry.js";
+import { carryLinks } from "./variables.js";
 
 export const BRANCH_HEADER = {
   width: 240,
@@ -143,7 +144,7 @@ function along(element, pipe, distance){
 }
 
 function sizeOf(element){
-  return Math.min(1, branchScale(element), element.height / BRANCH_HEADER.height);
+  return Math.min(branchScale(element), element.height / BRANCH_HEADER.height);
 }
 
 function scaleOf(type, element){
@@ -233,6 +234,7 @@ export function rebuildBranch(element, pipes, nextId){
         readout: params.energy_metering ? (oldValve?.readout ?? "value") : "none",
         ...(oldValve?.type === type && oldValve.readouts ? { readouts: oldValve.readouts } : {}),
         ...(oldValve?.type === type && oldValve.flip !== undefined ? { flip: oldValve.flip } : {}),
+        ...(oldValve?.readoutScale ? { readoutScale: oldValve.readoutScale } : {}),
         readoutOffset: oldValve?.readoutOffset ?? readoutAt(element, role, type === "energyValve" ? 14 * scaleOf(type, element) : 50 * scaleOf(type, element), 100)
       }));
     }
@@ -241,13 +243,13 @@ export function rebuildBranch(element, pipes, nextId){
       const distance = valveSide === role ? AT.meterSame * k : head;
       fittings.push(autoFitting(nextId, "meterSensor", along(element, leg, distance), { scale: scaleOf("meterSensor", element), meter: valveSide === role ? "same" : "other" }));
     }
-    next.push({ ...leg, medium: media[role], fittings });
+    next.push({ ...leg, medium: media[role], fittings: carryLinks(fittings, leg.fittings ?? []) });
   }
 
   const bypass = pipes.find((pipe) => pipe.role === "bypass");
   if (params.bypass) {
     const pipe = crossPipe(element, legs, "bypass", AT.bypass * k, media.supply, Math.round(WIDTH.bypass * sizeOf(element) * 100) / 100, nextId, bypass);
-    next.push({ ...pipe, fittings: [...keep(pipe), autoFitting(nextId, "checkValve", 0.5, { scale: scaleOf("checkValve", element), flip: true })] });
+    next.push({ ...pipe, fittings: carryLinks([...keep(pipe), autoFitting(nextId, "checkValve", 0.5, { scale: scaleOf("checkValve", element), flip: true })], bypass?.fittings ?? []) });
   }
 
   const mix = pipes.find((pipe) => pipe.role === "mix");
@@ -278,9 +280,10 @@ export function branchHeaderParts(element){
     { text: params.power, color: muted },
     { text: params.flow, color: muted }
   ];
-  const last = cy - Math.max(outer + stroke / 2 + 10, TEXT.lift);
+  const k = branchScale(element);
+  const last = cy - Math.max(outer + stroke / 2 + 10 * k, TEXT.lift * k);
   return [
-    ...lines.map((line, index) => ({ kind: "text", text: line.text, x: cx, baseline: last - (lines.length - 1 - index) * TEXT.gap, size: TEXT.size, bold: !!line.bold, color: line.color, align: "center" })),
+    ...lines.map((line, index) => ({ kind: "text", text: line.text, x: cx, baseline: last - (lines.length - 1 - index) * TEXT.gap * k, size: TEXT.size * k, bold: !!line.bold, color: line.color, align: "center" })),
     { kind: "drain", cx, cy, outer, inner: BRANCH_HEADER.drain.inner * ratio, stroke }
   ];
 }

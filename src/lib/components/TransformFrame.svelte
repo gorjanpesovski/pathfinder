@@ -1,7 +1,7 @@
 <svelte:options namespace="svg"/>
 
 <script>
-  let { box, zoom, rotate = true, axis = null } = $props();
+  let { box, zoom, rotate = true, axis = null, corners = false } = $props();
 
   const COLOR = "#2563EB";
   const HANDLES = [
@@ -20,7 +20,7 @@
   let frame = $derived({ x: box.x - pad, y: box.y - pad, width: box.width + pad * 2, height: box.height + pad * 2 });
   let small = $derived(Math.min(box.width, box.height) * zoom < 36);
   let knob = $derived({ x: frame.x + frame.width / 2, y: frame.y - 26 * px });
-  let shown = $derived(HANDLES.filter((handle) => axis === "y" ? handle.id === "n" || handle.id === "s"
+  let shown = $derived(HANDLES.filter((handle) => axis === "y" ? handle.id === "n" || handle.id === "s" || (corners && handle.id.length === 2)
     : axis === "x" ? handle.id === "e" || handle.id === "w"
     : !small || handle.id.length === 2));
 </script>
@@ -51,7 +51,7 @@
     <rect class="handle" x={x - 4.5 * px} y={y - 4.5 * px} width={9 * px} height={9 * px} rx={1.5 * px}
           fill="#FFFFFF" stroke={COLOR} stroke-width="1.5" vector-effect="non-scaling-stroke"
           style="cursor: {handle.cursor}" data-transform={handle.id} role="presentation">
-      <title>Drag to scale · Shift keeps free proportions</title>
+      <title>{corners ? (handle.id.length === 2 ? "Drag to scale the whole branch" : "Drag to change the height") : "Drag to scale · Shift keeps free proportions"}</title>
     </rect>
   {/each}
   {#if rotate}
