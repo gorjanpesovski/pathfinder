@@ -21,7 +21,6 @@
     justify-content: center;
     min-width: 0;
     max-width: 240px;
-    margin-left: 14px;
     padding: 3px 10px;
     border: 1px solid #e2e8f0;
     border-radius: 7px;

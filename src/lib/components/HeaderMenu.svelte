@@ -31,14 +31,14 @@
   .trigger {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    height: 30px;
-    padding: 0 10px;
+    gap: 4px;
+    height: 26px;
+    padding: 0 8px;
     border: none;
-    border-radius: 6px;
+    border-radius: 5px;
     background: none;
     font-family: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     color: #334155;
     cursor: pointer;

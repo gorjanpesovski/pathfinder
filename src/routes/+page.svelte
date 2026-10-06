@@ -60,6 +60,7 @@
   import Modal from "$lib/components/Modal.svelte";
   import ProjectStatus from "$lib/components/ProjectStatus.svelte";
   import { rememberFile, recallFile, fileAccess, hashText } from "$lib/fileStore.js";
+  import { shiftIds, shiftImageId, importablePages, imageIdsIn } from "$lib/importPages.js";
   import IoView from "$lib/components/IoView.svelte";
   import ConnectExport from "$lib/components/ConnectExport.svelte";
   import WiringActions from "$lib/components/WiringActions.svelte";
@@ -80,7 +81,6 @@
   import { loadFlag, saveFlag, loadText, saveText } from "$lib/settings.js";
   import { shapeBox, translateShape, clampDelta, dragPointer, unionBox } from "$lib/tools/move.js";
   import { atviseDocument } from "$lib/export/atvise.js";
-
 
   const ELBOWS = [
     { id: "h", label: "Horizontal first" },
@@ -3717,7 +3717,7 @@
     pageSets = {};
     const next = APPS.some((entry) => entry.id === doc.app) ? doc.app : app;
     nextId = highestId({ apps: doc.apps, pages: doc.pages }) + 1;
-    const ready = (list) => anchorNames(nameFittings(migrateBranches(Array.isArray(list) ? list : [], () => nextId++)));
+    const ready = prepareShapes;
     for (const entry of APPS) {
       const appId = entry.id;
       if (!PAGED_APPS.includes(appId)) {
@@ -3911,6 +3911,58 @@
     showFileNotice(`Downloaded ${fileName}`);
   }
 
+  function prepareShapes(list){
+    return anchorNames(nameFittings(migrateBranches(Array.isArray(list) ? list : [], () => nextId++)));
+  }
+
+  async function readProjectFile(){
+    if (typeof window.showOpenFilePicker === "function") {
+      const [handle] = await window.showOpenFilePicker({ types: FILE_TYPES, id: PICKER_ID });
+      return { text: await (await handle.getFile()).text(), name: handle.name };
+    }
+    const text = await pickFileText();
+    return { text, name: pickedFileName };
+  }
+
+  async function importPages(){
+    const set = pageSets[app];
+    if (!set) return;
+    try {
+      const file = await readProjectFile();
+      const doc = parseDocument(file.text);
+      const pages = importablePages(doc, app);
+      if (!pages.length) {
+        showFileNotice(`${file.name} has no ${currentApp.label} pages to import`);
+        return;
+      }
+      const offset = nextId;
+      const shifted = pages.map((page) => ({ ...page, shapes: shiftIds(page.shapes, offset) }));
+      nextId = highestId(shifted) + 1;
+      const images = { ...imageSources };
+      for (const page of pages) {
+        for (const imageId of imageIdsIn(page.shapes)) if (doc.images?.[imageId]) images[shiftImageId(imageId, offset)] = doc.images[imageId];
+      }
+      imageSources = images;
+      stashCurrent();
+      const taken = new Set(set.list.map((page) => page.name));
+      let first = null;
+      for (const page of shifted) {
+        let name = page.name;
+        for (let index = 2; taken.has(name); index += 1) name = `${page.name} (${index})`;
+        taken.add(name);
+        const id = newPageId();
+        first ??= id;
+        set.list.push({ id, name });
+        documents[`${app}:${id}`] = { shapes: prepareShapes(page.shapes), history: null };
+      }
+      set.active = first;
+      loadStashed(stashKey(app));
+      showFileNotice(`Imported ${shifted.length} page${shifted.length === 1 ? "" : "s"} from ${file.name}`);
+    } catch (error) {
+      if (error?.name !== "AbortError") showFileNotice(`Could not import: ${error.message}`);
+    }
+  }
+
   function pickFileText(){
     return new Promise((resolve, reject) => {
       const input = document.createElement("input");
@@ -4068,6 +4120,12 @@
     { label: "Settings…", hint: "Canvas, grid, colours and export paths", onclick: () => showDisplaySettings = true }
   ]);
 
+  let importItems = $derived([
+    app !== "electrical" ? { label: "Image…", hint: "A picture or plan on this page (pasting one works too)", onclick: openImagePicker } : null,
+    pageSet ? { label: "Pages from another project…", hint: `Copy the ${currentApp.label} pages of another project file into this one`, onclick: importPages } : null,
+    app === "electrical" ? { note: "Wiring is drawn from the IO list with From IO list… on the right." } : null
+  ]);
+
   let exportItems = $derived([
     app !== "electrical" ? { label: "Copy SVG", hint: "atvise SVG of this page, to the clipboard", disabled: shapes.length === 0, onclick: handleExport } : null,
     currentApp.exports.includes("pgd") ? { label: "Copy pGD page", hint: "pGD page code (wgtPage), to the clipboard", disabled: shapes.length === 0, onclick: copyPgd } : null,
@@ -4157,7 +4215,8 @@
   }
 
   .header{
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
     height: 44px;
     padding: 0 12px;
@@ -4173,7 +4232,6 @@
 
   .header-left {
     display: flex;
-    flex: 1 1 auto;
     align-items: center;
     gap: 6px;
     min-width: 0;
@@ -4181,16 +4239,12 @@
 
   .header-right {
     display: flex;
-    flex: 1 1 0;
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
     min-width: 0;
   }
 
-  .header > :global(.app-switcher) {
-    flex: none;
-  }
 
   .logo-section {
     display: flex;
@@ -5029,14 +5083,15 @@
     <nav class="menus" aria-label="Main menu">
       <HeaderMenu label="File" items={fileItems} width={290}
                   status={{ label: "Saving to", value: fileHandle?.name ?? null, empty: "Not saved to a file yet" }}/>
+      <HeaderMenu label="Import" items={importItems} width={290}/>
       <HeaderMenu label="Export" items={exportItems} width={290}/>
     </nav>
-    <ProjectStatus name={projectTitle} fileName={fileHandle?.name ?? null} status={projectStatus} onresume={resumeAutosave}/>
   </div>
 
   <AppSwitcher apps={APPS} current={app} onswitch={switchApp} view={ioOpen ? "io" : "drawing"} onview={(id) => ioOpen = id === "io"}/>
 
   <div class="header-right">
+    <ProjectStatus name={projectTitle} fileName={fileHandle?.name ?? null} status={projectStatus} onresume={resumeAutosave}/>
     {#if app === "electrical"}
       <button class="header-action" type="button" onclick={() => wiringOpen = true}
               title="Draw the controller terminals of IO points that are not in the drawing yet">From IO list…</button>
