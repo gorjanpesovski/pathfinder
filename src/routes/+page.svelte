@@ -3592,6 +3592,17 @@
     if (next !== "select") selectedId = null;
   }
 
+  function deleteSelected(){
+    if (activeFitting) {
+      const mixed = selectionIds.length > 0;
+      removeFitting();
+      if (mixed) deleteSelection();
+      return;
+    }
+    if (selectionIds.length > 1) deleteSelection();
+    else if (selectedId !== null) removeShape(selectedId);
+  }
+
   function removeShape(id){
     shapes = shapes.filter((shape) => shape.id !== id);
     shapes = pruneDangling(shapes);
@@ -4219,6 +4230,28 @@
   let linksOpen = $state(false);
   let showVariablePanel = $derived(variablePanel && app === "hydronic");
   let draggingVariable = $state(null);
+  let variableFocus = $state({ query: "", hover: null });
+  let canvasFocus = $derived.by(() => {
+    if (!showVariablePanel || draggingVariable) return null;
+    const { query, hover } = variableFocus;
+    if (!query && !hover) return null;
+    return { names: query ? variableNames.filter((name) => name.toLowerCase().includes(query)) : null, hover };
+  });
+  let selectedVariables = $derived.by(() => {
+    if (!showVariablePanel) return [];
+    const found = new Set();
+    const add = (name) => name && found.add(name);
+    for (const shape of selectedShapes) {
+      if (shape?.kind !== "equipment") continue;
+      add(shape.variable);
+      Object.values(shape.probeVariables ?? {}).forEach(add);
+    }
+    for (const { fitting } of fittingGroup) {
+      add(fitting.variable);
+      Object.values(fitting.readoutVariables ?? {}).forEach(add);
+    }
+    return [...found];
+  });
   let linkHover = $state(null);
   let variableUse = $derived(variablesOpen || linksOpen || showVariablePanel ? variableUsage(pageShapes("hydronic")) : new Map());
   let linkTarget = $derived.by(() => {
@@ -5477,7 +5510,8 @@
            onplacedoors={placeDoors} onfurnish={furnishOffices}
            variablesOpen={showVariablePanel} ontogglevariables={app === "hydronic" ? () => variablePanel = !variablePanel : null}/>
   {#if showVariablePanel}
-    <VariablePanel names={variableNames} usage={variableUse} dragging={draggingVariable}
+    <VariablePanel names={variableNames} usage={variableUse} dragging={draggingVariable} selected={selectedVariables}
+                   onfocus={(value) => variableFocus = value}
                    onmanage={() => variablesOpen = true} onclose={() => variablePanel = false}
                    ondrag={(name) => { draggingVariable = name; if (!name) linkHover = null; }}/>
   {/if}
@@ -5596,7 +5630,7 @@
                    placing={placingOptions} onrotateplacing={rotatePlacing}
                    fitting={fittingOptions} medium={pipeMedium} onmedium={setMedium}
                    pipewidth={pipeThickness} onpipewidth={setPipeWidth} onedittext={editSelectedText} ontextstyle={setTextStyle}
-                   onfittingflip={flipFitting} onfittingturn={turnFitting} onvariables={linkTarget ? () => linksOpen = true : null} onfittingremove={removeFitting}
+                   onfittingflip={flipFitting} onfittingturn={turnFitting} onvariables={linkTarget ? () => linksOpen = true : null} ondelete={deleteSelected}
                    onfittingscale={setFittingScale} onreverse={reversePipes} onpipelayer={pipeLayer}
                    onresetsize={resetElementSize}
                    onfittingreadout={setFittingReadout} onmeterreadout={setMeterReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName} ondeviceparam={setDeviceParam}
@@ -5659,7 +5693,7 @@
                        selectedFittings={fittingGroup.map((entry) => ({ pipeId: entry.pipe.id, fittingId: entry.fitting.id }))}
                        {placement} style={hydronicStyle} hidden={pipeDraft?.rewire?.pipeId ?? null}
                        showPorts={!!pipeDraft?.rewire} readouts={readoutBoxes} renaming={renamingElementId} renamingFitting={renamingFitting} guide={pipeAim.guide} {branchEditing}
-                       linking={draggingVariable ? { hover: linkHover } : null}/>
+                       linking={draggingVariable ? { hover: linkHover } : null} focus={canvasFocus}/>
 
         <TextLayer {shapes} selectedIds={selectionIds} interactive={tool === "select"} zoom={viewport.zoom} hidden={editingTextId}/>
 

@@ -54,6 +54,10 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
     elements: elements.length ? {
       count: elements.length,
       label: common(elements, (element) => HYDRONIC_ELEMENTS[element.type].label),
+      type: common(elements, (element) => element.type),
+      scaled: sameKind(elements, (element) => HYDRONIC_ELEMENTS[element.type].noPorts && element.type)
+        ? { base: HYDRONIC_ELEMENTS[elements[0].type].width, percent: common(elements, (element) => Math.round(element.width / HYDRONIC_ELEMENTS[element.type].width * 100)), shown: Math.round(elements[0].width / HYDRONIC_ELEMENTS[elements[0].type].width * 100) }
+        : null,
       width: common(elements, (element) => tenth(element.width)),
       height: common(elements, (element) => tenth(element.height)),
       labelled: labelled.length,
@@ -79,6 +83,7 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
       count: fittings.length,
       name: fittings.length === 1 ? fittings[0].fitting.name ?? "" : null,
       label: common(fittings, (entry) => HYDRONIC_ELEMENTS[entry.fitting.type]?.label ?? entry.fitting.type),
+      type: common(fittings, (entry) => entry.fitting.type),
       scale: common(fittings, (entry) => entry.fitting.scale ?? 1),
       shownScale: fittings[0].fitting.scale ?? 1,
       measured: plain.length,

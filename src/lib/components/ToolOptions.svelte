@@ -2,6 +2,7 @@
   import { ROOM_CATEGORIES } from "$lib/tools/categories.js";
   import { MIN_DOOR_WIDTH, DOOR_TYPES } from "$lib/tools/doors.js";
   import SelectionOptions from "./SelectionOptions.svelte";
+  import { tooltips } from "$lib/actions/tooltips.js";
   import MediumPicker from "./MediumPicker.svelte";
 
   let {
@@ -26,7 +27,6 @@
     onfittingflip,
     onfittingturn,
     onvariables = null,
-    onfittingremove,
     onfittingscale,
     onfittingreadout,
     onmeterreadout,
@@ -69,7 +69,8 @@
     onkind,
     onlabelsize,
     onhideedges,
-    onshowname
+    onshowname,
+    ondelete
   } = $props();
 
   const NAMES = {
@@ -135,6 +136,18 @@
     white-space: nowrap;
     font-size: 12px;
     color: #475569;
+  }
+
+  .tool-options.fixed {
+    flex-wrap: nowrap;
+  }
+
+  .tool-options.fixed > * {
+    flex-shrink: 0;
+  }
+
+  .tool-options.fixed > :global(.bar) {
+    flex-shrink: 1;
   }
 
   .tool-name {
@@ -255,23 +268,25 @@
 {#snippet kindSwitch()}
   {#if selection?.kinds}
     <div class="segmented" role="group" aria-label="Shape type">
-      <button type="button" class:active={selection.kinds === "floor"} aria-pressed={selection.kinds === "floor"}
-              title="Turn into a floor outline" onclick={() => onkind("floor")}>Floor</button>
-      <button type="button" class:active={selection.kinds === "room"} aria-pressed={selection.kinds === "room"}
-              title="Turn into a room" onclick={() => onkind("room")}>Room</button>
+      <button type="button" class:active={selection.kinds === "floor"} aria-pressed={selection.kinds === "floor"} onclick={() => onkind("floor")}>Floor</button>
+      <button type="button" class:active={selection.kinds === "room"} aria-pressed={selection.kinds === "room"} onclick={() => onkind("room")}>Room</button>
     </div>
   {/if}
 {/snippet}
 
-<div class="tool-options">
-  <span class="tool-name">{NAMES[tool] ?? tool}</span>
+<div class="tool-options" class:fixed={tool === "select" && !!groups} use:tooltips>
+  {#if !(tool === "select" && groups)}
+    <span class="tool-name">{NAMES[tool] ?? tool}</span>
+  {/if}
 
   {#if tool === "select"}
-    <span class="sep" aria-hidden="true"></span>
+    {#if !groups}
+      <span class="sep" aria-hidden="true"></span>
+    {/if}
     {#if groups}
       <SelectionOptions {groups} bind:keepRatio {onelementsize} {onelementrotate} {onresetsize} {onnamesize} {ontankprobe}
                         {onbranchparam} {onbranchname} {ondeviceparam} {network} {onconnect} {onadddevices} {onmedium} {onpipewidth} {onreverse} {onpipelayer} {onfittingreadout} {onmeterreadout} {onreadoutreset}
-                        {onfittingflip} {onfittingturn} {onvariables} {onfittingscale} {onfittingremove} {onfittingnamesize} {onreadoutscale} {onfittingname} {onedittext} {ontextstyle}/>
+                        {onfittingflip} {onfittingturn} {onvariables} {onfittingscale} {onfittingnamesize} {onreadoutscale} {onfittingname} {onedittext} {ontextstyle} {ondelete}/>
     {:else if furniture}
       <span>{furniture.label} · {furniture.roomName}</span>
       <button type="button" onclick={onfurnitureremove}>Remove</button>

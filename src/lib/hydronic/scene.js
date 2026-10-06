@@ -159,7 +159,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   const equipment = shapes.filter((shape) => shape.kind === "equipment" && HYDRONIC_ELEMENTS[shape.type]);
   const bars = equipment.filter((element) => HYDRONIC_ELEMENTS[element.type].bar);
   const solids = equipment.filter((element) => !HYDRONIC_ELEMENTS[element.type].bar);
-  const { crossings: allCrossings, junctions, arrows } = pipeDecorations(pipes, style);
+  const { crossings: allCrossings, junctions, arrows } = pipeDecorations(pipes, style, bars);
   const electricPipes = new Set(pipes.filter(({ pipe }) => mediumOf(pipe.medium).electric).map(({ pipe }) => pipe.id));
   const crossings = allCrossings.filter((crossing) => !electricPipes.has(crossing.upper) && !electricPipes.has(crossing.lower));
   const refsOf = relayRefs(equipment);
@@ -218,14 +218,15 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
       height: upright.height,
       rotation: rotationOf(element),
       mirror: element.mirror?.x || element.mirror?.y ? { x: !!element.mirror.x, y: !!element.mirror.y } : null,
-      args: elementArgs(element, style.nodePrefix)
+      args: elementArgs(element, style.nodePrefix),
+      variable: element.variable ?? null
     };
     const spec = HYDRONIC_ELEMENTS[element.type];
     items.push(spec.electric ? { kind: "electric", ...base, svg: electricSvg(element, refsOf(element)) }
       : spec.branch ? { kind: "branch", ...base, element, parts: branchHeaderParts(element) }
       : spec.generic ? { kind: "generic", ...base, x: element.x, y: element.y, name: element.name ?? "", fontSize: genericFont(element) }
       : spec.device ? { kind: "device", ...base, device: spec.device, x: element.x, y: element.y, name: element.name ?? "", address: base.args.ip ?? "" }
-      : { kind: "icon", ...base, variable: element.variable ?? null });
+      : { kind: "icon", ...base });
   }
 
   for (const element of solids) {

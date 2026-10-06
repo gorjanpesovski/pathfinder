@@ -31,6 +31,7 @@
     guide = null,
     branchEditing = false,
     linking = null,
+    focus = null,
     style = HYDRONIC_STYLE
   } = $props();
 
@@ -80,6 +81,38 @@
   }
 
   const LINKED = "#16A34A";
+  const FOCUS = "#2563EB";
+
+  let focusNames = $derived(focus?.names ? new Set(focus.names) : null);
+  let focusHits = $derived.by(() => {
+    if (!focus) return [];
+    return scene.filter((item) => item.variable && ((focusNames && focusNames.has(item.variable)) || item.variable === focus.hover));
+  });
+  let focusKeep = $derived.by(() => {
+    const keep = new Set();
+    for (const item of focusHits) {
+      if (focusNames && !focusNames.has(item.variable)) continue;
+      keep.add(item.id);
+      keep.add(`${item.id}_label`);
+      if (item.id.endsWith("_value")) keep.add(item.id.slice(0, -"_value".length));
+      if (item.elementId !== undefined && item.kind !== "field") keep.add(`element:${item.elementId}`);
+      if (item.fittingId !== undefined) keep.add(`fitting:${item.fittingId}`);
+    }
+    return keep;
+  });
+
+  function faded(item){
+    if (!focusNames) return false;
+    if (focusKeep.has(item.id)) return false;
+    if (item.ref?.elementId !== undefined && focusKeep.has(`element:${item.ref.elementId}`)) return false;
+    if (item.ref?.fittingId !== undefined && focusKeep.has(`fitting:${item.ref.fittingId}`)) return false;
+    return true;
+  }
+
+  function focusBox(item){
+    if (item.kind === "field") return { x: item.x, y: item.y, width: item.width, height: item.height, cx: item.x + item.width / 2, cy: item.y + item.height / 2, rotation: 0 };
+    return { x: item.cx - item.width / 2, y: item.cy - item.height / 2, width: item.width, height: item.height, cx: item.cx, cy: item.cy, rotation: item.rotation ?? 0 };
+  }
 
   let linkFields = $derived(linking ? scene.filter((item) => item.kind === "field" && item.link) : []);
   let linkElements = $derived(linking ? equipment.filter((element) => !HYDRONIC_ELEMENTS[element.type].device && !HYDRONIC_ELEMENTS[element.type].electric) : []);
@@ -106,6 +139,20 @@
 
   .readout-hit:hover {
     fill: rgba(147, 197, 253, 0.18);
+  }
+
+  .focus-fade {
+    transition: opacity 0.15s ease;
+  }
+
+  .focus-mark {
+    animation: focus-in 0.15s ease both;
+  }
+
+  @keyframes focus-in {
+    from {
+      opacity: 0;
+    }
   }
 
   .link-target {
@@ -284,9 +331,27 @@
 <g class="hydronic-layer">
   <g pointer-events="none">
     {#each scene as item (item.id)}
-      {@render visual(item)}
+      {#if focusNames}
+        <g class="focus-fade" opacity={faded(item) ? 0.2 : 1}>{@render visual(item)}</g>
+      {:else}
+        {@render visual(item)}
+      {/if}
     {/each}
   </g>
+
+  {#if focusHits.length}
+    <g pointer-events="none">
+      {#each focusHits as item (item.id)}
+        {@const box = focusBox(item)}
+        {@const strong = item.variable === focus.hover}
+        {@const pad = (item.kind === "field" ? 3 : 5) * px}
+        <rect class="focus-mark" class:strong x={box.x - pad} y={box.y - pad} width={box.width + pad * 2} height={box.height + pad * 2} rx={4 * px}
+              transform={box.rotation ? `rotate(${box.rotation} ${box.cx} ${box.cy})` : undefined}
+              fill={strong ? "rgba(37, 99, 235, 0.14)" : "rgba(37, 99, 235, 0.05)"} stroke={FOCUS} stroke-width={strong ? 2.5 : 1.5}
+              vector-effect="non-scaling-stroke"/>
+      {/each}
+    </g>
+  {/if}
 
   {#each pipes as pipe (pipe.id)}
     {@const d = routePath(drawn.get(pipe.id))}

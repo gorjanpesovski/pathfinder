@@ -1,5 +1,7 @@
 <script>
-  let { names, usage, dragging = null, onmanage, onclose, ondrag } = $props();
+  import { onDestroy, tick } from "svelte";
+
+  let { names, usage, dragging = null, selected = [], onmanage, onclose, ondrag, onfocus = () => {} } = $props();
 
   const FILTERS = [
     { id: "all", label: "All" },
@@ -7,7 +9,63 @@
     { id: "linked", label: "Linked" }
   ];
 
+  const MIN_WIDTH = 200;
+  const MAX_WIDTH = 640;
+  const DEFAULT_WIDTH = 260;
+  const WIDTH_KEY = "pathfinder.variablePanelWidth";
+
+  let width = $state(storedWidth());
+
+  function storedWidth(){
+    try {
+      const value = Number(localStorage.getItem(WIDTH_KEY));
+      return value >= MIN_WIDTH && value <= MAX_WIDTH ? value : DEFAULT_WIDTH;
+    } catch {
+      return DEFAULT_WIDTH;
+    }
+  }
+
+  function setWidth(value){
+    width = Math.round(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, value)));
+    try {
+      localStorage.setItem(WIDTH_KEY, String(width));
+    } catch {}
+  }
+
+  function startResize(event){
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const startX = event.clientX;
+    const startWidth = width;
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch {}
+    const move = (next) => setWidth(startWidth + next.clientX - startX);
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  }
+
   let search = $state("");
+  let hovered = $state(null);
+  let list = $state(null);
+  let picked = $derived(new Set(selected));
+
+  $effect(() => {
+    onfocus({ query: search.trim().toLowerCase(), hover: hovered });
+  });
+
+  $effect(() => {
+    if (!picked.size || !list) return;
+    tick().then(() => list?.querySelector("li.selected")?.scrollIntoView({ block: "nearest" }));
+  });
+
+  onDestroy(() => onfocus({ query: "", hover: null }));
   let filter = $state("all");
   let linked = $derived(names.filter((name) => usage.has(name)).length);
   let shown = $derived(names.filter((name) => {
@@ -26,6 +84,7 @@
 
 <style>
   .variable-panel {
+    position: relative;
     grid-area: vars;
     width: 260px;
     height: 100%;
@@ -38,6 +97,38 @@
     box-sizing: border-box;
     min-height: 0;
     font-size: 12px;
+  }
+
+  .resize {
+    position: absolute;
+    top: 0;
+    right: -4px;
+    bottom: 0;
+    z-index: 2;
+    width: 8px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+
+  .resize::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 3px;
+    width: 2px;
+    background: transparent;
+    transition: background-color 0.15s ease;
+  }
+
+  .resize:hover::after,
+  .resize:focus-visible::after,
+  .resize:active::after {
+    background: #93c5fd;
+  }
+
+  .resize:focus-visible {
+    outline: none;
   }
 
   .head {
@@ -155,6 +246,16 @@
     background: #dbeafe;
   }
 
+  li.selected {
+    background: #dbeafe;
+    box-shadow: inset 2px 0 0 #2563eb;
+  }
+
+  li.selected .name {
+    color: #1d4ed8;
+    font-weight: 600;
+  }
+
   .name {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -215,7 +316,7 @@
   }
 </style>
 
-<aside class="variable-panel" aria-label="Variables">
+<aside class="variable-panel" aria-label="Variables" style:width="{width}px">
   <div class="head">
     <h2>Variables</h2>
     {#if names.length}<span class="count">{linked}/{names.length} linked</span>{/if}
@@ -240,10 +341,10 @@
     </div>
   {/if}
 
-  <ul>
+  <ul bind:this={list}>
     {#each shown as name (name)}
-      <li draggable="true" class:dragging={dragging === name}
-          title={usage.has(name) ? `${name}\nLinked to ${usage.get(name).join(", ")}` : `${name}\nDrag onto an element or value box`}
+      <li draggable="true" class:dragging={dragging === name} class:selected={picked.has(name)}
+          onpointerenter={() => hovered = name} onpointerleave={() => hovered === name && (hovered = null)}
           ondragstart={(e) => start(e, name)} ondragend={() => ondrag(null)}>
         <span class="dot" class:used={usage.has(name)} aria-hidden="true"></span>
         <span class="name">{name}</span>
@@ -260,7 +361,8 @@
     {/each}
   </ul>
 
-  {#if names.length}
-    <p class="hint">Drag a name onto an element or a value box. Dropping on a linked one replaces its variable.</p>
-  {/if}
+  <div class="resize" role="separator" aria-orientation="vertical" aria-label="Resize variables panel" aria-valuenow={width}
+       aria-valuemin={MIN_WIDTH} aria-valuemax={MAX_WIDTH} tabindex="0"
+       onpointerdown={startResize} ondblclick={() => setWidth(DEFAULT_WIDTH)}
+       onkeydown={(e) => { if (e.key === "ArrowLeft") setWidth(width - 20); if (e.key === "ArrowRight") setWidth(width + 20); }}></div>
 </aside>

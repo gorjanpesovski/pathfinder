@@ -1,5 +1,5 @@
 import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE } from "./elements.js";
-import { routePoint, pipeCrossings, arrowMarks, orientAngle, fittingRotation, fittingSpot } from "./route.js";
+import { routePoint, pipeCrossings, arrowMarks, orientAngle, fittingRotation, fittingSpot, isFreeEnd } from "./route.js";
 
 export { orientAngle };
 
@@ -22,7 +22,35 @@ function pipeScale(pipe, style = HYDRONIC_STYLE){
   return pipeWidthOf(pipe, style) / style.pipeWidth;
 }
 
-export function pipeDecorations(pipes, style = HYDRONIC_STYLE){
+function round2(value){
+  return Math.round(value * 100) / 100;
+}
+
+function endArrows(pipe, route, size, bars){
+  if (route.length < 2) return [];
+  const onBar = (point) => bars.some((bar) => point.x >= bar.x - 1 && point.x <= bar.x + bar.width + 1 && point.y >= bar.y - 1 && point.y <= bar.y + bar.height + 1);
+  const mark = (end, toward) => {
+    const dx = toward.x - end.x;
+    const dy = toward.y - end.y;
+    const length = Math.hypot(dx, dy);
+    if (length < size * 1.5) return null;
+    return { ux: dx / length, uy: dy / length, x: round2(end.x + dx / length * size / 2), y: round2(end.y + dy / length * size / 2) };
+  };
+  const marks = [];
+  const first = route[0];
+  const last = route[route.length - 1];
+  if (isFreeEnd(pipe.from) && !onBar(first)) {
+    const spot = mark(first, route[1]);
+    if (spot) marks.push({ x: spot.x, y: spot.y, angle: Math.round(Math.atan2(spot.uy, spot.ux) * 180 / Math.PI), end: "from" });
+  }
+  if (isFreeEnd(pipe.to) && !onBar(last)) {
+    const spot = mark(last, route[route.length - 2]);
+    if (spot) marks.push({ x: spot.x, y: spot.y, angle: Math.round(Math.atan2(-spot.uy, -spot.ux) * 180 / Math.PI), end: "to" });
+  }
+  return marks;
+}
+
+export function pipeDecorations(pipes, style = HYDRONIC_STYLE, bars = []){
   const crossings = pipeCrossings(pipes.map(({ pipe, route }) => ({ id: pipe.id, route })));
   const byId = new Map(pipes.map(({ pipe }) => [pipe.id, pipe]));
   const margin = style.gapSize - style.pipeWidth;
@@ -47,7 +75,9 @@ export function pipeDecorations(pipes, style = HYDRONIC_STYLE){
       ...crossings.filter((crossing) => crossing.upper === pipe.id || crossing.lower === pipe.id),
       ...junctions.filter((junction) => junction.host === pipe.id || junction.pipeId === pipe.id)
     ];
-    arrows.set(pipe.id, arrowMarks(route, avoid, size * 1.8, Math.max(40, 100 * pipeScale(pipe, style))).map((mark) => ({ ...mark, size })));
+    const ends = endArrows(pipe, route, size, bars);
+    const middle = arrowMarks(route, [...avoid, ...ends.map((end) => ({ x: end.x, y: end.y, radius: size * 4 }))], size * 1.8, Math.max(40, 100 * pipeScale(pipe, style)));
+    arrows.set(pipe.id, [...ends, ...middle].map((mark) => ({ ...mark, size })));
   }
   return { crossings, junctions, arrows };
 }
