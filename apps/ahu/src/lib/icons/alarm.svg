@@ -1,0 +1,62 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+<svg height="80" id="svg2390" inkscape:output_extension="org.inkscape.output.svg.inkscape" inkscape:version="0.46" sodipodi:docname="warning.svg" sodipodi:version="0.32" version="1.0" width="80" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:ns1="http://sozi.baierouge.fr" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs/>
+ <sodipodi:namedview bordercolor="#666666" borderopacity="1.0" gridtolerance="10000" guidetolerance="10" id="base" inkscape:current-layer="layer1" inkscape:cx="109.81659" inkscape:cy="62.58939" inkscape:document-units="px" inkscape:pageopacity="0.0" inkscape:pageshadow="2" inkscape:window-height="715" inkscape:window-width="640" inkscape:window-x="950" inkscape:window-y="392" inkscape:zoom="1.979899" objecttolerance="10" pagecolor="#ffffff" showgrid="false"/>
+ <g atv:refpx="39.949" atv:refpy="39.821" id="layer1" inkscape:groupmode="layer" inkscape:label="Layer 1" transform="matrix(1,0,0,1,-21.913,-16.984)">
+  <g atv:refpx="61.862" atv:refpy="56.749" id="g2387" inkscape:export-filename="/home/mgsmith/Desktop/warning.png" inkscape:export-xdpi="90" inkscape:export-ydpi="90" transform="matrix(.45541 0 0 .45541 26.271 23.868)">
+   <path atv:refpx="78.151" atv:refpy="72.201" d="M12.473,121.08C11.559,122.84 10.482,124.49 10.482,126.42L10.491,127.23C10.491,131.4 13.757,133.92 17.511,133.92L138.831,133.92C142.59,133.92 145.821,130.8 145.821,126.63L145.781,125.82C145.781,123.88 144.831,122.2 143.791,120.47L83.707,12.69C81.051,9.744 76.747,9.744 74.092,12.694L12.473,121.084Z" fill="#ffd42a" id="path2389" sodipodi:nodetypes="ccccccccccc" stroke="#000000" stroke-width="6.8314"/>
+  </g>
+  <path atv:refpx="62.514" atv:refpy="74.105" d="M66.873,74.105C66.881,75.668 66.052,77.115 64.7,77.898C63.348,78.682 61.68,78.682 60.328,77.898C58.976,77.115 58.147,75.668 58.154,74.105C58.147,72.542 58.976,71.095 60.328,70.311C61.68,69.528 63.348,69.528 64.7,70.311C66.052,71.095 66.881,72.542 66.873,74.105" fill="#000000" id="path2393" inkscape:export-filename="/home/mgsmith/Desktop/warning.png" inkscape:export-xdpi="90" inkscape:export-ydpi="90" sodipodi:cx="23.921297" sodipodi:cy="74.47538" sodipodi:rx="8.0416269" sodipodi:ry="8.0416269" sodipodi:type="arc"/>
+  <path atv:refpx="62.38" atv:refpy="55.684" d="M62.486,43.817C64.199,43.817 66.857,45.182 66.857,46.877L65.578,64.492C65.578,66.187 64.199,67.552 62.486,67.552C60.773,67.552 59.395,66.187 59.395,64.492L57.902,46.877C57.902,45.182 60.773,43.817 62.486,43.817" fill="#000000" id="path2395" inkscape:export-filename="/home/mgsmith/Desktop/warning.png" inkscape:export-xdpi="90" inkscape:export-ydpi="90" sodipodi:nodetypes="cccsccc"/>
+ </g>
+ <metadata>
+  <rdf:RDF>
+   <cc:Work>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <cc:license rdf:resource="http://creativecommons.org/licenses/publicdomain/"/>
+    <dc:publisher>
+     <cc:Agent rdf:about="http://openclipart.org/">
+      <dc:title>Openclipart</dc:title>
+     </cc:Agent>
+    </dc:publisher>
+    <dc:title>warning icon</dc:title>
+    <dc:date>2010-03-03T13:31:08</dc:date>
+    <dc:description>A very simple warning icon that can be scaled down fairly small and still be recognizable.</dc:description>
+    <dc:source>https://openclipart.org/detail/29833/warning-icon-by-matthewgarysmith</dc:source>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>matthewgarysmith</dc:title>
+     </cc:Agent>
+    </dc:creator>
+    <dc:subject>
+     <rdf:Bag>
+      <rdf:li>icon</rdf:li>
+      <rdf:li>sign</rdf:li>
+      <rdf:li>warning</rdf:li>
+      <rdf:li>yellow</rdf:li>
+     </rdf:Bag>
+    </dc:subject>
+   </cc:Work>
+   <cc:License rdf:about="http://creativecommons.org/licenses/publicdomain/">
+    <cc:permits rdf:resource="http://creativecommons.org/ns#Reproduction"/>
+    <cc:permits rdf:resource="http://creativecommons.org/ns#Distribution"/>
+    <cc:permits rdf:resource="http://creativecommons.org/ns#DerivativeWorks"/>
+   </cc:License>
+  </rdf:RDF>
+  <atv:gridconfig enabled="false" gridstyle="lines" height="20" width="20"/>
+  <atv:snapconfig enabled="false" height="10" width="10"/>
+ </metadata>
+ <script atv:desc="" atv:name="" type="text/ecmascript"><![CDATA[webMI.data.subscribe(webMI.query["base"], function(e) {
+var id = "layer1";
+var value = e.value;
+if (value == false)
+	webMI.gfx.setVisible(id, false);
+if (value == true)
+	webMI.gfx.setVisible(id, {0:true,3:false,6:true,9:false});
+
+});
+
+]]></script>
+</svg>

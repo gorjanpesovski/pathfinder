@@ -11,10 +11,10 @@ const modules = import.meta.glob("./icons/*.svg", {
     eager: true
 });
 
-function buildSymbol(name, source) {
+function parseIcon(name, source) {
     const rootTag = source.match(/<svg\b[^>]*>/)[0];
-    const width = rootTag.match(/\swidth="([\d.]+)"/)[1];
-    const height = rootTag.match(/\sheight="([\d.]+)"/)[1];
+    const width = Number(rootTag.match(/\swidth="([\d.]+)"/)[1]);
+    const height = Number(rootTag.match(/\sheight="([\d.]+)"/)[1]);
 
     const body = source
         .slice(source.indexOf(rootTag) + rootTag.length, source.lastIndexOf("</svg>"))
@@ -22,11 +22,18 @@ function buildSymbol(name, source) {
         .replace(/<metadata\b[^>]*\/>|<metadata\b[\s\S]*?<\/metadata>/g, "")
         .replace(/\sid="([^"]*)"/g, ` id="${name}__$1"`);
 
-    return `<symbol id="icon-${name}" viewBox="0 0 ${width} ${height}">${body}</symbol>`;
+    return { width, height, body };
 }
 
-const symbols = Object.entries(modules)
-    .map(([path, source]) => buildSymbol(path.match(/([^/]+)\.svg$/)[1], source))
+export const ICONS = Object.fromEntries(
+    Object.entries(modules).map(([path, source]) => {
+        const name = path.match(/([^/]+)\.svg$/)[1];
+        return [name, parseIcon(name, source)];
+    })
+);
+
+const symbols = Object.entries(ICONS)
+    .map(([name, icon]) => `<symbol id="icon-${name}" viewBox="0 0 ${icon.width} ${icon.height}">${icon.body}</symbol>`)
     .join("");
 
 // width/height 0 rather than display:none — a hidden sprite still has to be

@@ -1,20 +1,38 @@
 <script>
+  import { tick } from "svelte";
+  import { backOut, cubicIn } from "svelte/easing";
   import { base } from "$app/paths";
   import { ICON_SPRITE } from "$lib/iconSprite.js";
   import { RESOURCE_SECTIONS } from "$lib/resources.js";
+  import { DEFAULT_ICON_LIBRARY, DEFAULT_ICON_NAMES, DEFAULT_NODE_PREFIX, ELEMENT_TYPES, INDICATORS, LINES, MEASURES, setpointId } from "$lib/ahu/elements.js";
+  import { frameItems, lineItems, sideCenters } from "$lib/ahu/scene.js";
+  import { escapeXml, itemsToAtvise } from "$lib/ahu/atvise.js";
+  import { loadJson, loadText, saveJson, saveText } from "$lib/settings.js";
+  import SettingsDialog from "$lib/components/SettingsDialog.svelte";
 
-  let displayWidth = $state(1920);
-  let displayHeight = $state(1125);
+  let displayWidth = $state(Number(loadText("autoAhu.displayWidth", "1920")) || 1920);
+  let displayHeight = $state(Number(loadText("autoAhu.displayHeight", "1125")) || 1125);
   let displayTitle = $state("Klimatska Naprava");
-  let nodePathPrefix = $state("AGENT.OBJECTS.Klimat");
-  let elementMapLocation = $state("SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone.AHU.Carel");
-  let selectModbusTable = $state("carel");
+  let nodePathPrefix = $state(loadText("autoAhu.nodePrefix", DEFAULT_NODE_PREFIX));
+  let iconLibrary = $state(loadText("autoAhu.iconLibrary", DEFAULT_ICON_LIBRARY));
+  let iconNames = $state(loadJson("autoAhu.iconNames", { ...DEFAULT_ICON_NAMES }));
+  let selectModbusTable = $state(loadText("autoAhu.controller", "carel"));
+  let editingTitle = $state(false);
+  let settingsOpen = $state(false);
+
+  $effect(() => saveText("autoAhu.nodePrefix", nodePathPrefix));
+  $effect(() => saveText("autoAhu.displayWidth", String(displayWidth)));
+  $effect(() => saveText("autoAhu.displayHeight", String(displayHeight)));
+  $effect(() => saveText("autoAhu.controller", selectModbusTable));
+  $effect(() => saveText("autoAhu.iconLibrary", iconLibrary));
+  $effect(() => saveJson("autoAhu.iconNames", iconNames));
 
   let recuperationUnitWidth = $state(150);
   let recuperationUnitHeight = $state(500);
   let recuperationUnitX = $derived(displayWidth / 2);
 
   const elementPadding = 20;
+  const LINE_END_PADDING = 30;
 
   const yTop = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 80);
   const yBottom = $derived((displayHeight / 2) - (recuperationUnitHeight / 2) + 420);
@@ -23,17 +41,10 @@
   const xRight = $derived(displayWidth - 60);
   let elementScale = $state(1);
 
-  const leftExtreme = $derived(xLeft + elementPadding);
+  const leftExtreme = $derived(xLeft + LINE_END_PADDING);
   const centerExtremeLeft = $derived(xCenter - (recuperationUnitWidth / 2) - elementPadding);
   const centerExtremeRight = $derived(xCenter + (recuperationUnitWidth / 2) + elementPadding);
-  const rightExtreme = $derived(xRight - elementPadding);
-
-  const RECUPERATION_MAP = $derived(
-    {
-          "plate-heat-exchanger": `${elementMapLocation}.Plate_Heat_Exchnager`,
-          "rotary-heat-exchanger": `${elementMapLocation}.Rotary_Heat_Exchnager`
-    });
-    
+  const rightExtreme = $derived(xRight - LINE_END_PADDING);
 
   let selectedRecuperation = $state("rotary-heat-exchanger");
 
@@ -45,200 +56,9 @@
 
   // Chrome has no ::-moz-range-progress, so the filled part of every slider track
   // is faked with a gradient sized by --fill. Each slider needs its own percentage.
-  const recuperationFillPercent = $derived(
-      rightExtreme > leftExtreme ?
-      ((recuperationUnitX - leftExtreme) / (rightExtreme - leftExtreme)) * 100 :
-      0
-  );
-
   const elementScaleFillPercent = $derived(
       ((elementScale - ELEMENT_SCALE_MIN) / (ELEMENT_SCALE_MAX - ELEMENT_SCALE_MIN)) * 100
   );
-
-  // Register names follow the Carel table in resources/maps/carel-modbus-map.txt:
-  //   ALM_    = alarm
-  //   Status_ = read-only value the controller reports
-  //   CMD_    = writable setpoint or command
-  // Object keys are atvise display argument names - only the values are registers.
-  const MODBUS_MAP = {
-      "carel": {
-          "int-damper": (el) => el.signalType === "continious" ? ".Status_Damper_Outdoor_Modulating" : ".Status_Damper_Outdoor",
-          "exh-damper": (el) => el.signalType === "continious" ? ".Status_Damper_Exhaust_Modulating" : ".Status_Damper_Exhaust",
-          "sup-fan": {
-              base: ".Status_Fan_Supply_Modulating",
-              alarm: ".ALM_Fan_Supply_1_Overload"
-          },
-          "int-fan": {
-              // no separate intake fan on this controller - intake air is moved by the supply fan
-              base: ".Status_Fan_Supply_Modulating",
-              alarm: ".ALM_Fan_Supply_1_Overload"
-          },
-          "ret-fan": {
-              base: ".Status_Fan_Return_Modulating",
-              alarm: ".ALM_Fan_Return_1_Overload"
-          },
-          "exh-fan": {
-              // no separate exhaust fan on this controller - exhaust air is moved by the return fan
-              base: ".Status_Fan_Return_Modulating",
-              alarm: ".ALM_Fan_Return_1_Overload"
-          },
-          "sup-filter": {
-              base: ".ALM_Filter_Supply"
-          },
-          "ret-filter": {
-              base: ".ALM_Filter_Return"
-          },
-          "int-pre-filter": {
-              base: ".ALM_Filter_Dirty_Digital_Input" // generic alarm, no intake-specific entry in table
-          },
-          "sup-temp-sensor": {
-              base: ".Status_Temperature_Supply",
-              alarm: ".ALM_Probe_Regulation" // only generic probe alarm exists
-          },
-          "int-temp-sensor": {
-              base: ".Status_Temperature_Outdoor"
-          },
-          "exh-temp-sensor": {
-              base: ".Status_Temperature_Exhaust"
-          },
-          "ret-temp-sensor": {
-              base: ".Status_Temperature_Return"
-          },
-          "sup-humidity-sensor": {
-              base: ".Status_Humidity_Supply"
-          },
-          "int-humidity-sensor": {
-              base: ".Status_Humidity_Outdoor"
-          },
-          "ret-humidity-sensor": {
-              base: ".Status_Humidity_Return"
-          },
-          // exh-humidity-sensor has no register: the controller has no exhaust humidity probe
-          "sup-co2-sensor": {
-              base: ".Status_Air_Quality_CO2"
-          },
-          "ret-co2-sensor": {
-              base: ".Status_Air_Quality_CO2" // single CO2 probe shared with the supply line
-          },
-          "sup-frost-thermostat": {
-              base: ".ALM_Frost_Protection_Thermostat"
-          },
-          "exh-frost-thermostat": {
-              base: ".ALM_Frost_Protection_Thermostat" // same thermostat, no recovery-specific entry
-          },
-          "sup-humidifier": (el) => ({
-              base: el.signalType === "continious" ? ".Status_Humidifier_Modulating" : ".Status_Humidifier",
-              alarm: ".ALM_Humidifier"
-          }),
-          "sup-preheat-hot-water-coils": {
-              base: ".Status_Temperature_Coil_Preheat_Water",
-              valve: ".Status_Valve_Preheat_Modulating",
-              pump: ".Status_Pump_Preheat_1",
-              alarm_pump_1_overload: ".ALM_Pump_Preheat_1_Overload",
-              alarm_pump_1_flow: ".ALM_Pump_Preheat_1_Flow",
-              alarm_water_temp: ".ALM_Coil_Preheat_Water_Temperature"
-          },
-          "sup-reheat-hot-water-coils": {
-              base: ".Status_Temperature_Coil_Reheat_Water",
-              valve: ".Status_Valve_Reheat_Modulating",
-              pump: ".Status_Pump_Reheat_1",
-              alarm_pump_1_overload: ".ALM_Pump_Reheat_1_Overload",
-              alarm_pump_1_flow: ".ALM_Pump_Reheat_1_Flow",
-              alarm_water_temp: ".ALM_Coil_Reheat_Water_Temperature"
-          },
-          "sup-cold-water-coils": {
-              base: ".Status_Temperature_Coil_Cooling_Water",
-              valve: ".Status_Valve_Cooling_Modulating",
-              pump: ".Status_Pump_Cooling_1",
-              alarm_pump_1_overload: ".ALM_Pump_Cooling_1_Overload",
-              alarm_pump_1_flow: ".ALM_Pump_Cooling_1_Flow",
-              alarm_water_temp: ".ALM_Coil_Cooling_Water_Temperature"
-          },
-          "sup-preheat-electric-heater": {
-              base: ".Status_Heater_Preheat_Stage_1",
-              alarm_heaters: ".ALM_Heater_Preheat" // AL B03 - latched, manual reset
-          },
-          "sup-reheat-electric-heater": {
-              base: ".Status_Heater_Reheat_Stage_1",
-              alarm_heaters: ".ALM_Heater_Reheat" // AL B02 - latched, manual reset
-          }
-      }
-  };
-
-  const OBJECT_DISPLAY_MAP = $derived({
-      damper: {
-          path: `${elementMapLocation}.Damper`,
-          width: 120,
-          height: 300,
-          offset: 11
-      },
-      filter: {
-          path: `${elementMapLocation}.Filter`,
-          width: 145,
-          height: 225,
-          offset: -11
-      },
-      fan: {
-          path: `${elementMapLocation}.Fan`,
-          width: 135,
-          height: 190,
-          offset: 11
-      },
-      temperatureSensor: {
-          path: `${elementMapLocation}.Temperature_Sensor`,
-          width: 120,
-          height: 90,
-          offset: 29
-      },
-      humiditySensor: {
-          path: `${elementMapLocation}.Humidity_Sensor`,
-          width: 120,
-          height: 90,
-          offset: 29
-      },
-      pressureSensor: {
-          path: `${elementMapLocation}.Pressure_Sensor`,
-          width: 120,
-          height: 90,
-          offset: 29
-      },
-      co2Sensor: {
-          path: `${elementMapLocation}.CO2_Sensor`,
-          width: 120,
-          height: 90,
-          offset: 29
-      },
-      hotWaterCoils: {
-          path: `${elementMapLocation}.Hot_Water_Coil`,
-          width: 120,
-          height: 370,
-          offset: 38
-      },
-      coldWaterCoils: {
-          path: `${elementMapLocation}.Cold_Water_Coil`,
-          width: 120,
-          height: 370,
-          offset: 38
-      },
-      electricHeater: {
-          path: `${elementMapLocation}.Electric_Heater`,
-          width: 100,
-          height: 200,
-          offset: -2
-      },
-      humidifier: {
-          path: `${elementMapLocation}.Humidifier`,
-          width: 100,
-          height: 210,
-          offset: -2
-      },
-      frostThermostat: {
-          path: `${elementMapLocation}.Frost_Protection_Thermostat`,
-          width: 35,
-          height: 35,
-          offset: 0
-      },
-  });
 
   const ELEMENT_OPTIONS = {
       damper: [{
@@ -253,186 +73,156 @@
       }]
   }
 
-  let supplyLineElements = $state([{
+  function toggleIn(list, id) {
+      return list.includes(id) ? list.filter((entry) => entry !== id) : [...list, id];
+  }
+
+  const SUPPLY_CATALOG = [{
           key: "sup-filter",
           label: "Supply Air Filter",
-          checked: false,
-          type: "filter",
-          dpSwitch: false
+          type: "filter"
       },
       {
           key: "sup-frost-thermostat",
           label: "Frost Protection Thermostat",
-          checked: false,
           type: "frostThermostat"
       },
       {
           key: "sup-preheat-hot-water-coils",
           label: "Preheat Hot Water Coils",
-          checked: false,
           type: "hotWaterCoils"
       },
       {
           key: "sup-preheat-electric-heater",
           label: "Preheat Electric Heaters",
-          checked: false,
           type: "electricHeater"
       },
       {
           key: "sup-cold-water-coils",
           label: "Cold Water Coils",
-          checked: false,
           type: "coldWaterCoils"
       },
       {
           key: "sup-reheat-hot-water-coils",
           label: "Reheat Hot Water Coils",
-          checked: false,
           type: "hotWaterCoils"
       },
       {
           key: "sup-reheat-electric-heater",
           label: "Reheat Electric Heaters",
-          checked: false,
           type: "electricHeater"
       },
       {
           key: "sup-humidifier",
           label: "Humidifier",
-          checked: false,
           type: "humidifier",
           signalType: "continious"
       },
       {
           key: "sup-fan",
           label: "Supply Fan",
-          checked: false,
-          type: "fan",
-          dpSwitch: false
+          type: "fan"
       },
       {
           key: "sup-temp-sensor",
           label: "Temperature Sensor",
-          checked: false,
           type: "temperatureSensor"
       },
       {
           key: "sup-humidity-sensor",
           label: "Humidity Sensor",
-          checked: false,
           type: "humiditySensor"
       },
       {
           key: "sup-co2-sensor",
           label: "CO2 Air Quality Sensor",
-          checked: false,
           type: "co2Sensor"
       }
-  ]);
+  ];
 
-  let intakeLineElements = $state([{
+  const INTAKE_CATALOG = [{
           key: "int-damper",
           label: "Outdoor Air Damper",
-          checked: false,
           type: "damper",
           signalType: "continious"
       },
       {
           key: "int-pre-filter",
           label: "Intake Weather Louver / Pre-Filter",
-          checked: false,
-          type: "filter",
-          dpSwitch: false
+          type: "filter"
       },
       {
           key: "int-temp-sensor",
           label: "Outdoor Temperature Sensor",
-          checked: false,
           type: "temperatureSensor"
       },
       {
           key: "int-humidity-sensor",
           label: "Outdoor Humidity Sensor",
-          checked: false,
           type: "humiditySensor"
       },
       {
           key: "int-fan",
           label: "Intake Fan",
-          checked: false,
-          type: "fan",
-          dpSwitch: false
+          type: "fan"
       }
-  ]);
+  ];
 
-  let exhaustLineElements = $state([
+  const EXHAUST_CATALOG = [
       {
           key: "exh-damper",
           label: "Exhaust Air Damper",
-          checked: false,
           type: "damper",
           signalType: "continious"
       },
       {
           key: "exh-frost-thermostat",
           label: "Recovery Core Frost Thermostat",
-          checked: false,
           type: "frostThermostat"
       },
       {
           key: "exh-temp-sensor",
           label: "Exhaust Temperature Sensor",
-          checked: false,
           type: "temperatureSensor"
       },
       {
           key: "exh-humidity-sensor",
           label: "Exhaust Humidity Sensor",
-          checked: false,
           type: "humiditySensor"
       },
       {
           key: "exh-fan",
           label: "Exhaust Fan",
-          checked: false,
-          type: "fan",
-          dpSwitch: false
+          type: "fan"
       }
-  ]);
+  ];
 
-  let returnLineElements = $state([{
+  const RETURN_CATALOG = [{
           key: "ret-filter",
           label: "Return Air Filter",
-          checked: false,
-          type: "filter",
-          dpSwitch: false
+          type: "filter"
       },
       {
           key: "ret-temp-sensor",
           label: "Return Temperature Sensor",
-          checked: false,
           type: "temperatureSensor"
       },
       {
           key: "ret-humidity-sensor",
           label: "Return Humidity Sensor",
-          checked: false,
           type: "humiditySensor"
       },
       {
           key: "ret-co2-sensor",
           label: "Return CO2 Sensor",
-          checked: false,
           type: "co2Sensor"
       },
       {
           key: "ret-fan",
           label: "Return Fan",
-          checked: false,
-          type: "fan",
-          dpSwitch: false
+          type: "fan"
       }
-  ]);
+  ];
 
 
   let resourcesDialog = $state(null);
@@ -488,117 +278,367 @@
       if (objectUrl) URL.revokeObjectURL(objectUrl);
   }
 
-  let dragSourceArray = $state(null);
-  let dragSourceIndex = $state(null);
-  let dragOverArray = $state(null);
-  let dragOverIndex = $state(null);
   let copySuccess = $state(false);
+  let hoverLine = $state(null);
+  let picker = $state(null);
+  let selected = $state(null);
+  let viewer = $state(null);
+  let viewportTick = $state(0);
+  let previewSvg = $state(null);
+  let moving = $state(null);
+  let settling = $state(null);
+  let instant = $state(false);
 
-  function handleDragStart(array, index) {
-      dragSourceArray = array;
-      dragSourceIndex = index;
-  }
+  const CATALOG = { sup: SUPPLY_CATALOG, int: INTAKE_CATALOG, exh: EXHAUST_CATALOG, ret: RETURN_CATALOG };
 
-  function handleDragOver(event, array, index) {
-      event.preventDefault();
-      dragOverArray = array;
-      dragOverIndex = index;
-  }
+  let placements = $state({ exh: [], int: [], ret: [], sup: [] });
+  let nextInstance = 1;
 
-  function handleDragEnd() {
-      dragSourceArray = null;
-      dragSourceIndex = null;
-      dragOverArray = null;
-      dragOverIndex = null;
-  }
+  const LINE_LISTS = Object.fromEntries(Object.keys(CATALOG).map((line) => [line, {
+      get: () => placements[line],
+      set: (list) => placements[line] = list
+  }]));
 
-  function handleDrop(array, index) {
-      if (dragSourceArray === array && dragSourceIndex !== null && dragSourceIndex !== index) {
-          const updated = [...array];
-          const [movedItem] = updated.splice(dragSourceIndex, 1);
-          updated.splice(index, 0, movedItem);
-
-          if (array === supplyLineElements) supplyLineElements = updated;
-          else if (array === intakeLineElements) intakeLineElements = updated;
-          else if (array === exhaustLineElements) exhaustLineElements = updated;
-          else if (array === returnLineElements) returnLineElements = updated;
-      }
-      handleDragEnd();
-  }
-
-  function calculateLineLayout(array, startingPosition, distance, centerY) {
-      const checkedItems = array.filter(item => item.checked && item.type && OBJECT_DISPLAY_MAP[item.type]);
-      let drawItemMap = [];
-      let shapes = [];
-      let elementCount = checkedItems.length;
-
-      if (elementCount === 0) {
-          return {
-              objects: "",
-              shapes: []
-          };
-      }
-
-      const totalElementsWidth = checkedItems.reduce((sum, item) => {
-          return sum + (OBJECT_DISPLAY_MAP[item.type].width * elementScale);
-      }, 0);
-
-      const gap = elementCount > 1 ?
-          (distance - totalElementsWidth) / (elementCount - 1) :
-          0;
-
-      let currentX = startingPosition;
-
-      for (let i = 0; i < elementCount; i++) {
-          const item = checkedItems[i];
-          const config = OBJECT_DISPLAY_MAP[item.type];
-          const scaledWidth = config.width * elementScale;
-
-          let positionX = currentX;
-          let positionY = centerY - ((config.height * elementScale) / 2) + (config.offset * elementScale);
-          let elementCenterPosition = positionX + (scaledWidth / 2);
-
-          // Entries may be a plain string, an object of atvise arguments, or a
-          // function of the element - which itself returns either of those.
-          const rawEntry = MODBUS_MAP[selectModbusTable]?.[item.key];
-          const mapEntry = typeof rawEntry === "function" ? rawEntry(item) : rawEntry;
-          let appendix = "";
-
-          if (mapEntry && typeof mapEntry === "object") {
-
-              for (const [key, value] of Object.entries(mapEntry)) {
-                  appendix += `<atv:argument name="${key}" value="${nodePathPrefix}${value}"/>`
-              }
-          } else {
-              appendix = mapEntry ? `<atv:argument name="base" value="${nodePathPrefix}${mapEntry}"/>` : "";
-          }
-
-          let svgString = `<svg atv:refpx="${elementCenterPosition}" atv:refpy="${centerY}" height="${config.height}" id="${item.key}" width="${config.width}" x="0" y="0" transform="matrix(${elementScale},0,0,${elementScale},${positionX},${positionY})" xlink:href="${config.path}">${appendix}</svg>`;
-          drawItemMap.push(svgString);
-
-          shapes.push({
-              key: item.key,
-              type: item.type,
-              x: positionX,
-              y: centerY - ((config.height * elementScale) / 2),
-              width: scaledWidth,
-              height: config.height * elementScale,
-              offset: config.offset * elementScale
-          });
-
-          currentX += scaledWidth + gap;
-      }
-
+  function createInstance(entry, line) {
+      const same = placements[line].filter((element) => element.template === entry.key).length;
       return {
-          objects: drawItemMap.join("\n            "),
-          shapes
+          ...entry,
+          key: `${entry.key}_${nextInstance++}`,
+          template: entry.key,
+          label: same ? `${entry.label} ${same + 1}` : entry.label,
+          readouts: [],
+          indicators: []
       };
   }
 
-  const exhaustLineLayout = $derived(calculateLineLayout(exhaustLineElements, leftExtreme, centerExtremeLeft - leftExtreme, exhaustY));
-  const intakeLineLayout = $derived(calculateLineLayout(intakeLineElements, leftExtreme, centerExtremeLeft - leftExtreme, intakeY));
-  const returnLineLayout = $derived(calculateLineLayout(returnLineElements, centerExtremeRight, rightExtreme - centerExtremeRight, yTop));
-  const supplyLineLayout = $derived(calculateLineLayout(supplyLineElements, centerExtremeRight, rightExtreme - centerExtremeRight, yBottom));
+  function lineOf(key) {
+      return key.split("-")[0];
+  }
+
+  const lineSpecs = $derived({
+      exh: { elements: placements.exh, start: leftExtreme, end: centerExtremeLeft, y: exhaustY, pipeStart: xLeft, pipeEnd: xCenter - recuperationUnitWidth / 2 },
+      int: { elements: placements.int, start: leftExtreme, end: centerExtremeLeft, y: intakeY, pipeStart: xLeft, pipeEnd: xCenter - recuperationUnitWidth / 2 },
+      ret: { elements: placements.ret, start: centerExtremeRight, end: rightExtreme, y: yTop, pipeStart: xCenter + recuperationUnitWidth / 2, pipeEnd: xRight },
+      sup: { elements: placements.sup, start: centerExtremeRight, end: rightExtreme, y: yBottom, pipeStart: xCenter + recuperationUnitWidth / 2, pipeEnd: xRight }
+  });
+
+  const PARTNER = { exh: "int", int: "exh", ret: "sup", sup: "ret" };
+
+  function buildLine(line, lists = {}) {
+      const { start, end, y } = lineSpecs[line];
+      const elements = lists[line] ?? lineSpecs[line].elements;
+      const centers = sideCenters(elements, lists[PARTNER[line]] ?? lineSpecs[PARTNER[line]].elements, start, end, elementScale);
+      return lineItems({ elements, y, centers, outward: y === yTop ? -1 : 1, scale: elementScale, controller: selectModbusTable, prefix: nodePathPrefix });
+  }
+
+  function centersOf(items) {
+      return new Map(items.filter((item) => item.center !== undefined).map((item) => [item.owner, item.center]));
+  }
+
+  const frame = $derived(frameItems({
+      xLeft, xRight, xCenter, exhaustY, intakeY, returnY: yTop, supplyY: yBottom, topY: yTop, displayWidth, displayHeight,
+      recuperation: selectedRecuperation, recuperationWidth: recuperationUnitWidth, recuperationHeight: recuperationUnitHeight
+  }));
+
+  const sceneItems = $derived([
+      ...frame.under,
+      ...Object.keys(lineSpecs).flatMap((line) => buildLine(line)),
+      ...frame.over
+  ]);
+
+  const baseCenters = $derived(centersOf(sceneItems));
+
+  const sceneGroups = $derived.by(() => {
+      const groups = [];
+      for (const item of sceneItems) {
+          const last = groups.at(-1);
+          if (item.owner && last?.owner === item.owner) last.items.push(item);
+          else groups.push({ id: item.owner ?? item.id, owner: item.owner, items: [item] });
+      }
+      for (const group of groups) {
+          const icon = group.items.find((item) => item.center !== undefined);
+          if (icon) group.box = { x: icon.x - 10, y: icon.y - 10, width: icon.width * icon.k + 20, height: icon.height * icon.k + 20 };
+      }
+      return groups;
+  });
+
+  function placedOthers(key) {
+      return lineSpecs[lineOf(key)].elements.filter((element) => element.key !== key && baseCenters.has(element.key));
+  }
+
+  function reordered(list, key, index) {
+      const moved = list.find((element) => element.key === key);
+      const rest = list.filter((element) => element.key !== key);
+      const placed = rest.filter((element) => baseCenters.has(element.key));
+      const at = index < placed.length ? rest.indexOf(placed[index]) : rest.indexOf(placed.at(-1)) + 1;
+      rest.splice(at, 0, moved);
+      return rest;
+  }
+
+  const movePreview = $derived.by(() => {
+      if (!moving || moving.key === RECUPERATION) return null;
+      const line = lineOf(moving.key);
+      const list = reordered(lineSpecs[line].elements, moving.key, moving.index);
+      const lists = { [line]: list };
+      return { list, centers: centersOf([...buildLine(line, lists), ...buildLine(PARTNER[line], lists)]) };
+  });
+
+  const orderedGroups = $derived(moving
+      ? [...sceneGroups.filter((group) => group.owner !== moving.key), ...sceneGroups.filter((group) => group.owner === moving.key)]
+      : sceneGroups);
+
+  const RECUPERATION = "recuperation";
+  let lastRecuperationPress = 0;
+
+  let reflow = $state(null);
+  let previousCenters = new Map();
+
+  $effect(() => {
+      const current = baseCenters;
+      const before = previousCenters;
+      previousCenters = current;
+      const keys = (map) => [...map.keys()].sort().join("|");
+      if (moving || settling || keys(before) === keys(current)) return;
+      const offsets = new Map();
+      for (const [owner, center] of current) {
+          if (before.has(owner) && Math.abs(before.get(owner) - center) > 0.5) offsets.set(owner, before.get(owner) - center);
+      }
+      if (!offsets.size) return;
+      slide(offsets);
+  });
+
+  async function slide(offsets) {
+      instant = true;
+      reflow = offsets;
+      await tick();
+      previewSvg.getBoundingClientRect();
+      instant = false;
+      reflow = null;
+  }
+
+  function pop(node, { easing, delay = 0, duration = 260 }) {
+      return {
+          delay,
+          duration,
+          easing,
+          css: (t) => `opacity: ${Math.min(1, t * 1.6)}; transform-box: fill-box; transform-origin: center; transform: translateY(${(1 - t) * 14}px) scale(${0.6 + 0.4 * t});`
+      };
+  }
+
+  function shiftOf(owner) {
+      if (!owner || owner === RECUPERATION) return 0;
+      if (settling?.key === owner) return settling.offset;
+      if (reflow?.has(owner)) return reflow.get(owner);
+      if (!moving || ![lineOf(moving.key), PARTNER[lineOf(moving.key)]].includes(lineOf(owner))) return 0;
+      if (owner === moving.key) return moving.dx;
+      return (movePreview.centers.get(owner) ?? baseCenters.get(owner)) - baseCenters.get(owner);
+  }
+
+  const LINE_KEYS = { exh: "exhaust", int: "intake", ret: "return", sup: "supply" };
+
+  function svgPoint(event) {
+      const matrix = previewSvg.getScreenCTM();
+      return { x: (event.clientX - matrix.e) / matrix.a, y: (event.clientY - matrix.f) / matrix.d };
+  }
+
+  function svgX(event) {
+      return svgPoint(event).x;
+  }
+
+  function toLocal(x, y) {
+      viewportTick;
+      const matrix = previewSvg.getScreenCTM();
+      const frame = viewer.getBoundingClientRect();
+      return { left: matrix.a * x + matrix.e - frame.left, top: matrix.d * y + matrix.f - frame.top, scale: matrix.a };
+  }
+
+  function elementOf(key) {
+      return LINE_LISTS[lineOf(key)]?.get().find((element) => element.key === key) ?? null;
+  }
+
+  const boxes = $derived(new Map(sceneGroups.filter((group) => group.box && group.owner !== RECUPERATION).map((group) => [group.owner, group.box])));
+
+  const insertSlots = $derived(Object.fromEntries(Object.entries(lineSpecs).map(([line, spec]) => {
+      const placed = spec.elements.filter((element) => boxes.has(element.key));
+      const edges = [spec.pipeStart + 6, ...placed.flatMap((element) => {
+          const box = boxes.get(element.key);
+          return [box.x, box.x + box.width];
+      }), spec.pipeEnd - 6];
+      const slots = [];
+      for (let index = 0; index <= placed.length; index += 1) {
+          if (edges[index * 2 + 1] - edges[index * 2] >= 44) slots.push({ index, x: (edges[index * 2] + edges[index * 2 + 1]) / 2 });
+      }
+      return [line, slots];
+  })));
+
+  let pickerQuery = $state("");
+
+  const pickerMatches = $derived(picker
+      ? CATALOG[picker.line].filter((entry) => entry.label.toLowerCase().includes(pickerQuery.trim().toLowerCase()))
+      : []);
+
+  function lineAt(point) {
+      for (const [line, spec] of Object.entries(lineSpecs)) {
+          if (Math.abs(point.y - spec.y) < 70 && point.x >= spec.pipeStart && point.x <= spec.pipeEnd) return line;
+      }
+      return null;
+  }
+
+  function closeOverlays() {
+      picker = null;
+      selected = null;
+      editingTitle = false;
+  }
+
+  function openPicker(line, slot) {
+      selected = null;
+      pickerQuery = "";
+      picker = picker?.line === line && picker.index === slot.index ? null : { line, index: slot.index, x: slot.x, y: lineSpecs[line].y };
+  }
+
+  function insertElement(entry) {
+      const { line, index } = picker;
+      const list = [...placements[line]];
+      list.splice(Math.min(index, list.length), 0, createInstance(entry, line));
+      placements[line] = list;
+      picker = null;
+  }
+
+  function removeElement(key) {
+      const line = lineOf(key);
+      placements[line] = placements[line].filter((element) => element.key !== key);
+      if (selected === key) selected = null;
+  }
+
+  function pickerKey(event) {
+      if (event.key === "Enter" && pickerMatches.length) {
+          event.preventDefault();
+          insertElement(pickerMatches[0]);
+      }
+  }
+
+  function focusSearch(node) {
+      node.focus();
+  }
+
+  function focusTitle(node) {
+      node.focus();
+      node.select();
+  }
+
+  const recuperationBox = $derived(sceneGroups.find((group) => group.owner === RECUPERATION)?.box ?? null);
+
+  function handleKey(event) {
+      if (event.key === "Escape" && (picker || selected || editingTitle)) {
+          closeOverlays();
+          return;
+      }
+      const typing = event.target.closest?.("input, select, textarea");
+      if (selected && selected !== RECUPERATION && !typing && (event.key === "Delete" || event.key === "Backspace")) {
+          event.preventDefault();
+          removeElement(selected);
+      }
+  }
+
+  function handleOutside(event) {
+      if (!picker && !selected) return;
+      if (event.target.closest?.(".canvas-popover, .preview-svg, .title-input")) return;
+      closeOverlays();
+  }
+
+  function startMove(event) {
+      if (event.target.closest(".insert, .remove")) return;
+      if (event.target.closest(".title-text")) {
+          picker = null;
+          selected = null;
+          editingTitle = true;
+          return;
+      }
+      editingTitle = false;
+      const key = event.target.closest("[data-owner]")?.dataset.owner;
+      if (!key) {
+          closeOverlays();
+          return;
+      }
+      if (event.button !== 0 || settling) return;
+      event.preventDefault();
+      picker = null;
+      previewSvg.setPointerCapture(event.pointerId);
+      if (key === RECUPERATION) {
+          if (event.timeStamp - lastRecuperationPress < 400) {
+              lastRecuperationPress = 0;
+              recuperationUnitX = displayWidth / 2;
+              return;
+          }
+          lastRecuperationPress = event.timeStamp;
+      }
+      pressing = { key, x: svgX(event), timer: setTimeout(beginMove, HOLD_DELAY) };
+  }
+
+  const HOLD_DELAY = 260;
+  let pressing = null;
+
+  function beginMove() {
+      if (!pressing) return;
+      const { key, x } = pressing;
+      pressing = null;
+      selected = null;
+      if (key === RECUPERATION) {
+          moving = { key, origin: x, dx: 0, start: recuperationUnitX };
+          return;
+      }
+      const center = baseCenters.get(key);
+      moving = { key, origin: x, dx: 0, index: placedOthers(key).filter((element) => baseCenters.get(element.key) < center).length };
+  }
+
+  function updateMove(event) {
+      if (pressing) {
+          pressing.x = svgX(event);
+          return;
+      }
+      if (!moving) {
+          const line = lineAt(svgPoint(event));
+          if (line !== hoverLine) hoverLine = line;
+          return;
+      }
+      if (moving.key === RECUPERATION) {
+          recuperationUnitX = Math.min(rightExtreme, Math.max(leftExtreme, moving.start + svgX(event) - moving.origin));
+          moving.dx = recuperationUnitX - moving.start;
+          return;
+      }
+      const spec = lineSpecs[lineOf(moving.key)];
+      const base = baseCenters.get(moving.key);
+      const center = Math.min(spec.end, Math.max(spec.start, base + svgX(event) - moving.origin));
+      moving.dx = center - base;
+      const index = placedOthers(moving.key).filter((element) => baseCenters.get(element.key) < center).length;
+      if (index !== moving.index) moving.index = index;
+  }
+
+  async function endMove() {
+      if (pressing) {
+          clearTimeout(pressing.timer);
+          const { key } = pressing;
+          pressing = null;
+          selected = selected === key ? null : key;
+          return;
+      }
+      if (!moving) return;
+      if (moving.key === RECUPERATION) {
+          moving = null;
+          return;
+      }
+      const { key, dx } = moving;
+      const { list, centers } = movePreview;
+      const offset = baseCenters.get(key) + dx - centers.get(key);
+      instant = true;
+      settling = { key, offset };
+      LINE_LISTS[lineOf(key)].set(list);
+      moving = null;
+      await tick();
+      previewSvg.getBoundingClientRect();
+      instant = false;
+      settling = null;
+  }
 
   async function handleConfiguration() {
       const boilerPlate =
@@ -613,7 +653,7 @@
               <atv:argument name="animation_type" value="Background"/>
               <atv:argument name="hover_color" value="#2A7A53"/>
               </svg>
-              <text atv:refpx="960" atv:refpy="66" fill="#1E293B" font-family="Roboto" font-size="46" font-weight="bold" id="title" x="765.5" y="82">${displayTitle}</text>
+              <text atv:refpx="960" atv:refpy="81" fill="#1E293B" font-family="Roboto" font-size="46" font-weight="bold" id="title" x="765.5" y="97">${escapeXml(displayTitle)}</text>
               <svg atv:refpx="55.0001" atv:refpy="65.3353" height="121" id="back_button" transform="matrix(0.6667,0,0,0.6667,0,0)" width="121" x="21.996" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.4.%20Gumbi.Round_Buttons.Button" y="37.498">
               <atv:argument name="animation_type" value="Background"/>
               <atv:argument name="hover_color" value="#A32A3A"/>
@@ -625,19 +665,7 @@
               <atv:argument name="animation_type" value="Background"/>
               <atv:argument name="icon_type" value="Graph"/>
               </svg>
-              <polyline atv:refpx="700.5" atv:refpy="700.5" fill="#EF4444" fill-opacity="0" id="exhaust_line" points="${xLeft},${exhaustY} ${xCenter},${exhaustY}" stroke="#EF4444" stroke-width="10"/>
-              ${exhaustLineLayout.objects}
-              <polyline atv:refpx="500" atv:refpy="700.5" fill="#22C55E" fill-opacity="0" id="intake_line" points="${xLeft},${intakeY} ${xCenter},${intakeY}" stroke="#22C55E" stroke-width="10"/>
-              ${intakeLineLayout.objects}
-              <polyline atv:refpx="1420" atv:refpy="400.5" fill="#F59E0B" fill-opacity="0" id="return_line" points="${xRight},${yTop} ${xCenter},${yTop}" stroke="#F59E0B" stroke-width="10"/>
-              ${returnLineLayout.objects}
-              <polyline atv:refpx="1420" atv:refpy="700.5" fill="#3B82F6" fill-opacity="0" id="supply_line" points="${xRight},${yBottom} ${xCenter},${yBottom}" stroke="#3B82F6" stroke-width="10"/>
-              ${supplyLineLayout.objects}
-              <svg atv:refpx="${(displayWidth/2) - (recuperationUnitWidth/2)}" atv:refpy="${(displayHeight/2) - (recuperationUnitHeight/2)}" height="${recuperationUnitHeight}" id="recuperation_unit" width="${displayWidth}" x="${(recuperationUnitX) - (recuperationUnitWidth/2)}" xlink:href="${RECUPERATION_MAP[selectedRecuperation] || ''}" y="${(displayHeight/2) - (recuperationUnitHeight/2)}"/>
-              <svg atv:refpx="${xLeft - 20}" atv:refpy="${exhaustY}" height="20" id="exhaust_arrows" width="40" x="${xLeft - 50}" xlink:href="${elementMapLocation}.Arrows" y="${exhaustY - 10}"><atv:argument name="color" value="#EF4444"/><atv:argument name="direction" value="left"/></svg>
-              <svg atv:refpx="${xLeft - 20}" atv:refpy="${intakeY}" height="20" id="intake_arrows" width="40" x="${xLeft - 50}" xlink:href="${elementMapLocation}.Arrows" y="${intakeY - 10}"><atv:argument name="color" value="#22C55E"/><atv:argument name="direction" value="right"/></svg>
-              <svg atv:refpx="${xRight + 20}" atv:refpy="${yTop}" height="20" id="return_arrows" width="40" x="${xRight + 10}" xlink:href="${elementMapLocation}.Arrows" y="${yTop - 10}"><atv:argument name="color" value="#F59E0B"/><atv:argument name="direction" value="left"/></svg>
-              <svg atv:refpx="${xRight + 20}" atv:refpy="${yBottom}" height="20" id="supply_arrows" width="40" x="${xRight + 10}" xlink:href="${elementMapLocation}.Arrows" y="${yBottom - 10}"><atv:argument name="color" value="#3B82F6"/><atv:argument name="direction" value="right"/></svg>
+              ${itemsToAtvise(sceneItems, iconLibrary, iconNames)}
               </svg>`;
       try {
           await navigator.clipboard.writeText(boilerPlate);
@@ -656,51 +684,50 @@
   :global(body) {
     height: 100dvh;
     width: 100vw;
-    font-family: 'Segoe UI', Arial, sans-serif;
+    font-family: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
     margin: 0;
-    padding: 24px;
+    padding: 0;
     background-color: #f1f5f9;
     color: #0f172a;
     box-sizing: border-box;
     overflow: hidden;
   }
 
+
   .header{
     display: flex;
     align-items: center;
     justify-content: space-between;
-    max-width: 1800px;
-    margin: 0 auto 20px auto;
+    height: 44px;
+    padding: 0 12px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    box-sizing: border-box;
   }
+
 
   .logo-section {
     display: flex;
     align-items: center;
-    font-size: 20px;
-    color: #1E293B;
-
-    .subtitle{
-        font-size: 12px;
-        color: #475569;
-        font-weight: 500;
-    }
   }
+
 
   .logo{
-    height: 50px;
-    margin-right: 10px;
+    height: 26px;
   }
+
 
   .resources-link {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
     background: #ffffff;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
     font: inherit;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: #2563eb;
     cursor: pointer;
@@ -714,8 +741,8 @@
   }
 
   .resources-icon {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
   }
 
@@ -751,6 +778,7 @@
   }
 
   .dialog-title {
+    font-family: 'Sora', 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
     font-size: 18px;
     font-weight: 600;
     color: #1E293B;
@@ -790,6 +818,7 @@
   }
 
   .resource-group-title {
+    font-family: 'Sora', 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
     font-size: 14px;
     font-weight: 600;
     color: #334155;
@@ -849,7 +878,7 @@
     margin-top: 2px;
     font-size: 11px;
     color: #94a3b8;
-    font-family: 'Consolas', 'Courier New', monospace;
+    font-family: 'IBM Plex Mono', Consolas, monospace;
   }
 
   .resource-description {
@@ -907,140 +936,21 @@
     border-radius: 6px;
     background: #ffffff;
     color: #475569;
-    font-family: 'Consolas', 'Courier New', monospace;
+    font-family: 'IBM Plex Mono', Consolas, monospace;
     font-size: 11px;
     line-height: 1.5;
     overflow: auto;
   }
 
 
-  h2 {
-    font-size: 18px;
-    font-weight: 600;
-    margin: 0 0 16px 0;
-    color: #334155;
-  }
-
   .app-layout {
     display: grid;
-    grid-template-columns: 380px 1fr;
-    gap: 24px;
-    align-items: stretch;
-    max-width: 1800px;
-    height: calc(100dvh - 110px);
-    margin: 0 auto;
-  }
-
-  .selection-section {
-    display: flex;
-    height: 100%;
-    flex-direction: column;
-    gap: 16px;
-    background: #ffffff;
-    padding: 20px;
-    border-radius: 8px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    max-height: 100%;
-    overflow-y: auto;
+    grid-template-columns: minmax(0, 1fr);
+    height: calc(100dvh - 44px);
+    padding: 12px;
     box-sizing: border-box;
-    min-height: 0;
   }
 
-  #select-display-dimensions{
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 12px;
-  }
-
-  #select-display-dimensions .input-group {
-    flex: 1;
-  }
-
-  .input-group {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    text-align: left;
-    gap: 6px;
-    font-weight: 600;
-    font-size: 13px;
-    color: #475569;
-  }
-
-  .input-group:has(input[type="range"]) {
-    gap: 0;
-  }
-
-  .field-hint {
-    font-weight: 400;
-    font-size: 12px;
-    color: #94a3b8;
-  }
-
-  .input-group input,
-  .input-group select {
-    padding: 8px 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font-size: 14px;
-    background-color: #f8fafc;
-    color: #0f172a;
-  }
-
-  .selection-section input[type="text"],
-  .selection-section select {
-    width: 100%;
-    height: 38px;
-    padding: 8px 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font-size: 14px;
-    background-color: #FFFFFF;
-    color: #0f172a;
-    box-sizing: border-box;
-    text-align: left;
-  }
-
-  fieldset {
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    background: #f8fafc;
-    margin: 0;
-  }
-
-  #select-supply-line-elements {
-    background: #eff6ff;
-  }
-
-  #select-intake-line-elements {
-    background: #f0fdf4;
-  }
-
-  #select-exhaust-line-elements {
-    background: #fef2f2;
-  }
-
-  #select-return-line-elements {
-    background: #fffbeb;
-  }
-
-  #select-modbus{
-    gap:12px;
-  }
-
-  legend {
-    font-weight: 600;
-    font-size: 13px;
-    color: #334155;
-    padding: 0 6px;
-  }
 
   label {
     display: flex;
@@ -1049,22 +959,6 @@
     font-size: 13px;
     color: #334155;
     cursor: pointer;
-  }
-
-  label.sub-element {
-    padding-left: 28px;
-    color: #94a3b8;
-    font-size: 12px;
-  }
-
-  label.sub-element select {
-    padding: 4px 8px;
-    height: 28px;
-    font-size: 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 4px;
-    background-color: #f8fafc;
-    color: #94a3b8;
   }
 
   input[type="range"] {
@@ -1171,35 +1065,8 @@
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
   }
 
-  input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    accent-color: #2563eb;
-    cursor: pointer;
-  }
-
-  button.configure {
-    padding: 12px 16px;
-    background-color: #2563eb;
-    color: #ffffff;
-    border: none;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    margin-top: 8px;
-    transition: background-color 0.15s ease;
-  }
-
-  button.configure:hover {
-    background-color: #1d4ed8;
-  }
-
-  button.configure.copied {
-    background-color: #16a34a;
-  }
-
   .viewer-section {
+    position: relative;
     height: 100%;
     background: #ffffff;
     border: 1px solid #e2e8f0;
@@ -1214,6 +1081,7 @@
   }
 
   .svg-container {
+    position: relative;
     width: 100%;
     max-width: 100%;
     flex: 1;
@@ -1227,35 +1095,471 @@
     overflow: hidden;
   }
 
+  svg.preview-svg .part {
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  svg.preview-svg.instant .part,
+  svg.preview-svg .part.dragging {
+    transition: none;
+  }
+
+  svg.preview-svg .part.dragging {
+    transform-box: fill-box;
+    transform-origin: center;
+    filter: drop-shadow(0 12px 16px rgba(15, 23, 42, 0.22));
+    opacity: 0.95;
+  }
+
+  svg.preview-svg [data-owner] {
+    cursor: grab;
+  }
+
+  svg.preview-svg.moving,
+  svg.preview-svg.moving [data-owner] {
+    cursor: grabbing;
+  }
+
+  svg.preview-svg .hit {
+    fill: transparent;
+    stroke: transparent;
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+    transition: fill 0.15s ease, stroke 0.15s ease;
+  }
+
+  svg.preview-svg:not(.moving) .part:hover .hit {
+    fill: rgba(37, 99, 235, 0.06);
+    stroke: #93c5fd;
+  }
+
+  svg.preview-svg .part.dragging .hit {
+    fill: rgba(37, 99, 235, 0.08);
+    stroke: #2563eb;
+    stroke-dasharray: 6 5;
+  }
+
+  svg.preview-svg .part.dragging:not([data-owner="recuperation"]) .hit {
+    visibility: hidden;
+  }
+
+  svg.preview-svg .part.target .hit {
+    fill: rgba(16, 185, 129, 0.07);
+    stroke: #34d399;
+  }
+
+  svg.preview-svg .drop-slot {
+    fill: rgba(37, 99, 235, 0.08);
+    stroke: #2563eb;
+    stroke-width: 1.5;
+    stroke-dasharray: 6 5;
+    vector-effect: non-scaling-stroke;
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  svg.preview-svg .part.selected .hit {
+    fill: rgba(37, 99, 235, 0.08);
+    stroke: #2563eb;
+  }
+
+  svg.preview-svg .remove {
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+
+  svg.preview-svg:not(.moving) .part:hover .remove,
+  svg.preview-svg .part.selected .remove {
+    opacity: 1;
+  }
+
+  svg.preview-svg .remove circle {
+    fill: #ffffff;
+    stroke: #fca5a5;
+    stroke-width: 2;
+  }
+
+  svg.preview-svg .remove path {
+    stroke: #dc2626;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+  }
+
+  svg.preview-svg .remove:hover circle {
+    fill: #fee2e2;
+  }
+
+  svg.preview-svg .insert {
+    cursor: pointer;
+    animation: insert-in 0.18s ease both;
+  }
+
+  svg.preview-svg .insert .insert-hit {
+    fill: transparent;
+  }
+
+  svg.preview-svg .insert .insert-dot {
+    fill: #ffffff;
+    stroke: var(--accent);
+    stroke-width: 3;
+    transition: fill 0.15s ease, r 0.15s ease;
+  }
+
+  svg.preview-svg .insert path {
+    pointer-events: none;
+    stroke: var(--accent);
+    stroke-width: 4;
+    stroke-linecap: round;
+    transition: stroke 0.15s ease;
+  }
+
+  svg.preview-svg .insert:hover .insert-dot,
+  svg.preview-svg .insert.active .insert-dot {
+    fill: var(--accent);
+    r: 26px;
+  }
+
+  svg.preview-svg .insert:hover path,
+  svg.preview-svg .insert.active path {
+    stroke: #ffffff;
+  }
+
+  @keyframes insert-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  .canvas-popover {
+    position: absolute;
+    z-index: 5;
+    transform: translate(-50%, -100%);
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.18);
+    animation: popover-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .canvas-popover.below {
+    transform: translate(-50%, 0);
+  }
+
+  @keyframes popover-in {
+    from {
+      opacity: 0;
+      margin-top: 6px;
+    }
+  }
+
+  .popover-title {
+    font-family: 'Sora', 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .picker {
+    width: 260px;
+  }
+
+  .pick-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 280px;
+    margin-top: 8px;
+    overflow-y: auto;
+  }
+
+  .pick {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    color: #334155;
+    cursor: pointer;
+  }
+
+  .pick:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  .pick-search {
+    width: 100%;
+    height: 32px;
+    margin-top: 10px;
+    padding: 0 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    font: inherit;
+    font-size: 13px;
+    color: #0f172a;
+    box-sizing: border-box;
+  }
+
+  .pick-search:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  }
+
+  .pick-empty {
+    margin: 6px 8px;
+    font-size: 12.5px;
+    color: #94a3b8;
+  }
+
+  .panel {
+    width: 300px;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .panel-close {
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    font-size: 18px;
+    line-height: 1;
+    color: #64748b;
+    cursor: pointer;
+  }
+
+  .panel-close:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+
+  .panel-remove {
+    width: 100%;
+    height: 30px;
+    margin-top: 14px;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    background: #ffffff;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #b91c1c;
+    cursor: pointer;
+  }
+
+  .panel-remove:hover {
+    background: #fef2f2;
+  }
+
+  svg.preview-svg .title-text {
+    cursor: text;
+    transition: fill 0.15s ease;
+  }
+
+  svg.preview-svg .title-text:hover {
+    fill: #2563eb;
+  }
+
+  svg.preview-svg .title-text.editing {
+    visibility: hidden;
+  }
+
+  .title-input {
+    position: absolute;
+    z-index: 5;
+    width: min(70%, 900px);
+    transform: translateX(-50%);
+    padding: 0 12px;
+    border: 1.5px solid #2563eb;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+    font-family: Roboto, 'IBM Plex Sans', Arial, sans-serif;
+    font-weight: 700;
+    text-align: center;
+    color: #1e293b;
+    box-sizing: border-box;
+  }
+
+  .title-input:focus {
+    outline: none;
+  }
+
+  .scale-control {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    font-size: 12px;
+    color: #64748b;
+  }
+
+  .scale-control label {
+    font-weight: 500;
+    cursor: default;
+  }
+
+  .scale-control input[type="range"] {
+    width: 120px;
+  }
+
+  .scale-control span {
+    min-width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .export-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 14px;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    background: #2563eb;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .export-button:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+  }
+
+  .export-button.copied {
+    background: #16a34a;
+    border-color: #16a34a;
+  }
+
+  .app-version {
+    position: absolute;
+    right: 14px;
+    bottom: 6px;
+    font-size: 11px;
+    color: #94a3b8;
+  }
+
+  .viewer-hint {
+    margin: -10px 0 14px;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+
   svg.preview-svg {
     width: 100%;
     height: 100%;
     display: block;
   }
 
-  label.dragging {
-    opacity: 0.4;
+  .resources-section {
+    display: flex;
+    gap: 8px;
   }
 
-  label.drag-over-top {
-    border-top: 3px solid #2563eb;
+  .element-options {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px 10px;
   }
 
-  label.drag-over-bottom {
-    border-bottom: 3px solid #2563eb;
+  .option-name {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #64748b;
+  }
+
+  .toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .toggle,
+  .segmented button {
+    height: 24px;
+    padding: 0 9px;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    background: #ffffff;
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #475569;
+    cursor: pointer;
+  }
+
+  .toggle:hover,
+  .segmented button:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  .toggle.on,
+  .segmented button.on {
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 600;
+  }
+
+  .segmented {
+    display: inline-flex;
+    justify-self: start;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .segmented button {
+    height: 22px;
+    border: none;
+    border-radius: 0;
+  }
+
+  .segmented button + button {
+    border-left: 1px solid #cbd5e1;
+  }
+
+  .segmented button.on {
+    box-shadow: inset 0 0 0 1px #93c5fd;
   }
 </style>
 
+<svelte:window onkeydown={handleKey} onpointerdown={handleOutside} onresize={() => viewportTick += 1}/>
 <title>Auto AHU</title>
 {@html ICON_SPRITE}
 <div class="header">
     <div class="logo-section">
         <link rel="icon" type="image/x-icon" href="{base}/logo.svg">
-        <img class="logo" src="{base}/logo.svg" alt="Auto AHU logo">
-        <div class="title">
-            <div class="title">Auto AHU</div>
-            <div class="subtitle" title="commit {__APP_COMMIT__}">Automatic AHU Generator {__APP_VERSION__}</div>
-        </div>
+        <img class="logo" src="{base}/logo.svg" alt="Auto AHU" title="Auto AHU {__APP_VERSION__} · commit {__APP_COMMIT__}">
     </div>
     <div class="resources-section">
         <button class="resources-link" type="button" onclick={openResources}>
@@ -1266,11 +1570,27 @@
             </svg>
             Resources
         </button>
+        <button class="resources-link" type="button" onclick={() => settingsOpen = true}>
+            <svg class="resources-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            Settings
+        </button>
+        <button class="export-button" class:copied={copySuccess} type="button" onclick={handleConfiguration}>
+            <svg class="resources-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                {#if copySuccess}
+                    <path d="m5 12 5 5 9-10"/>
+                {:else}
+                    <rect x="9" y="9" width="11" height="11" rx="2"/>
+                    <path d="M5 15V6a2 2 0 0 1 2-2h9"/>
+                {/if}
+            </svg>
+            {copySuccess ? "Copied" : "Copy to atvise"}
+        </button>
     </div>
 </div>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <dialog class="resources-dialog" bind:this={resourcesDialog} onclick={handleDialogClick} onclose={handleDialogClose}>
     <div class="dialog-panel">
         <div class="dialog-head">
@@ -1331,230 +1651,192 @@
     </div>
 </dialog>
 <div class="app-layout">
-  <div class="selection-section">
-  <fieldset id="select-title">
-      <legend>Display Title</legend>
-      <input id="title" type="text" bind:value={displayTitle}>
-    </fieldset>
-  <fieldset id="select-display-dimensions">
-      <legend>Select Display Dimensions</legend>
-      <label class="input-group" for="width"> 
-        <input id="width" type="text" bind:value={displayWidth}>
-      </label>
-      x
-      <label class="input-group" for="height"> 
-        <input id="height" type="text" bind:value={displayHeight}>
-      </label>
-    </fieldset>
-    <fieldset id="select-recuperations-unit">
-      <legend>Select Recuperation Unit and Bypass Damper</legend>
-      <label class="input-group" for="select-recuperations-unit">
-        <select id="select-recuperations-unit" name="select-recuperations-unit" bind:value={selectedRecuperation}>
-          <option value="plate-heat-exchanger">Plate Heat Exchanger</option>
-          <option value="rotary-heat-exchanger">Rotary Heat Exchanger</option>
-        </select>
-      </label>
-      <!-- <label class="input-group" for="select-bypass-damper">
-        <select id="select-bypass-damper" name="select-bypass-damper">
-          <option value="no-bypass-damper">No Bypass Damper</option>
-          <option value="bypass-damper-present">Bypass Damper Present</option>
-        </select>
-      </label> -->
-    </fieldset>
-    <fieldset id="select-layout-adjustments">
-      <legend>Layout Adjustments</legend>
-      <label class="input-group" for="recuperation-unit-x-position">
-        <span class="field-hint">Recuperation Unit X Position</span>
-        <input type="range" name="recuperation-unit-x-position" id="recuperation-unit-x-position" min={leftExtreme} max={rightExtreme} bind:value={recuperationUnitX} style="--fill: {recuperationFillPercent}%">
-      </label>
-      <label class="input-group" for="element-scale">
-        <span class="field-hint">Element Scale</span>
-        <input type="range" name="element-scale" id="element-scale" min={ELEMENT_SCALE_MIN} max={ELEMENT_SCALE_MAX} step="0.01" bind:value={elementScale} style="--fill: {elementScaleFillPercent}%">
-      </label>
-    </fieldset>
-    <fieldset id="select-modbus">
-      <legend>Modbus Table, Node Path Prefix, Element Map</legend>
-      <label class="input-group" for="modbus-table-selection">
-        <select id="modbus-table-selection" name="modbus-table-selection" bind:value={selectModbusTable}>
-          <option value="empty">Empty</option>
-          <option value="carel">Carel</option>
-          
-        </select>
-        <input id="node-path-prefix" type="text" bind:value={nodePathPrefix}>
-        <input id="element-map" type="text" bind:value={elementMapLocation}>
-      </label>
-    </fieldset>
-    <fieldset id="select-exhaust-line-elements">
-      <legend>Select Exhaust Line Elements</legend>
-      {#each exhaustLineElements as element, index (element.key)}
-          <label for="{element.key}"
-              class:dragging={dragSourceArray === exhaustLineElements && dragSourceIndex === index}
-              class:drag-over-top={dragOverArray === exhaustLineElements && dragOverIndex === index && dragSourceIndex !== null && dragSourceIndex > index}
-              class:drag-over-bottom={dragOverArray === exhaustLineElements && dragOverIndex === index && dragSourceIndex !== null && dragSourceIndex < index}
-              class:sub-element={element.sub}
-              draggable="true"
-              ondragstart={() => handleDragStart(exhaustLineElements, index)}
-              ondragover={(event) => handleDragOver(event, exhaustLineElements, index)}
-              ondrop={() => handleDrop(exhaustLineElements, index)}
-              ondragend={handleDragEnd}>
-              <input type="checkbox" id={element.key} bind:checked={element.checked}> {element.label}
-          </label>
-          {#if element.checked}
-              {#each ELEMENT_OPTIONS[element.type] ?? [] as option (option.key)}
-                  <label class="sub-element" for="{element.key}-{option.key}">
-                      {#if option.type === "checkbox"}
-                          <input type="checkbox" id="{element.key}-{option.key}" bind:checked={element[option.key]}>
-                      {:else}
-                          <select id="{element.key}-{option.key}" bind:value={element[option.key]}>
-                              <option value="continious">Continuous</option>
-                              <option value="discrete">Discrete</option>
-                          </select>
-                      {/if}
-                      {option.label}
-                  </label>
-              {/each}
-          {/if}
-      {/each}
-    </fieldset>
-
-    <fieldset id="select-intake-line-elements">
-      <legend>Select Intake Line Elements</legend>
-      {#each intakeLineElements as element, index (element.key)}
-          <label for="{element.key}"
-              class:dragging={dragSourceArray === intakeLineElements && dragSourceIndex === index}
-              class:drag-over-top={dragOverArray === intakeLineElements && dragOverIndex === index && dragSourceIndex !== null && dragSourceIndex > index}
-              class:drag-over-bottom={dragOverArray === intakeLineElements && dragOverIndex === index && dragSourceIndex !== null && dragSourceIndex < index}
-              class:sub-element={element.sub}
-              draggable="true"
-              ondragstart={() => handleDragStart(intakeLineElements, index)}
-              ondragover={(event) => handleDragOver(event, intakeLineElements, index)}
-              ondrop={() => handleDrop(intakeLineElements, index)}
-              ondragend={handleDragEnd}>
-              <input type="checkbox" id={element.key} bind:checked={element.checked}> {element.label}
-          </label>
-          {#if element.checked}
-              {#each ELEMENT_OPTIONS[element.type] ?? [] as option (option.key)}
-                  <label class="sub-element" for="{element.key}-{option.key}">
-                      {#if option.type === "checkbox"}
-                          <input type="checkbox" id="{element.key}-{option.key}" bind:checked={element[option.key]}>
-                      {:else}
-                          <select id="{element.key}-{option.key}" bind:value={element[option.key]}>
-                              <option value="continious">Continuous</option>
-                              <option value="discrete">Discrete</option>
-                          </select>
-                      {/if}
-                      {option.label}
-                  </label>
-              {/each}
-          {/if}
-      {/each}
-    </fieldset>
-    
-    <fieldset id="select-return-line-elements">
-      <legend>Select Return Line Elements</legend>
-      {#each returnLineElements as element, index (element.key)}
-          <label for="{element.key}"
-              class:dragging={dragSourceArray === returnLineElements && dragSourceIndex === index}
-              class:drag-over-top={dragOverArray === returnLineElements && dragOverIndex === index && dragSourceIndex !== null && dragSourceIndex > index}
-              class:drag-over-bottom={dragOverArray === returnLineElements && dragOverIndex === index && dragSourceIndex !== null && dragSourceIndex < index}
-              class:sub-element={element.sub}
-              draggable="true"
-              ondragstart={() => handleDragStart(returnLineElements, index)}
-              ondragover={(event) => handleDragOver(event, returnLineElements, index)}
-              ondrop={() => handleDrop(returnLineElements, index)}
-              ondragend={handleDragEnd}>
-              <input type="checkbox" id={element.key} bind:checked={element.checked}> {element.label}
-          </label>
-          {#if element.checked}
-              {#each ELEMENT_OPTIONS[element.type] ?? [] as option (option.key)}
-                  <label class="sub-element" for="{element.key}-{option.key}">
-                      {#if option.type === "checkbox"}
-                          <input type="checkbox" id="{element.key}-{option.key}" bind:checked={element[option.key]}>
-                      {:else}
-                          <select id="{element.key}-{option.key}" bind:value={element[option.key]}>
-                              <option value="continious">Continuous</option>
-                              <option value="discrete">Discrete</option>
-                          </select>
-                      {/if}
-                      {option.label}
-                  </label>
-              {/each}
-          {/if}
-      {/each}
-    </fieldset>
-
-    <fieldset id="select-supply-line-elements">
-      <legend>Select Supply Line Elements</legend>
-      {#each supplyLineElements as element, index (element.key)}
-          <label for="{element.key}"
-              class:dragging={dragSourceArray === supplyLineElements && dragSourceIndex === index}
-              class:drag-over-top={dragOverArray === supplyLineElements && dragOverIndex === index && dragSourceIndex !== null && dragSourceIndex > index}
-              class:drag-over-bottom={dragOverArray === supplyLineElements && dragOverIndex === index && dragSourceIndex !== null && dragSourceIndex < index}
-              class:sub-element={element.sub}
-              draggable="true"
-              ondragstart={() => handleDragStart(supplyLineElements, index)}
-              ondragover={(event) => handleDragOver(event, supplyLineElements, index)}
-              ondrop={() => handleDrop(supplyLineElements, index)}
-              ondragend={handleDragEnd}>
-              <input type="checkbox" id={element.key} bind:checked={element.checked}> {element.label}
-            </label>
-          {#if element.checked}
-              {#each ELEMENT_OPTIONS[element.type] ?? [] as option (option.key)}
-                  <label class="sub-element" for="{element.key}-{option.key}">
-                      {#if option.type === "checkbox"}
-                          <input type="checkbox" id="{element.key}-{option.key}" bind:checked={element[option.key]}>
-                      {:else}
-                          <select id="{element.key}-{option.key}" bind:value={element[option.key]}>
-                              <option value="continious">Continuous</option>
-                              <option value="discrete">Discrete</option>
-                          </select>
-                      {/if}
-                      {option.label}
-                  </label>
-              {/each}
-          {/if}
-      {/each}
-    </fieldset>
-
-    <button class="configure" class:copied={copySuccess} type="button" onclick={handleConfiguration}>
-      {copySuccess ? "Copied to Clipboard" : "Configure Selection"}
-    </button>
-  </div>
-
   <div class="viewer-section">
-    <h2>Live Preview</h2>
-    <div class="svg-container">
-      <svg class="preview-svg" viewBox="0 0 {displayWidth} {displayHeight}">
-        <text x={displayWidth/2} y="60" font-family="Roboto" font-size="46" font-weight="bold" fill="#1E293B" text-anchor="middle">{displayTitle}</text>
-
-        <polyline points="{xLeft},{exhaustY} {xCenter},{exhaustY}" fill="none" stroke="#EF4444" stroke-width="10"/>
-        {#each exhaustLineLayout.shapes as shape (shape.key)}
-          <use href="#icon-{shape.type}" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
+    <span class="app-version" title="Auto AHU {__APP_VERSION__} · commit {__APP_COMMIT__}">{__APP_VERSION__}</span>
+    <p class="viewer-hint">Hover a pipe and click + to add an element. Click an element to edit it, drag it to move it. Click the title to rename it, click the heat exchanger to change its type.</p>
+    <div class="svg-container" bind:this={viewer}>
+      <svg class="preview-svg" role="application" aria-label="AHU preview" class:moving={moving} class:instant viewBox="0 0 {displayWidth} {displayHeight}" bind:this={previewSvg}
+           onpointerdown={startMove} onpointermove={updateMove} onpointerup={endMove} onpointercancel={endMove}
+           onpointerleave={() => { if (!moving) hoverLine = null; }}>
+        <text class="title-text" class:editing={editingTitle} x={displayWidth/2} y="75" font-family="Roboto" font-size="46" font-weight="bold" fill="#1E293B" text-anchor="middle">{displayTitle || "Untitled display"}</text>
+        {#if movePreview}
+          {@const slot = sceneGroups.find((group) => group.owner === moving.key)?.box}
+          {#if slot}
+            <rect class="drop-slot" x={slot.x} y={slot.y} width={slot.width} height={slot.height} rx="10"
+                  style="transform: translate({(movePreview.centers.get(moving.key) ?? baseCenters.get(moving.key)) - baseCenters.get(moving.key)}px, 0)"/>
+          {/if}
+        {/if}
+        {#each orderedGroups as group (group.id)}
+          <g class="part" class:dragging={!!moving && moving.key === group.owner} class:selected={selected === group.owner} data-owner={group.owner}
+             in:pop={{ easing: backOut, delay: 60 }} out:pop={{ easing: cubicIn, duration: 120 }}
+             class:target={movePreview && group.owner && group.owner !== moving.key && lineOf(group.owner) === lineOf(moving.key)}
+             style:transform={group.owner ? `translate(${shiftOf(group.owner)}px, 0)${moving?.key === group.owner ? " scale(1.04)" : ""}` : undefined}>
+            {#if group.box}
+              <rect class="hit" x={group.box.x} y={group.box.y} width={group.box.width} height={group.box.height} rx="10"/>
+            {/if}
+            {#each group.items as item (item.id)}
+              {#if item.kind === "polyline"}
+                <polyline points={item.points} fill="none" stroke={item.color} stroke-width={item.width} stroke-dasharray={item.dash}
+                          stroke-linecap={item.round ? "round" : undefined} stroke-linejoin={item.round ? "round" : undefined}/>
+              {:else if item.kind === "icon"}
+                <use href="#icon-{item.sprite}" x={item.x} y={item.y} width={item.width * item.k} height={item.height * item.k}/>
+              {:else if item.kind === "field"}
+                <rect x={item.x} y={item.y} width={item.width} height={item.height} rx={2 * item.height / 40} fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+                <text x={item.x + item.width / 2} y={item.y + item.height / 2 + 7 * item.height / 40} text-anchor="middle"
+                      font-family="Roboto" font-size={20 * item.height / 40} fill="#414142">{item.decimals ? "--.-" : "--"} {item.unit}</text>
+              {:else}
+                <text x={item.x} y={item.y} text-anchor={item.anchor} font-family="Roboto" font-size={item.size}
+                      font-weight={item.bold ? "bold" : undefined} fill={item.color}>{item.text}</text>
+              {/if}
+            {/each}
+            {#if group.box && group.owner !== RECUPERATION}
+              <g class="remove" role="button" tabindex="-1" aria-label="Remove {elementOf(group.owner)?.label}"
+                 transform="translate({group.box.x + group.box.width}, {group.box.y})"
+                 onclick={() => removeElement(group.owner)} onkeydown={(e) => e.key === "Enter" && removeElement(group.owner)}>
+                <circle r="13"/>
+                <path d="M -4.5 -4.5 L 4.5 4.5 M 4.5 -4.5 L -4.5 4.5"/>
+              </g>
+            {/if}
+          </g>
         {/each}
-
-        <polyline points="{xLeft},{intakeY} {xCenter},{intakeY}" fill="none" stroke="#22C55E" stroke-width="10"/>
-        {#each intakeLineLayout.shapes as shape (shape.key)}
-          <use href="#icon-{shape.type}" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
+        {#if !moving}
+          {#each Object.entries(insertSlots) as [line, slots] (line)}
+            {#if hoverLine === line || picker?.line === line}
+              {#each slots as slot (slot.index)}
+                <g class="insert" class:active={picker?.line === line && picker.index === slot.index}
+                   role="button" tabindex="0" aria-label="Add an element to {LINES[LINE_KEYS[line]].label}"
+                   style="--accent: {LINES[LINE_KEYS[line]].color}"
+                   transform="translate({slot.x}, {lineSpecs[line].y})"
+                   onclick={() => openPicker(line, slot)} onkeydown={(e) => e.key === "Enter" && openPicker(line, slot)}>
+                  <circle class="insert-hit" r="34"/>
+                  <circle class="insert-dot" r="22"/>
+                  <path d="M -9 0 H 9 M 0 -9 V 9"/>
+                </g>
+              {/each}
+            {/if}
           {/each}
-          
-          <polyline points="{xRight},{yTop} {xCenter},{yTop}" fill="none" stroke="#F59E0B" stroke-width="10"/>
-        {#each returnLineLayout.shapes as shape (shape.key)}
-        <use href="#icon-{shape.type}" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
-        {/each}
+        {/if}
+      </svg>
 
-        <polyline points="{xRight},{yBottom} {xCenter},{yBottom}" fill="none" stroke="#3B82F6" stroke-width="10"/>
-        {#each supplyLineLayout.shapes as shape (shape.key)}
-        <use href="#icon-{shape.type}" x={shape.x} y={shape.y + shape.offset} width={shape.width} height={shape.height} />
-        {/each}
-        
-        
-        <polyline points="{xLeft - 10},{exhaustY - 10} {xLeft - 30},{exhaustY} {xLeft - 10},{exhaustY + 10}" fill="none" stroke="#EF4444" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        <polyline points="{xLeft - 30},{intakeY - 10} {xLeft - 10},{intakeY} {xLeft - 30},{intakeY + 10}" fill="none" stroke="#22C55E" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        <polyline points="{xRight + 30},{yTop - 10} {xRight + 10},{yTop} {xRight + 30},{yTop + 10}" fill="none" stroke="#F59E0B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        <polyline points="{xRight + 10},{yBottom - 10} {xRight + 30},{yBottom} {xRight + 10},{yBottom + 10}" fill="none" stroke="#3B82F6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        
-        <use href={`#icon-${selectedRecuperation}`} x={(recuperationUnitX) - (recuperationUnitWidth/2)} y={(displayHeight/2) - (recuperationUnitHeight/2)} width={recuperationUnitWidth} height={recuperationUnitHeight} />
-        </svg>
+      {#if picker && previewSvg && viewer}
+        {@const anchor = toLocal(picker.x, picker.y)}
+        {@const below = picker.y === yTop}
+        <div class="canvas-popover picker" class:below style="left: {Math.min(Math.max(anchor.left, 140), viewer.clientWidth - 140)}px; top: {anchor.top + (below ? 22 : -22)}px">
+          <div class="popover-title">Add to {LINES[LINE_KEYS[picker.line]].label}</div>
+          <input class="pick-search" type="search" placeholder="Search elements" aria-label="Search elements"
+                 bind:value={pickerQuery} onkeydown={pickerKey} use:focusSearch>
+          <div class="pick-list">
+            {#each pickerMatches as entry (entry.key)}
+              <button type="button" class="pick" onclick={() => insertElement(entry)}>{entry.label}</button>
+            {:else}
+              <p class="pick-empty">No elements match "{pickerQuery}".</p>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if editingTitle && previewSvg && viewer}
+        {@const anchor = toLocal(displayWidth / 2, 75)}
+        <input class="title-input" type="text" aria-label="Display title" bind:value={displayTitle} use:focusTitle
+               style="left: {anchor.left}px; top: {anchor.top - 46 * anchor.scale}px; font-size: {46 * anchor.scale}px; height: {60 * anchor.scale}px"
+               onkeydown={(e) => { if (e.key === "Enter" || e.key === "Escape") editingTitle = false; }} onblur={() => editingTitle = false}>
+      {/if}
+
+      {#if selected === RECUPERATION && recuperationBox && previewSvg && viewer}
+        {@const anchor = toLocal(recuperationBox.x + recuperationBox.width / 2, recuperationBox.y + recuperationBox.height)}
+        <div class="canvas-popover panel below" style="left: {Math.min(Math.max(anchor.left, 160), viewer.clientWidth - 160)}px; top: {anchor.top + 10}px">
+          <div class="panel-head">
+            <span class="popover-title">Heat exchanger</span>
+            <button type="button" class="panel-close" aria-label="Close" onclick={() => selected = null}>&times;</button>
+          </div>
+          <div class="element-options">
+            <span class="option-name">Type</span>
+            <div class="segmented" role="group" aria-label="Heat exchanger type">
+              <button type="button" class:on={selectedRecuperation === "plate-heat-exchanger"} onclick={() => selectedRecuperation = "plate-heat-exchanger"}>Plate</button>
+              <button type="button" class:on={selectedRecuperation === "rotary-heat-exchanger"} onclick={() => selectedRecuperation = "rotary-heat-exchanger"}>Rotary</button>
+            </div>
+            <span class="option-name">Position</span>
+            <div class="toggles">
+              <button type="button" class="toggle" onclick={() => recuperationUnitX = displayWidth / 2}>Centre</button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <div class="scale-control">
+        <label for="element-scale">Element size</label>
+        <input type="range" id="element-scale" min={ELEMENT_SCALE_MIN} max={ELEMENT_SCALE_MAX} step="0.01" bind:value={elementScale} style="--fill: {elementScaleFillPercent}%">
+        <span>{Math.round(elementScale * 100)}%</span>
+      </div>
+
+      {#if selected && boxes.has(selected) && previewSvg && viewer}
+        {@const element = elementOf(selected)}
+        {@const box = boxes.get(selected)}
+        {@const below = lineSpecs[lineOf(selected)].y === yTop}
+        {@const anchor = toLocal(box.x + box.width / 2, below ? box.y + box.height : box.y)}
+        <div class="canvas-popover panel" class:below style="left: {Math.min(Math.max(anchor.left, 160), viewer.clientWidth - 160)}px; top: {anchor.top + (below ? 10 : -10)}px">
+          <div class="panel-head">
+            <span class="popover-title">{element.label}</span>
+            <button type="button" class="panel-close" aria-label="Close" onclick={() => selected = null}>&times;</button>
+          </div>
+          {@render elementOptions(element)}
+          <button type="button" class="panel-remove" onclick={() => removeElement(element.key)}>Remove from {LINES[LINE_KEYS[lineOf(element.key)]].label}</button>
+        </div>
+      {/if}
     </div>
   </div>
 </div>
+{#snippet toggle(label, on, flip)}
+  <button type="button" class="toggle" class:on aria-pressed={on} onclick={flip}>{label}</button>
+{/snippet}
+
+{#snippet elementOptions(element)}
+  {@const spec = ELEMENT_TYPES[element.type]}
+  <div class="element-options">
+    {#each ELEMENT_OPTIONS[element.type] ?? [] as option (option.key)}
+      <span class="option-name">Signal</span>
+      <div class="segmented" role="group" aria-label={option.label}>
+        <button type="button" class:on={element[option.key] === "continious"} onclick={() => element[option.key] = "continious"}>Continuous</button>
+        <button type="button" class:on={element[option.key] === "discrete"} onclick={() => element[option.key] = "discrete"}>Discrete</button>
+      </div>
+    {/each}
+    {#if spec.measures.length === 1}
+      {@const measure = spec.measures[0]}
+      <span class="option-name">Readout</span>
+      <div class="toggles">
+        {@render toggle(MEASURES[measure].name, element.readouts.includes(measure), () => element.readouts = toggleIn(element.readouts, measure))}
+        {#if spec.setpoints.includes(measure)}
+          {@render toggle("Setpoint", element.readouts.includes(setpointId(measure)), () => element.readouts = toggleIn(element.readouts, setpointId(measure)))}
+        {/if}
+      </div>
+    {:else if spec.measures.length}
+      <span class="option-name">Readout</span>
+      <div class="toggles">
+        {#each spec.measures as measure (measure)}
+          {@render toggle(MEASURES[measure].name, element.readouts.includes(measure), () => element.readouts = toggleIn(element.readouts, measure))}
+        {/each}
+      </div>
+      {#if spec.setpoints.length}
+        <span class="option-name">Setpoint</span>
+        <div class="toggles">
+          {#each spec.setpoints as measure (measure)}
+            {@render toggle(MEASURES[measure].name, element.readouts.includes(setpointId(measure)), () => element.readouts = toggleIn(element.readouts, setpointId(measure)))}
+          {/each}
+        </div>
+      {/if}
+    {/if}
+    {#if spec.indicators.length}
+      <span class="option-name">Indicator</span>
+      <div class="toggles">
+        {#each spec.indicators as indicator (indicator)}
+          {@render toggle(INDICATORS[indicator].name, element.indicators.includes(indicator), () => element.indicators = toggleIn(element.indicators, indicator))}
+        {/each}
+      </div>
+    {/if}
+  </div>
+{/snippet}
+
+{#if settingsOpen}
+  <SettingsDialog bind:nodePrefix={nodePathPrefix} bind:iconLibrary bind:iconNames bind:displayWidth bind:displayHeight bind:controller={selectModbusTable}
+                  onclose={() => settingsOpen = false}/>
+{/if}

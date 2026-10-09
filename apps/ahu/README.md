@@ -1,36 +1,42 @@
 # Auto AHU — User Manual
 
-Auto AHU helps you build an AHU (Air Handling Unit) display screen without drawing it by hand. Pick the components your unit has, arrange them, and export a ready-to-use display file.
+Auto AHU helps you build an AHU (Air Handling Unit) display screen without drawing it by hand. Build the unit directly in the preview, then export a ready-to-use display.
 
-## 1. Set up the display
+## 1. Settings
 
-- **Display Title** — the name shown at the top of the screen.
-- **Width / Height** — the size of the display in pixels.
+Open **Settings** (top right). Everything there is saved in your browser:
 
-## 2. Choose the recuperation unit
+- **Display size** — width and height of the atvise display in pixels.
+- **Modbus table** — the controller type your unit uses (currently: Carel).
+- **Node path prefix** — the base address for your project (e.g. `AGENT.OBJECTS.Klimat`). It is put in front of every register, so you only set it once.
+- **Icon library** — the atvise folder holding the icons (default `SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.6.%20Ikone`).
+- **Icons** — the object display name used for each component. Leave a name empty and the icon is drawn straight into the display instead.
 
-Select **Plate Heat Exchanger** or **Rotary Heat Exchanger**. Use the slider below it to move the unit left or right.
+## 2. Title and heat exchanger
 
-## 3. Set the Modbus table and node path
+- **Title** — click the title in the preview to rename it. Press Enter when done.
+- **Heat exchanger** — click it to choose **Plate** or **Rotary**, or to centre it. Drag it left or right to move it; double-click it to centre it again.
 
-- **Modbus Table** — select the controller type your unit uses (currently: Carel).
-- **Node Path Prefix** — the base address for your project (e.g. `AGENT.OBJECTS.Klimat`). This is combined automatically with each component you add, so you only need to set it once.
+## 3. Add components to each line
 
-## 4. Add components to each line
+There are four lines: **Exhaust** (Izpuh), **Intake** (Zajem), **Return** (Odvod) and **Supply** (Dovod).
 
-There are four lines: **Exhaust**, **Intake**, **Return**, and **Supply**. Tick the checkbox next to any component your unit has on that line — damper, filter, fan, sensors, coils, or electric heater. Some components show extra options once checked (for example, a damper's signal type, or a filter/fan's DP switch).
+- **Add** — hover a pipe and click one of the **+** markers. Type to search, then pick a component (or press Enter for the first match); it is placed exactly at that spot. The list shows the components that belong on that line, and the same component can be added more than once.
+- **Edit** — click a component to open its options:
+  - **Signal** — continuous or discrete (dampers, humidifier).
+  - **Readout** — value boxes next to the icon (temperature, humidity, CO₂, pressure, flow, position, speed).
+  - **Setpoint** — a setpoint box for the measured value.
+  - **Indicator** — a ΔP switch or alarm icon on the component.
+- **Move** — drag a component along its pipe.
+- **Remove** — click the × that appears on hover, press Delete while it is selected, or use **Remove** in its options.
 
-Components appear in the display in the order you check them. To change the order, drag a component up or down within its line.
+Use **Element size** in the bottom-right corner of the preview to make all components smaller or larger.
 
-## 5. Check the preview
+## 4. Export
 
-The right-hand panel shows a live preview of your display, updating as you make changes.
-
-## 6. Export
-
-Click **Configure Selection**. The finished display is copied to your clipboard — paste it into atvise as a new SVG display.
+Click **Copy to atvise** (top right). The finished display is copied to your clipboard — paste it into atvise as a new SVG display.
 
 ## Tips
 
-- If a component looks unbound or missing data after import, double-check the Node Path Prefix and Modbus Table selection.
-- You can revisit and change any setting — the preview and export always reflect your latest choices.
+- If a component looks unbound or missing data after import, double-check the node path prefix, icon library and Modbus table in Settings.
+- You can revisit and change anything — the preview and export always reflect your latest choices.
