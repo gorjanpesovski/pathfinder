@@ -4,9 +4,10 @@
   import { base } from "$app/paths";
   import { ICON_SPRITE } from "$lib/iconSprite.js";
   import { RESOURCE_SECTIONS } from "$lib/resources.js";
-  import { DEFAULT_ICON_LIBRARY, DEFAULT_ICON_NAMES, DEFAULT_NODE_PREFIX, ELEMENT_TYPES, INDICATORS, LINES, MEASURES, setpointId } from "$lib/ahu/elements.js";
-  import { frameItems, lineItems, sideCenters } from "$lib/ahu/scene.js";
-  import { escapeXml, itemsToAtvise } from "$lib/ahu/atvise.js";
+  import { DEFAULT_ICON_LIBRARY, DEFAULT_ICON_NAMES, DEFAULT_NODE_PREFIX, ELEMENT_TYPES, FITTINGS, INDICATORS, LINES, MEASURES, RECUPERATION_OPTIONS, UNIT_OPTIONS, setpointId } from "$lib/ahu/elements.js";
+  import { frameItems, lineItems, mixingLead, MIXING_KEY, recuperationItems, sideCenters, unitItems } from "$lib/ahu/scene.js";
+  import { displayScript, escapeXml, itemsToAtvise } from "$lib/ahu/atvise.js";
+  import { CONTROLLERS, elementDefaults, recuperationDefaults, unitDefaults } from "$lib/ahu/registers.js";
   import { loadJson, loadText, saveJson, saveText } from "$lib/settings.js";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
 
@@ -42,8 +43,11 @@
   let elementScale = $state(1);
 
   const leftExtreme = $derived(xLeft + LINE_END_PADDING);
-  const centerExtremeLeft = $derived(xCenter - (recuperationUnitWidth / 2) - elementPadding);
-  const centerExtremeRight = $derived(xCenter + (recuperationUnitWidth / 2) + elementPadding);
+  let recuperationOptions = $state({ bypass: false, mixing: false, readouts: [], indicators: [] });
+  let unitOptions = $state({ room: [], status: [] });
+  let unitOpen = $state(false);
+  const centerExtremeLeft = $derived(xCenter - (recuperationUnitWidth / 2) - (recuperationOptions.bypass ? 60 : elementPadding));
+  const centerExtremeRight = $derived(xCenter + (recuperationUnitWidth / 2) + (recuperationOptions.bypass ? 60 : elementPadding));
   const rightExtreme = $derived(xRight - LINE_END_PADDING);
 
   let selectedRecuperation = $state("rotary-heat-exchanger");
@@ -79,37 +83,37 @@
 
   const SUPPLY_CATALOG = [{
           key: "sup-filter",
-          label: "Supply Air Filter",
+          label: "Filter",
           type: "filter"
       },
       {
           key: "sup-frost-thermostat",
-          label: "Frost Protection Thermostat",
+          label: "Frost thermostat",
           type: "frostThermostat"
       },
       {
           key: "sup-preheat-hot-water-coils",
-          label: "Preheat Hot Water Coils",
+          label: "Preheat hot water coil",
           type: "hotWaterCoils"
       },
       {
           key: "sup-preheat-electric-heater",
-          label: "Preheat Electric Heaters",
+          label: "Preheat electric heater",
           type: "electricHeater"
       },
       {
           key: "sup-cold-water-coils",
-          label: "Cold Water Coils",
+          label: "Cold water coil",
           type: "coldWaterCoils"
       },
       {
           key: "sup-reheat-hot-water-coils",
-          label: "Reheat Hot Water Coils",
+          label: "Reheat hot water coil",
           type: "hotWaterCoils"
       },
       {
           key: "sup-reheat-electric-heater",
-          label: "Reheat Electric Heaters",
+          label: "Reheat electric heater",
           type: "electricHeater"
       },
       {
@@ -120,107 +124,172 @@
       },
       {
           key: "sup-fan",
-          label: "Supply Fan",
+          label: "Fan",
           type: "fan"
       },
       {
           key: "sup-temp-sensor",
-          label: "Temperature Sensor",
+          label: "Temperature sensor",
           type: "temperatureSensor"
       },
       {
           key: "sup-humidity-sensor",
-          label: "Humidity Sensor",
+          label: "Humidity sensor",
           type: "humiditySensor"
       },
       {
           key: "sup-co2-sensor",
-          label: "CO2 Air Quality Sensor",
+          label: "CO₂ sensor",
           type: "co2Sensor"
+      },
+      {
+          key: "sup-pressure-sensor",
+          label: "Pressure sensor",
+          type: "pressureSensor"
+      },
+      {
+          key: "sup-flow-sensor",
+          label: "Air flow sensor",
+          type: "flowSensor"
+      },
+      {
+          key: "sup-voc-sensor",
+          label: "VOC sensor",
+          type: "vocSensor"
+      },
+      {
+          key: "sup-after-recovery-temp-sensor",
+          label: "Temperature sensor (after recovery)",
+          type: "temperatureSensor"
+      },
+      {
+          key: "sup-saturation-temp-sensor",
+          label: "Temperature sensor (saturation)",
+          type: "temperatureSensor"
+      },
+      {
+          key: "sup-dx-coil",
+          label: "DX cooling coil",
+          type: "dxCoil"
+      },
+      {
+          key: "sup-silencer",
+          label: "Silencer",
+          type: "silencer"
       }
   ];
 
   const INTAKE_CATALOG = [{
           key: "int-damper",
-          label: "Outdoor Air Damper",
+          label: "Damper",
           type: "damper",
           signalType: "continious"
       },
       {
           key: "int-pre-filter",
-          label: "Intake Weather Louver / Pre-Filter",
+          label: "Filter",
           type: "filter"
       },
       {
           key: "int-temp-sensor",
-          label: "Outdoor Temperature Sensor",
+          label: "Temperature sensor",
           type: "temperatureSensor"
       },
       {
           key: "int-humidity-sensor",
-          label: "Outdoor Humidity Sensor",
+          label: "Humidity sensor",
           type: "humiditySensor"
       },
       {
           key: "int-fan",
-          label: "Intake Fan",
+          label: "Fan",
           type: "fan"
+      },
+      {
+          key: "int-silencer",
+          label: "Silencer",
+          type: "silencer"
       }
   ];
 
   const EXHAUST_CATALOG = [
       {
           key: "exh-damper",
-          label: "Exhaust Air Damper",
+          label: "Damper",
           type: "damper",
           signalType: "continious"
       },
       {
           key: "exh-frost-thermostat",
-          label: "Recovery Core Frost Thermostat",
+          label: "Frost thermostat",
           type: "frostThermostat"
       },
       {
           key: "exh-temp-sensor",
-          label: "Exhaust Temperature Sensor",
+          label: "Temperature sensor",
           type: "temperatureSensor"
       },
       {
           key: "exh-humidity-sensor",
-          label: "Exhaust Humidity Sensor",
+          label: "Humidity sensor",
           type: "humiditySensor"
       },
       {
           key: "exh-fan",
-          label: "Exhaust Fan",
+          label: "Fan",
           type: "fan"
+      },
+      {
+          key: "exh-silencer",
+          label: "Silencer",
+          type: "silencer"
       }
   ];
 
   const RETURN_CATALOG = [{
           key: "ret-filter",
-          label: "Return Air Filter",
+          label: "Filter",
           type: "filter"
       },
       {
           key: "ret-temp-sensor",
-          label: "Return Temperature Sensor",
+          label: "Temperature sensor",
           type: "temperatureSensor"
       },
       {
           key: "ret-humidity-sensor",
-          label: "Return Humidity Sensor",
+          label: "Humidity sensor",
           type: "humiditySensor"
       },
       {
           key: "ret-co2-sensor",
-          label: "Return CO2 Sensor",
+          label: "CO₂ sensor",
           type: "co2Sensor"
       },
       {
           key: "ret-fan",
-          label: "Return Fan",
+          label: "Fan",
           type: "fan"
+      },
+      {
+          key: "ret-pressure-sensor",
+          label: "Pressure sensor",
+          type: "pressureSensor"
+      },
+      {
+          key: "ret-flow-sensor",
+          label: "Air flow sensor",
+          type: "flowSensor"
+      },
+      {
+          key: "ret-voc-sensor",
+          label: "VOC sensor",
+          type: "vocSensor"
+      },
+      {
+          key: "ret-silencer",
+          label: "Silencer",
+          type: "silencer"
       }
   ];
 
@@ -280,6 +349,7 @@
 
   let copySuccess = $state(false);
   let hoverLine = $state(null);
+  let hoveredOwner = null;
   let picker = $state(null);
   let selected = $state(null);
   let viewer = $state(null);
@@ -307,6 +377,7 @@
           template: entry.key,
           label: same ? `${entry.label} ${same + 1}` : entry.label,
           readouts: [],
+          fittings: [],
           indicators: []
       };
   }
@@ -322,23 +393,47 @@
       sup: { elements: placements.sup, start: centerExtremeRight, end: rightExtreme, y: yBottom, pipeStart: xCenter + recuperationUnitWidth / 2, pipeEnd: xRight }
   });
 
+  const DIRECTION = { exh: -1, int: 1, ret: -1, sup: 1 };
   const PARTNER = { exh: "int", int: "exh", ret: "sup", sup: "ret" };
+
+  function leadOf(line) {
+      return recuperationOptions.mixing && (line === "ret" || line === "sup") ? mixingLead(elementScale) : null;
+  }
+
+  const mixingCenter = $derived(recuperationOptions.mixing
+      ? sideCenters(placements.ret, placements.sup, centerExtremeRight, rightExtreme, elementScale, leadOf("ret")).get(MIXING_KEY)
+      : null);
 
   function buildLine(line, lists = {}) {
       const { start, end, y } = lineSpecs[line];
       const elements = lists[line] ?? lineSpecs[line].elements;
-      const centers = sideCenters(elements, lists[PARTNER[line]] ?? lineSpecs[PARTNER[line]].elements, start, end, elementScale);
-      return lineItems({ elements, y, centers, outward: y === yTop ? -1 : 1, scale: elementScale, controller: selectModbusTable, prefix: nodePathPrefix });
+      const centers = sideCenters(elements, lists[PARTNER[line]] ?? lineSpecs[PARTNER[line]].elements, start, end, elementScale, leadOf(line));
+      return lineItems({ elements, y, centers, direction: DIRECTION[line], outward: y === yTop ? -1 : 1, scale: elementScale, controller: selectModbusTable, prefix: nodePathPrefix });
   }
 
   function centersOf(items) {
       return new Map(items.filter((item) => item.center !== undefined).map((item) => [item.owner, item.center]));
   }
 
-  const frame = $derived(frameItems({
+  const frameBase = $derived(frameItems({
       xLeft, xRight, xCenter, exhaustY, intakeY, returnY: yTop, supplyY: yBottom, topY: yTop, displayWidth, displayHeight,
       recuperation: selectedRecuperation, recuperationWidth: recuperationUnitWidth, recuperationHeight: recuperationUnitHeight
   }));
+
+  const recuperationExtras = $derived(recuperationItems({
+      cx: xCenter, width: recuperationUnitWidth, height: recuperationUnitHeight, displayHeight, recuperation: selectedRecuperation,
+      options: recuperationOptions, intakeY, supplyY: yBottom, returnY: yTop, controller: selectModbusTable, prefix: nodePathPrefix, scale: elementScale, mixingCenter
+  }));
+
+  const frame = $derived({
+      under: [...frameBase.under, ...recuperationExtras.under],
+      over: [
+          frameBase.over[0],
+          ...recuperationExtras.over.map((item) => ({ ...item, owner: RECUPERATION })),
+          ...frameBase.over.slice(1),
+          ...unitItems({ displayWidth, options: unitOptions, controller: selectModbusTable, prefix: nodePathPrefix })
+      ]
+  });
 
   const sceneItems = $derived([
       ...frame.under,
@@ -357,7 +452,7 @@
       }
       for (const group of groups) {
           const icon = group.items.find((item) => item.center !== undefined);
-          if (icon) group.box = { x: icon.x - 10, y: icon.y - 10, width: icon.width * icon.k + 20, height: icon.height * icon.k + 20 };
+          if (icon) group.box = { x: icon.x - 10, y: icon.y - 10, width: icon.boxWidth + 20, height: icon.boxHeight + 20 };
       }
       return groups;
   });
@@ -460,7 +555,7 @@
 
   const insertSlots = $derived(Object.fromEntries(Object.entries(lineSpecs).map(([line, spec]) => {
       const placed = spec.elements.filter((element) => boxes.has(element.key));
-      const edges = [spec.pipeStart + 6, ...placed.flatMap((element) => {
+      const edges = [leadOf(line) && mixingCenter !== null ? mixingCenter + mixingLead(elementScale).width / 2 : spec.pipeStart + 6, ...placed.flatMap((element) => {
           const box = boxes.get(element.key);
           return [box.x, box.x + box.width];
       }), spec.pipeEnd - 6];
@@ -534,21 +629,25 @@
           return;
       }
       const typing = event.target.closest?.("input, select, textarea");
-      if (selected && selected !== RECUPERATION && !typing && (event.key === "Delete" || event.key === "Backspace")) {
+      const target = selected ?? hoveredOwner;
+      if (target && target !== RECUPERATION && !typing && (event.key === "Delete" || event.key === "Backspace")) {
           event.preventDefault();
-          removeElement(selected);
+          removeElement(target);
+          hoveredOwner = null;
       }
   }
 
   function handleOutside(event) {
+      if (unitOpen && !event.target.closest?.(".unit-control")) unitOpen = false;
       if (!picker && !selected) return;
-      if (event.target.closest?.(".canvas-popover, .preview-svg, .title-input")) return;
+      if (event.target.closest?.(".canvas-popover, .preview-svg, .title-input, .unit-control")) return;
       closeOverlays();
   }
 
   function startMove(event) {
       if (event.target.closest(".insert, .remove")) return;
       if (event.target.closest(".title-text")) {
+          event.preventDefault();
           picker = null;
           selected = null;
           editingTitle = true;
@@ -572,15 +671,17 @@
           }
           lastRecuperationPress = event.timeStamp;
       }
-      pressing = { key, x: svgX(event), timer: setTimeout(beginMove, HOLD_DELAY) };
+      pressing = { key, x: svgX(event), startX: svgX(event), timer: setTimeout(beginMove, HOLD_DELAY) };
   }
 
   const HOLD_DELAY = 260;
+  const DRAG_THRESHOLD = 6;
   let pressing = null;
 
   function beginMove() {
       if (!pressing) return;
-      const { key, x } = pressing;
+      const { key, x, timer } = pressing;
+      clearTimeout(timer);
       pressing = null;
       selected = null;
       if (key === RECUPERATION) {
@@ -593,10 +694,13 @@
 
   function updateMove(event) {
       if (pressing) {
-          pressing.x = svgX(event);
-          return;
+          const x = svgX(event);
+          if (Math.abs(x - pressing.startX) * previewSvg.getScreenCTM().a < DRAG_THRESHOLD) return;
+          pressing.x = pressing.startX;
+          beginMove();
       }
       if (!moving) {
+          hoveredOwner = event.target.closest?.("[data-owner]")?.dataset.owner ?? null;
           const line = lineAt(svgPoint(event));
           if (line !== hoverLine) hoverLine = line;
           return;
@@ -640,7 +744,22 @@
       settling = null;
   }
 
+  let autoFilled = $state(false);
+
+  function autoFill() {
+      for (const line of Object.keys(placements)) {
+          placements[line] = placements[line].map((element) => ({ ...element, ...elementDefaults(selectModbusTable, element) }));
+      }
+      recuperationOptions = { ...recuperationOptions, ...recuperationDefaults(selectModbusTable, selectedRecuperation) };
+      unitOptions = unitDefaults(selectModbusTable);
+      autoFilled = true;
+      setTimeout(() => autoFilled = false, 1600);
+  }
+
   async function handleConfiguration() {
+      const script = displayScript(sceneItems);
+      const scriptOpen = '<script atv:desc="" atv:name="" type="text/ecmascript"';
+      const scriptTag = script ? `${scriptOpen}><![CDATA[${script}]]><${"/"}script>` : `${scriptOpen}/>`;
       const boilerPlate =
           `<?xml version='1.0' encoding='UTF-8' standalone='no'?>
               <svg height="${displayHeight}" version="1.2" width="${displayWidth}" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:ns1="http://sozi.baierouge.fr" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -659,7 +778,7 @@
               <atv:argument name="hover_color" value="#A32A3A"/>
               <atv:argument name="icon_type" value="Back"/>
               </svg>
-              <script atv:desc="" atv:name="" type="text/ecmascript"/>
+              ${scriptTag}
               <svg atv:refpx="1765" atv:refpy="65.6677" height="121" id="graph_button" transform="matrix(0.6612,0,0,0.6612,0,0)" width="121" x="2608.893" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.4.%20Gumbi.Round_Buttons.Button" y="38.816">
               <atv:argument name="hover_color" value="#2A7A53"/>
               <atv:argument name="animation_type" value="Background"/>
@@ -734,7 +853,18 @@
     transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   }
 
-  .resources-link:hover {
+  .resources-link.filled {
+    border-color: #16a34a;
+    color: #16a34a;
+  }
+
+  .resources-link:disabled {
+    color: #94a3b8;
+    border-color: #e2e8f0;
+    cursor: default;
+  }
+
+  .resources-link:hover:not(:disabled) {
     background: #eff6ff;
     border-color: #93c5fd;
     color: #1d4ed8;
@@ -1112,7 +1242,7 @@
   }
 
   svg.preview-svg [data-owner] {
-    cursor: grab;
+    cursor: pointer;
   }
 
   svg.preview-svg.moving,
@@ -1244,6 +1374,10 @@
 
   .canvas-popover.below {
     transform: translate(-50%, 0);
+  }
+
+  .canvas-popover.side {
+    transform: none;
   }
 
   @keyframes popover-in {
@@ -1398,6 +1532,60 @@
 
   .title-input:focus {
     outline: none;
+  }
+
+  .unit-control {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 6;
+  }
+
+  .unit-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+  }
+
+  .unit-button:hover,
+  .unit-button.on {
+    border-color: #93c5fd;
+    color: #1d4ed8;
+  }
+
+  .unit-count {
+    min-width: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #dbeafe;
+    font-size: 10.5px;
+    line-height: 16px;
+    color: #1d4ed8;
+    box-sizing: border-box;
+  }
+
+  .unit-panel {
+    position: absolute;
+    top: 38px;
+    left: 0;
+    width: 320px;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.18);
+    animation: popover-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 
   .scale-control {
@@ -1577,6 +1765,17 @@
             </svg>
             Settings
         </button>
+        <button class="resources-link" class:filled={autoFilled} type="button" onclick={autoFill} disabled={selectModbusTable === "empty"} title="Turn on every readout, setpoint and indicator that {CONTROLLERS[selectModbusTable]?.name} has a register for">
+            <svg class="resources-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                {#if autoFilled}
+                    <path d="m5 12 5 5 9-10"/>
+                {:else}
+                    <path d="m15 4 5 5L9 20H4v-5z"/>
+                    <path d="m13 6 5 5"/>
+                {/if}
+            </svg>
+            {autoFilled ? "Filled" : `Auto-fill · ${CONTROLLERS[selectModbusTable]?.name ?? ""}`}
+        </button>
         <button class="export-button" class:copied={copySuccess} type="button" onclick={handleConfiguration}>
             <svg class="resources-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 {#if copySuccess}
@@ -1657,7 +1856,7 @@
     <div class="svg-container" bind:this={viewer}>
       <svg class="preview-svg" role="application" aria-label="AHU preview" class:moving={moving} class:instant viewBox="0 0 {displayWidth} {displayHeight}" bind:this={previewSvg}
            onpointerdown={startMove} onpointermove={updateMove} onpointerup={endMove} onpointercancel={endMove}
-           onpointerleave={() => { if (!moving) hoverLine = null; }}>
+           onpointerleave={() => { hoveredOwner = null; if (!moving) hoverLine = null; }}>
         <text class="title-text" class:editing={editingTitle} x={displayWidth/2} y="75" font-family="Roboto" font-size="46" font-weight="bold" fill="#1E293B" text-anchor="middle">{displayTitle || "Untitled display"}</text>
         {#if movePreview}
           {@const slot = sceneGroups.find((group) => group.owner === moving.key)?.box}
@@ -1678,8 +1877,10 @@
               {#if item.kind === "polyline"}
                 <polyline points={item.points} fill="none" stroke={item.color} stroke-width={item.width} stroke-dasharray={item.dash}
                           stroke-linecap={item.round ? "round" : undefined} stroke-linejoin={item.round ? "round" : undefined}/>
+              {:else if item.kind === "junction"}
+                <circle cx={item.cx} cy={item.cy} r={item.radius} fill="#FFFFFF" stroke={item.color} stroke-width={item.stroke}/>
               {:else if item.kind === "icon"}
-                <use href="#icon-{item.sprite}" x={item.x} y={item.y} width={item.width * item.k} height={item.height * item.k}/>
+                <use href="#icon-{item.sprite}" width={item.width} height={item.height} transform="matrix({item.matrix.join(",")})"/>
               {:else if item.kind === "field"}
                 <rect x={item.x} y={item.y} width={item.width} height={item.height} rx={2 * item.height / 40} fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
                 <text x={item.x + item.width / 2} y={item.y + item.height / 2 + 7 * item.height / 40} text-anchor="middle"
@@ -1743,8 +1944,10 @@
       {/if}
 
       {#if selected === RECUPERATION && recuperationBox && previewSvg && viewer}
-        {@const anchor = toLocal(recuperationBox.x + recuperationBox.width / 2, recuperationBox.y + recuperationBox.height)}
-        <div class="canvas-popover panel below" style="left: {Math.min(Math.max(anchor.left, 160), viewer.clientWidth - 160)}px; top: {anchor.top + 10}px">
+        {@const topRight = toLocal(recuperationBox.x + recuperationBox.width, recuperationBox.y)}
+        {@const topLeft = toLocal(recuperationBox.x, recuperationBox.y)}
+        {@const fitsRight = topRight.left + 16 + 300 <= viewer.clientWidth - 8}
+        <div class="canvas-popover panel side" style="left: {fitsRight ? topRight.left + 16 : topLeft.left - 316}px; top: {Math.max(8, topRight.top)}px">
           <div class="panel-head">
             <span class="popover-title">Heat exchanger</span>
             <button type="button" class="panel-close" aria-label="Close" onclick={() => selected = null}>&times;</button>
@@ -1755,6 +1958,24 @@
               <button type="button" class:on={selectedRecuperation === "plate-heat-exchanger"} onclick={() => selectedRecuperation = "plate-heat-exchanger"}>Plate</button>
               <button type="button" class:on={selectedRecuperation === "rotary-heat-exchanger"} onclick={() => selectedRecuperation = "rotary-heat-exchanger"}>Rotary</button>
             </div>
+            <span class="option-name">Dampers</span>
+            <div class="toggles">
+              {#each RECUPERATION_OPTIONS.dampers as entry (entry.id)}
+                {@render toggle(entry.name, recuperationOptions[entry.id], () => recuperationOptions[entry.id] = !recuperationOptions[entry.id])}
+              {/each}
+            </div>
+            <span class="option-name">Readout</span>
+            <div class="toggles">
+              {#each RECUPERATION_OPTIONS.readouts.filter((entry) => !entry.rotaryOnly || selectedRecuperation === "rotary-heat-exchanger") as entry (entry.id)}
+                {@render toggle(entry.name, recuperationOptions.readouts.includes(entry.id), () => recuperationOptions.readouts = toggleIn(recuperationOptions.readouts, entry.id))}
+              {/each}
+            </div>
+            <span class="option-name">Indicator</span>
+            <div class="toggles">
+              {#each RECUPERATION_OPTIONS.indicators as entry (entry.id)}
+                {@render toggle(entry.name, recuperationOptions.indicators.includes(entry.id), () => recuperationOptions.indicators = toggleIn(recuperationOptions.indicators, entry.id))}
+              {/each}
+            </div>
             <span class="option-name">Position</span>
             <div class="toggles">
               <button type="button" class="toggle" onclick={() => recuperationUnitX = displayWidth / 2}>Centre</button>
@@ -1762,6 +1983,35 @@
           </div>
         </div>
       {/if}
+
+      <div class="unit-control canvas-popover-anchor">
+        <button type="button" class="unit-button" class:on={unitOpen} aria-expanded={unitOpen} onclick={() => { unitOpen = !unitOpen; picker = null; selected = null; }}>
+          Unit
+          {#if unitOptions.room.length + unitOptions.status.length}<span class="unit-count">{unitOptions.room.length + unitOptions.status.length}</span>{/if}
+        </button>
+        {#if unitOpen}
+          <div class="unit-panel">
+            <div class="panel-head">
+              <span class="popover-title">Unit</span>
+              <button type="button" class="panel-close" aria-label="Close" onclick={() => unitOpen = false}>&times;</button>
+            </div>
+            <div class="element-options">
+              <span class="option-name">Room</span>
+              <div class="toggles">
+                {#each UNIT_OPTIONS.room as entry (entry.id)}
+                  {@render toggle(entry.name, unitOptions.room.includes(entry.id), () => unitOptions.room = toggleIn(unitOptions.room, entry.id))}
+                {/each}
+              </div>
+              <span class="option-name">Status</span>
+              <div class="toggles">
+                {#each UNIT_OPTIONS.status as entry (entry.id)}
+                  {@render toggle(entry.name, unitOptions.status.includes(entry.id), () => unitOptions.status = toggleIn(unitOptions.status, entry.id))}
+                {/each}
+              </div>
+            </div>
+          </div>
+        {/if}
+      </div>
 
       <div class="scale-control">
         <label for="element-scale">Element size</label>
@@ -1824,6 +2074,14 @@
           {/each}
         </div>
       {/if}
+    {/if}
+    {#if spec.fittings?.length}
+      <span class="option-name">Hydraulics</span>
+      <div class="toggles">
+        {#each spec.fittings as fitting (fitting)}
+          {@render toggle(FITTINGS[fitting].name, element.fittings.includes(fitting), () => element.fittings = toggleIn(element.fittings, fitting))}
+        {/each}
+      </div>
     {/if}
     {#if spec.indicators.length}
       <span class="option-name">Indicator</span>

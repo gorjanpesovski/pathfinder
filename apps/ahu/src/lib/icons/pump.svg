@@ -1,0 +1,391 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.0//EN' 'http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd'>
+<!-- Generator: Adobe Illustrator 14.0.0, SVG Export Plug-In . SVG Version: 6.00 Build 43363) -->
+<svg enable-background="new 0 0 29.268 29.333" height="55" id="Livello_1" version="1.0" width="55" x="0px" xml:space="preserve" y="0px" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs/>
+ <desc>Crpalka on/off status</desc>
+ <title>Crpalka</title>
+ <circle atv:refpx="26.521" atv:refpy="25.51" cx="27.5" cy="27.5" fill="#ffffff" id="id_0" r="23.5" stroke="#000000" stroke-width="3"/>
+ <metadata>
+  <atv:parameter behavior="mandatory" name="base" valuetype="address"/>
+  <atv:parameter behavior="optional" defaultvalue="" desc="Run feedback node" group="Data" name="feedback_base" valuetype="address"/>
+  <atv:parameter behavior="optional" defaultvalue="" desc="Fault node" group="Data" name="fault_base" valuetype="address"/>
+  <atv:parameter behavior="optional" defaultvalue="" desc="Alarm acknowledged node" group="Data" name="alarm_ack_base" valuetype="address"/>
+  <atv:parameter behavior="optional" defaultvalue="" desc="Auto/Manual node" group="Data" name="mode_base" valuetype="address"/>
+  <atv:parameter behavior="optional" defaultvalue="" desc="Speed node" group="Data" name="speed_base" valuetype="address"/>
+  <atv:parameter behavior="optional" defaultvalue="0" desc="Speed minimum" group="Data" name="speed_min" valuetype="number"/>
+  <atv:parameter behavior="optional" defaultvalue="100" desc="Speed maximum" group="Data" name="speed_max" valuetype="number"/>
+  <atv:parameter behavior="optional" defaultvalue="" desc="Display" group="Settings PopUp" name="settings_popup_display" valuetype="display"/>
+  <atv:parameter behavior="optional" defaultvalue="false" desc="Automatic Popup Scale" group="Settings PopUp" name="automatic_popup_scale" valuetype="bool"/>
+  <atv:parameter behavior="optional" defaultvalue="365" desc="Height" group="Settings PopUp" name="settings_popup_height" valuetype="number"/>
+  <atv:parameter behavior="optional" defaultvalue="1037" desc="Width" group="Settings PopUp" name="settings_popup_width" valuetype="number"/>
+  <atv:parameter behavior="optional" defaultvalue="true" desc="Modal" group="Settings PopUp" name="settings_popup_modal" valuetype="bool"/>
+  <atv:parameter behavior="optional" defaultvalue="false" desc="Movable" group="Settings PopUp" name="settings_popup_movable" valuetype="bool"/>
+  <atv:parameter behavior="optional" defaultvalue="false" desc="Resizable" group="Settings PopUp" name="settings_popup_resizable" valuetype="bool"/>
+  <atv:parameter behavior="optional" defaultvalue="false" desc="Titlebar" group="Settings PopUp" name="settings_popup_titlebar" valuetype="bool"/>
+  <atv:parameter behavior="optional" defaultvalue="false" desc="Confirm before opening" group="Settings PopUp" name="confirm_action" valuetype="bool"/>
+  <atv:parameter behavior="optional" defaultvalue="Open pump settings?" desc="Confirm text" group="Settings PopUp" name="confirm_text" valuetype="string"/>
+  <atv:parameter behavior="optional" defaultvalue="true" desc="Rights check active" group="Security" name="admin_lock" valuetype="bool"/>
+  <atv:parameter behavior="optional" defaultvalue="USER.Admin Rights" desc="Required rights (separate with ;)" group="Security" name="required_rights" valuetype="string"/>
+  <atv:parameter behavior="optional" defaultvalue="Pump" desc="Name (tooltip)" group="Appearance" name="pump_name" valuetype="string"/>
+  <atv:parameter behavior="optional" defaultvalue="#018E42" desc="ON Color" group="Appearance" name="on_color" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="#000000" desc="OFF Color" group="Appearance" name="off_color" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="#D7263D" desc="Fault Color" group="Appearance" name="fault_color" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="#F4A300" desc="Mismatch Color" group="Appearance" name="warning_color" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="#9B9B9B" desc="Unknown Color" group="Appearance" name="unknown_color" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="#ffffff" desc="Circle Fill" group="Appearance" name="circle_fill" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="#000000" desc="Circle Stroke" group="Appearance" name="circle_stroke_color" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="3" desc="Stroke Width" group="Appearance" name="stroke_width" valuetype="number"/>
+  <atv:parameter behavior="optional" defaultvalue="4" desc="Hover Stroke Width" group="Appearance" name="hover_stroke_width" valuetype="number"/>
+  <atv:parameter behavior="optional" config="0;90;180;270" defaultvalue="0" desc="Rotation" group="Appearance" name="rotation" valuetype="enum"/>
+  <atv:parameter behavior="optional" config="None;Arc;Text;Arc + Text" defaultvalue="None" desc="Speed display" group="Appearance" name="speed_display" valuetype="enum"/>
+  <atv:parameter behavior="optional" defaultvalue="#0072CE" desc="Speed Arc Color" group="Appearance" name="speed_arc_color" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="false" desc="Show Auto/Manual" group="Appearance" name="show_mode" valuetype="bool"/>
+  <atv:parameter behavior="optional" defaultvalue="A" desc="Auto text" group="Appearance" name="mode_auto_text" valuetype="string"/>
+  <atv:parameter behavior="optional" defaultvalue="M" desc="Manual text" group="Appearance" name="mode_manual_text" valuetype="string"/>
+  <atv:parameter behavior="optional" defaultvalue="#000000" desc="Text Color" group="Appearance" name="text_color" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="true" desc="Blink on fault" group="Appearance" name="blink_on_fault" valuetype="bool"/>
+  <atv:parameter behavior="optional" defaultvalue="600" desc="Blink interval (ms)" group="Appearance" name="blink_interval" valuetype="number"/>
+  <atv:gridconfig enabled="true" gridstyle="lines" height="1" width="1"/>
+  <atv:snapconfig enabled="true" height="1" width="1"/>
+ </metadata>
+ <circle atv:refpx="27.5" atv:refpy="27.5" cx="27.5" cy="27.5" fill="none" id="speed_arc" pathLength="100" r="26" stroke="#0072CE" stroke-dasharray="0 100" stroke-linecap="butt" stroke-width="2.5" transform="rotate(-90 27.5 27.5)" visibility="hidden"/>
+ <polyline atv:refpx="33.466" atv:refpy="27.5" fill="#000000" id="id_11" points="17.052,8.021 17.174,46.983 49.931,28.08 17,8.016" stroke="none" stroke-linecap="butt" stroke-linejoin="miter" stroke-width="0"/>
+ <text atv:refpx="27.5" atv:refpy="27" fill="#FFFFFF" font-family="Roboto" font-size="10" font-weight="bold" id="mode_text" text-anchor="middle" visibility="hidden" x="27.5" y="31">A</text>
+ <text atv:refpx="11" atv:refpy="37" fill="#000000" font-family="Arial" font-size="9" id="speed_text" text-anchor="middle" visibility="hidden" x="11" y="40">0%</text>
+ <rect atv:refpx="-13.5" atv:refpy="27.5" fill="#ffffff" fill-opacity="0" height="55" id="click_window" stroke="#0000ff" stroke-width="0" style="cursor:pointer" width="55" x="-41" y="0">
+  <title id="tooltip">Pump</title>
+ </rect>
+ <script atv:desc="" atv:name="" type="text/ecmascript"><![CDATA[const on_color = webMI.query["on_color"];
+const off_color = webMI.query["off_color"];
+
+const settings_popup_display = webMI.query["settings_popup_display"];
+const settings_popup_height = webMI.query["settings_popup_height"];
+const settings_popup_width = webMI.query["settings_popup_width"];
+
+/* ---------- helpers for reading parameters ---------- */
+
+/* Turns a parameter that can arrive as a real boolean or as the text "true" into a boolean */
+function toBool(value, fallback) {
+    if (value === true || value === "true") return true;
+    if (value === false || value === "false") return false;
+    return fallback;
+}
+
+/* Turns a parameter that can arrive as text into a number, keeps the fallback if it is not a number */
+function toNumber(value, fallback) {
+    const number = parseFloat(value);
+    return isNaN(number) ? fallback : number;
+}
+
+/* Returns the parameter if it is set, otherwise the fallback */
+function orDefault(value, fallback) {
+    return (value === undefined || value === null || value === "") ? fallback : value;
+}
+
+/* ---------- new parameters ---------- */
+
+const feedback_base = webMI.query["feedback_base"];
+const fault_base = webMI.query["fault_base"];
+const alarm_ack_base = webMI.query["alarm_ack_base"];
+const mode_base = webMI.query["mode_base"];
+const speed_base = webMI.query["speed_base"];
+const speed_min = toNumber(webMI.query["speed_min"], 0);
+const speed_max = toNumber(webMI.query["speed_max"], 100);
+
+/* Automatic Popup Scale: when true the popup is sized from the target display itself */
+const automatic_popup_scale = toBool(webMI.query["automatic_popup_scale"], false);
+const settings_popup_modal = toBool(webMI.query["settings_popup_modal"], true);
+const settings_popup_movable = toBool(webMI.query["settings_popup_movable"], false);
+const settings_popup_resizable = toBool(webMI.query["settings_popup_resizable"], false);
+const settings_popup_titlebar = toBool(webMI.query["settings_popup_titlebar"], false);
+const confirm_action = toBool(webMI.query["confirm_action"], false);
+const confirm_text = orDefault(webMI.query["confirm_text"], "Open pump settings?");
+
+const admin_lock = toBool(webMI.query["admin_lock"], true);
+const required_rights = orDefault(webMI.query["required_rights"], "USER.Admin Rights");
+
+const pump_name = orDefault(webMI.query["pump_name"], "Pump");
+const fault_color = orDefault(webMI.query["fault_color"], "#D7263D");
+const warning_color = orDefault(webMI.query["warning_color"], "#F4A300");
+const unknown_color = orDefault(webMI.query["unknown_color"], "#9B9B9B");
+const circle_fill = orDefault(webMI.query["circle_fill"], "#ffffff");
+const circle_stroke_color = orDefault(webMI.query["circle_stroke_color"], "#000000");
+const stroke_width = toNumber(webMI.query["stroke_width"], 3);
+const hover_stroke_width = toNumber(webMI.query["hover_stroke_width"], 4);
+const rotation = toNumber(webMI.query["rotation"], 0);
+const speed_display = orDefault(webMI.query["speed_display"], "None");
+const speed_arc_color = orDefault(webMI.query["speed_arc_color"], "#0072CE");
+const show_mode = toBool(webMI.query["show_mode"], false);
+const mode_auto_text = orDefault(webMI.query["mode_auto_text"], "A");
+const mode_manual_text = orDefault(webMI.query["mode_manual_text"], "M");
+const text_color = orDefault(webMI.query["text_color"], "#000000");
+const blink_on_fault = toBool(webMI.query["blink_on_fault"], true);
+const blink_interval = toNumber(webMI.query["blink_interval"], 600);
+
+const click_window = document.getElementById("click_window");
+
+const speed_arc = document.getElementById("speed_arc");
+const mode_text = document.getElementById("mode_text");
+const speed_text = document.getElementById("speed_text");
+const circle_element = document.getElementById("id_0");
+const arrow_element = document.getElementById("id_11");
+
+const real_window = (click_window && click_window.ownerDocument && click_window.ownerDocument.defaultView) || null;
+
+/* ---------- static appearance ---------- */
+
+webMI.gfx.setFill("id_0", circle_fill);
+if (circle_element) circle_element.setAttribute("stroke", circle_stroke_color);
+webMI.gfx.setStrokeWidth("id_0", stroke_width);
+
+/* The arrow is turned around the middle of the symbol so it can follow the pipe direction */
+if (rotation !== 0 && arrow_element) {
+    arrow_element.setAttribute("transform", "rotate(" + rotation + " 27.5 27.5)");
+}
+
+if (speed_arc) speed_arc.setAttribute("stroke", speed_arc_color);
+if (speed_text) speed_text.setAttribute("fill", text_color);
+
+/* ---------- security ---------- */
+
+/* True if the logged in user holds at least one of the required rights.
+   This is read once when the display loads, because atvise reloads the page on a user change. */
+function checkRights() {
+    if (!admin_lock) return true;
+    const rights = required_rights.split(";");
+    for (let i = 0; i < rights.length; i++) {
+        if (rights[i].trim() !== "" && webMI.hasRight(rights[i].trim())) return true;
+    }
+    return false;
+}
+
+const hasRights = checkRights();
+
+/* ---------- live values ---------- */
+
+let commandValue = null; /* the ON/OFF command from the base node */
+let commandGood = false; /* false when the base node has no usable value */
+let feedbackValue = null; /* the run feedback, null when no feedback node is configured */
+let faultValue = false; /* true when the pump reports a fault */
+let ackValue = true; /* false when the fault is not acknowledged yet, then the symbol blinks */
+let modeValue = null; /* true = automatic, false = manual */
+let speedValue = null; /* raw value of the speed node */
+let blinkOn = false; /* flips on every blink interval */
+
+/* Turns whatever the server sends into a boolean. Accepts true, "true", 1, "1" and "on". */
+function readBool(value) {
+    if (value === true || value === 1) return true;
+    if (value === false || value === 0) return false;
+    const text = String(value).trim().toLowerCase();
+    if (text === "true" || text === "1" || text === "on") return true;
+    if (text === "false" || text === "0" || text === "off") return false;
+    return null;
+}
+
+/* False when the value is missing or the server marks the data as bad.
+   A dead node must not look like a stopped pump. */
+function isGood(e) {
+    if (e === undefined || e === null) return false;
+    if (e.value === undefined || e.value === null) return false;
+    if (typeof e.status === "number" && e.status !== 0) return false;
+    if (typeof e.quality === "number" && e.quality !== 0 && e.quality !== 192) return false;
+    return true;
+}
+
+/* ---------- colors ---------- */
+
+/* Decides the color of the arrow. Priority from highest to lowest:
+   fault -> bad or missing value -> command and feedback do not match -> ON/OFF. */
+function currentColor() {
+    if (faultValue) return fault_color;
+    if (!commandGood || commandValue === null) return unknown_color;
+    if (feedback_base && feedbackValue !== null && feedbackValue !== commandValue) return warning_color;
+    return commandValue ? on_color : off_color;
+}
+
+/* Paints the symbol and updates the tooltip */
+function applyColors() {
+    let color = currentColor();
+
+    /* An active fault blinks between the fault color and the normal color */
+    if (shouldBlink() && blinkOn) {
+        color = commandValue ? on_color : off_color;
+    }
+
+    webMI.gfx.setFill("id_11", color);
+}
+
+/* ---------- blinking ---------- */
+
+/* True when the symbol has to blink right now.
+   With an acknowledge node the blinking stops as soon as the fault is acknowledged.
+   Without one, an active fault blinks as long as "Blink on fault" is on. */
+function shouldBlink() {
+    if (!faultValue) return false;
+    if (alarm_ack_base) return !ackValue;
+    return blink_on_fault;
+}
+
+if (fault_base) {
+    setInterval(function() {
+        if (shouldBlink()) {
+            blinkOn = !blinkOn;
+            applyColors();
+        } else if (blinkOn) {
+            blinkOn = false;
+            applyColors();
+        }
+    }, blink_interval);
+}
+
+/* ---------- subscriptions ---------- */
+
+webMI.data.subscribe(webMI.query["base"], function(e) {
+    commandGood = isGood(e);
+    commandValue = commandGood ? readBool(e.value) : null;
+    applyColors();
+});
+
+if (feedback_base) {
+    webMI.data.subscribe(feedback_base, function(e) {
+        feedbackValue = isGood(e) ? readBool(e.value) : null;
+        applyColors();
+    });
+}
+
+if (fault_base) {
+    webMI.data.subscribe(fault_base, function(e) {
+        faultValue = isGood(e) ? (readBool(e.value) === true) : false;
+        applyColors();
+    });
+}
+
+if (alarm_ack_base) {
+    webMI.data.subscribe(alarm_ack_base, function(e) {
+        ackValue = isGood(e) ? (readBool(e.value) === true) : true;
+        applyColors();
+    });
+}
+
+if (mode_base && show_mode && mode_text) {
+    mode_text.setAttribute("visibility", "visible");
+    webMI.data.subscribe(mode_base, function(e) {
+        modeValue = isGood(e) ? readBool(e.value) : null;
+        mode_text.textContent = (modeValue === null) ? "?" : (modeValue ? mode_manual_text : mode_auto_text );
+    });
+}
+
+if (speed_base && speed_display !== "None") {
+    if (speed_arc && (speed_display === "Arc" || speed_display === "Arc + Text")) speed_arc.setAttribute("visibility", "visible");
+    if (speed_text && (speed_display === "Text" || speed_display === "Arc + Text")) speed_text.setAttribute("visibility", "visible");
+    webMI.data.subscribe(speed_base, function(e) {
+        speedValue = isGood(e) ? toNumber(e.value, null) : null;
+        let percent = 0;
+        if (speedValue !== null && speed_max !== speed_min) {
+            percent = (speedValue - speed_min) / (speed_max - speed_min) * 100;
+            if (percent < 0) percent = 0;
+            if (percent > 100) percent = 100;
+        }
+        if (speed_arc) speed_arc.setAttribute("stroke-dasharray", percent.toFixed(1) + " 100");
+        if (speed_text) speed_text.textContent = (speedValue === null) ? "?" : Math.round(percent) + "%";
+    });
+}
+
+if (!hasRights) {
+    click_window.setAttribute('style', 'cursor: not-allowed');
+} else {
+    click_window.setAttribute('style', 'cursor: pointer;');
+}
+
+webMI.addEvent("click_window", "mouseover", function(e) {
+    if (hasRights) {
+        webMI.gfx.setStrokeWidth("id_0", hover_stroke_width);
+    }
+});
+
+webMI.addEvent("click_window", "mouseout", function(e) {
+    if (hasRights) {
+        webMI.gfx.setStrokeWidth("id_0", stroke_width);
+    }
+});
+
+/* On a touch screen no mouseout follows the tap, so the thick ring would stay */
+webMI.addEvent("click_window", "touchend", function(e) {
+    if (hasRights) {
+        webMI.gfx.setStrokeWidth("id_0", stroke_width);
+    }
+});
+
+/* Builds the query that is handed to the popup, with base always set */
+function buildQuery() {
+    const query = {};
+    for (const key in webMI.query) query[key] = webMI.query[key];
+    query.base = webMI.query["base"];
+    return query;
+}
+
+/* Opens the settings popup with the given size */
+function openPopup(width, height) {
+    webMI.display.openWindow({
+        display: settings_popup_display,
+        titlebar: settings_popup_titlebar,
+        extern: false,
+        height: height,
+        menubar: false,
+        modal: settings_popup_modal,
+        movable: settings_popup_movable,
+        resizable: settings_popup_resizable,
+        scrollbars: false,
+        status: false,
+        title: "",
+        toolbar: false,
+        width: width,
+        query: buildQuery()
+    });
+}
+
+/* Asks the server for the size of the target display, then opens the popup at that size.
+   If the size cannot be read, the configured Height/Width are used instead. */
+function openPopupAutoScaled() {
+    try {
+        webMI.data.call("GetDisplayDimensions", {
+            address: settings_popup_display
+        }, function(e) {
+            const w = (e && parseFloat(e.width)) || 0;
+            const h = (e && parseFloat(e.height)) || 0;
+            if (!w || !h) {
+                console.warn("GetDisplayDimensions returned no size, using the configured popup size.");
+                openPopup(settings_popup_width, settings_popup_height);
+                return;
+            }
+            openPopup(w, h);
+        });
+    } catch (err) {
+        console.warn("GetDisplayDimensions call failed, using the configured popup size.", err);
+        openPopup(settings_popup_width, settings_popup_height);
+    }
+}
+
+/* Runs the popup, with or without the automatic size */
+function runAction() {
+    if (automatic_popup_scale) {
+        openPopupAutoScaled();
+    } else {
+        openPopup(settings_popup_width, settings_popup_height);
+    }
+}
+
+webMI.addEvent("click_window", "click", function(e) {
+    if (hasRights) {
+        if (!settings_popup_display) {
+            console.warn("Click ignored, no settings popup display is configured.");
+            return;
+        }
+        if (confirm_action) return;
+        runAction();
+    }
+});
+
+applyColors();]]></script>
+</svg>

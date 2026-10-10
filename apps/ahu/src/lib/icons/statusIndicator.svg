@@ -1,0 +1,171 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<svg height="30" version="1.2" width="30" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs>
+  <linearGradient gradientUnits="objectBoundingBox" id="linear_1" x1="0.5" x2="0.5" y1="0.984507" y2="0.0625">
+   <stop offset="0" stop-color="#7c7c7c"/>
+   <stop offset="1" stop-color="#cccccc"/>
+  </linearGradient>
+  <linearGradient gradientUnits="objectBoundingBox" id="linear_0" x1="0.09375" x2="0.65625" y1="-0.109375" y2="0.640625">
+   <stop offset="0" stop-color="#ffffff"/>
+   <stop offset="1" stop-color="#999999" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient gradientUnits="objectBoundingBox" id="linear_6" x1="-0.3446" x2="1.05479" y1="-0.467883" y2="0.931507">
+   <stop offset="0" stop-color="#ffffff"/>
+   <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient gradientUnits="objectBoundingBox" id="linear_2" x1="0.53125" x2="0.53125" y1="1.45374" y2="-0.140702">
+   <stop offset="0" stop-color="#636363"/>
+   <stop offset="0.5246636771300448" stop-color="#313131"/>
+   <stop offset="1" stop-color="#ececec"/>
+  </linearGradient>
+  <linearGradient gradientUnits="objectBoundingBox" id="linear_3" x1="0.53125" x2="0.53125" y1="1.45374" y2="-0.140702">
+   <stop offset="0" stop-color="#636363"/>
+   <stop offset="0.5246636771300448" stop-color="#313131"/>
+   <stop offset="1" stop-color="#ececec"/>
+  </linearGradient>
+ </defs>
+ <metadata>
+  <atv:parameter behavior="optional" defaultvalue="#22C55E" desc="Color" group="True State" name="trueColor" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="true" desc="Value that matches this state" group="True State" name="true_value" valuetype="string"/>
+  <atv:parameter behavior="optional" config="None;Eco;Alarm;Heating;Cooling;Power;ON/OFF;Lights" defaultvalue="None" desc="Icon" group="True State" name="true_icon" valuetype="enum"/>
+  <atv:parameter behavior="optional" defaultvalue="#475569" desc="Color" group="False State" name="falseColor" valuetype="color"/>
+  <atv:parameter behavior="optional" defaultvalue="false" desc="Value that matches this state" group="False State" name="false_value" valuetype="string"/>
+  <atv:parameter behavior="optional" config="None;Eco;Alarm;Heating;Cooling;Power;ON/OFF;Lights" defaultvalue="None" desc="Icon" group="False State" name="false_icon" valuetype="enum"/>
+  <atv:parameter behavior="optional" desc="Value that matches this state, leave empty to disable" group="State 3" name="state3_value" valuetype="string"/>
+  <atv:parameter behavior="optional" defaultvalue="#3B82C4" desc="Color" group="State 3" name="state3_color" valuetype="color"/>
+  <atv:parameter behavior="optional" config="None;Eco;Alarm;Heating;Cooling;Power;ON/OFF;Lights" defaultvalue="None" desc="Icon" group="State 3" name="state3_icon" valuetype="enum"/>
+  <atv:parameter behavior="optional" desc="Value that matches this state, leave empty to disable" group="State 4" name="state4_value" valuetype="string"/>
+  <atv:parameter behavior="optional" defaultvalue="#9B59B6" desc="Color" group="State 4" name="state4_color" valuetype="color"/>
+  <atv:parameter behavior="optional" config="None;Eco;Alarm;Heating;Cooling;Power;ON/OFF;Lights" defaultvalue="None" desc="Icon" group="State 4" name="state4_icon" valuetype="enum"/>
+  <atv:parameter behavior="optional" defaultvalue="#F2C14E" desc="Color" group="Undefined State" name="undefinedColor" valuetype="color"/>
+  <atv:parameter behavior="optional" config="None;Eco;Alarm;Heating;Cooling;Power;ON/OFF;Lights" defaultvalue="None" desc="Icon" group="Undefined State" name="undefined_icon" valuetype="enum"/>
+  <atv:parameter behavior="optional" defaultvalue="#ffffff" desc="Icon color" name="icon_color" valuetype="color"/>
+  <atv:gridconfig enabled="false" gridstyle="lines" height="20" width="20"/>
+  <atv:snapconfig enabled="false" height="10" width="10"/>
+ </metadata>
+ <rect atv:refpx="15.001" atv:refpy="15.001" fill="#646464" height="30" id="led" rx="15" ry="15" stroke="#7c7c7c" stroke-linecap="round" stroke-opacity="0.0784314" stroke-width="0" width="30" x="0" y="0"/>
+ <g atv:refpx="15" atv:refpy="15" id="icon" transform="matrix(0.3684,0,0,0.3684,-7.2906,-7.2906)" visibility="hidden">
+  <path atv:refpx="60.5" atv:refpy="60.5" d="" fill-rule="nonzero" id="icon_path"/>
+ </g>
+ <script atv:desc="" atv:name="" type="text/ecmascript"><![CDATA[const trueColor = webMI.query["trueColor"];
+const true_value = webMI.query["true_value"] || "true";
+const true_icon = webMI.query["true_icon"];
+const falseColor = webMI.query["falseColor"];
+const false_value = webMI.query["false_value"] || "false";
+const false_icon = webMI.query["false_icon"];
+const state3_value = webMI.query["state3_value"];
+const state3_color = webMI.query["state3_color"];
+const state3_icon = webMI.query["state3_icon"];
+const state4_value = webMI.query["state4_value"];
+const state4_color = webMI.query["state4_color"];
+const state4_icon = webMI.query["state4_icon"];
+const undefinedColor = webMI.query["undefinedColor"];
+const undefined_icon = webMI.query["undefined_icon"];
+const icon_color = webMI.query["icon_color"];
+
+const iconPaths = {
+    "Eco": {
+        d: "M61.687,48.628C55.852,48.628 50.918,52.449 49.239,57.719C51.733,56.457 54.546,55.752 57.531,55.752L64.062,55.752C64.715,55.752 65.25,56.286 65.25,56.94C65.25,57.593 64.715,58.127 64.062,58.127L62.873,58.127L57.531,58.127C56.3,58.127 55.104,58.268 53.947,58.528C52.024,58.965 50.241,59.745 48.647,60.806C44.342,63.678 41.501,68.585 41.501,74.157L41.501,75.345C41.501,76.332 42.293,77.127 43.281,77.127C44.269,77.127 45.063,76.332 45.063,75.345L45.063,74.157C45.063,70.543 46.599,67.293 49.056,65.013C50.525,70.618 55.623,74.751 61.687,74.751L61.762,74.751C71.565,74.699 79.499,65.037 79.499,53.124C79.499,49.963 78.944,46.958 77.932,44.249C77.741,43.737 76.99,43.758 76.731,44.241C75.336,46.854 72.575,48.628 69.406,48.628Z"
+    },
+    "Alarm": {
+        d: "M60.498,38.787C58.996,38.787 57.784,40 57.784,41.501L57.784,43.129C51.592,44.385 46.927,49.864 46.927,56.428L46.927,58.022C46.927,62.01 45.459,65.86 42.813,68.846L42.186,69.55C41.472,70.347 41.303,71.491 41.736,72.467C42.168,73.442 43.143,74.07 44.213,74.07L76.782,74.07C77.851,74.07 78.818,73.442 79.26,72.467C79.7,71.491 79.522,70.347 78.81,69.55L78.181,68.846C75.536,65.86 74.068,62.018 74.068,58.022L74.068,56.428C74.068,49.864 69.404,44.385 63.212,43.129L63.212,41.501C63.212,40 61.998,38.787 60.498,38.787M64.34,80.626C65.357,79.609 65.926,78.226 65.926,76.785L60.498,76.785L55.069,76.785C55.069,78.226 55.637,79.609 56.656,80.626C57.673,81.645 59.056,82.213 60.498,82.213C61.94,82.213 63.322,81.645 64.34,80.626"
+    },
+    "Heating": {
+        d: "M55.013,39.245C55.675,38.625 56.7,38.634 57.361,39.253C59.701,41.45 61.897,43.817 63.951,46.378C64.884,45.157 65.944,43.824 67.091,42.739C67.762,42.111 68.795,42.111 69.467,42.747C72.4,45.546 74.886,49.245 76.633,52.756C78.354,56.216 79.499,59.754 79.499,62.248C79.499,73.072 71.035,82.215 60.498,82.215C49.846,82.215 41.501,73.063 41.501,62.24C41.501,58.982 43.01,55.004 45.352,51.068C47.717,47.074 51.058,42.909 55.013,39.245M60.641,74.073C62.789,74.073 64.688,73.479 66.479,72.291C70.05,69.797 71.009,64.811 68.864,60.891C68.482,60.127 67.507,60.076 66.955,60.721L64.816,63.207C64.253,63.852 63.248,63.835 62.719,63.165C61.32,61.383 58.82,58.202 57.394,56.396C56.861,55.717 55.843,55.708 55.301,56.387C52.434,59.991 50.991,62.266 50.991,64.816C50.998,70.629 55.291,74.073 60.641,74.073",
+        rule: "evenodd"
+    },
+    "Cooling": {
+        d: "M60.502,38.786C62.004,38.786 63.216,40 63.216,41.5L63.216,44.054L64.489,42.781C65.286,41.984 66.576,41.984 67.364,42.781C68.153,43.578 68.162,44.868 67.364,45.656L63.209,49.811L63.209,55.774L68.416,52.738L69.917,47.133C70.205,46.046 71.325,45.402 72.411,45.689C73.497,45.978 74.141,47.098 73.853,48.183L73.411,49.82L75.413,48.649C76.71,47.896 78.373,48.337 79.128,49.625C79.883,50.915 79.451,52.585 78.152,53.341L76.007,54.595L77.847,55.087C78.934,55.375 79.578,56.494 79.289,57.581C79.001,58.667 77.881,59.313 76.795,59.023L71.054,57.488L65.887,60.497L71.054,63.509L76.795,61.975C77.881,61.686 79.001,62.331 79.289,63.417C79.578,64.5 78.934,65.621 77.847,65.909L76.007,66.4L78.152,67.657C79.451,68.412 79.883,70.076 79.128,71.371C78.373,72.669 76.71,73.102 75.413,72.347L73.411,71.177L73.853,72.814C74.141,73.899 73.497,75.019 72.411,75.305C71.325,75.596 70.205,74.951 69.917,73.864L68.416,68.26L63.216,65.221L63.216,71.185L67.372,75.34C68.17,76.138 68.17,77.425 67.372,78.219C66.576,79.004 65.286,79.013 64.498,78.219L63.225,76.945L63.225,79.498C63.225,80.998 62.012,82.213 60.511,82.213C59.01,82.213 57.797,80.998 57.797,79.498L57.797,76.945L56.525,78.219C55.727,79.013 54.439,79.013 53.649,78.219C52.861,77.418 52.852,76.131 53.649,75.34L57.805,71.185L57.805,65.221L52.598,68.26L51.097,73.864C50.808,74.951 49.689,75.596 48.603,75.305C47.517,75.019 46.874,73.899 47.161,72.814L47.602,71.177L45.584,72.339C44.286,73.094 42.624,72.654 41.869,71.364C41.114,70.076 41.555,68.403 42.845,67.649L44.99,66.394L43.15,65.901C42.064,65.611 41.419,64.494 41.708,63.408C41.997,62.322 43.116,61.677 44.202,61.966L49.943,63.5L55.117,60.497L49.952,57.488L44.21,59.023C43.125,59.313 42.004,58.667 41.717,57.581C41.428,56.494 42.073,55.375 43.158,55.087L44.999,54.595L42.853,53.341C41.555,52.585 41.123,50.923 41.877,49.634C42.632,48.345 44.295,47.903 45.593,48.659L47.595,49.829L47.153,48.192C46.865,47.107 47.509,45.987 48.594,45.698C49.68,45.411 50.799,46.054 51.088,47.14L52.59,52.747L57.789,55.774L57.789,49.811L53.633,45.656C52.835,44.859 52.835,43.569 53.633,42.781C54.43,41.991 55.719,41.984 56.508,42.781L57.78,44.054L57.789,41.5C57.789,40 59.002,38.786 60.502,38.786",
+        outline: true
+    },
+    "Power": {
+        d: "M70.237,37.947C71.246,38.676 71.619,40 71.162,41.153L64.512,57.785L76.785,57.785C77.93,57.785 78.948,58.497 79.337,59.575C79.728,60.651 79.397,61.857 78.523,62.586L54.096,82.941C53.138,83.739 51.773,83.782 50.763,83.052C49.754,82.322 49.381,80.998 49.839,79.846L56.488,63.212L44.216,63.212C43.07,63.212 42.053,62.5 41.662,61.423C41.272,60.347 41.603,59.141 42.477,58.412L66.904,38.058C67.863,37.26 69.228,37.217 70.237,37.947"
+    },
+    "ON/OFF": {
+        d: "M352 64C352 46.3 337.7 32 320 32C302.3 32 288 46.3 288 64L288 320C288 337.7 302.3 352 320 352C337.7 352 352 337.7 352 320L352 64zM210.3 162.4C224.8 152.3 228.3 132.3 218.2 117.8C208.1 103.3 188.1 99.8 173.6 109.9C107.4 156.1 64 233 64 320C64 461.4 178.6 576 320 576C461.4 576 576 461.4 576 320C576 233 532.6 156.1 466.3 109.9C451.8 99.8 431.9 103.3 421.7 117.8C411.5 132.3 415.1 152.2 429.6 162.4C479.4 197.2 511.9 254.8 511.9 320C511.9 426 425.9 512 319.9 512C213.9 512 128 426 128 320C128 254.8 160.5 197.1 210.3 162.4z"
+    },
+    "Lights": {
+        d: "M420.9 448C428.2 425.7 442.8 405.5 459.3 388.1C492 353.7 512 307.2 512 256C512 150 426 64 320 64C214 64 128 150 128 256C128 307.2 148 353.7 180.7 388.1C197.2 405.5 211.9 425.7 219.1 448L420.8 448zM416 496L224 496L224 512C224 556.2 259.8 592 304 592L336 592C380.2 592 416 556.2 416 512L416 496zM312 176C272.2 176 240 208.2 240 248C240 261.3 229.3 272 216 272C202.7 272 192 261.3 192 248C192 181.7 245.7 128 312 128C325.3 128 336 138.7 336 152C336 165.3 325.3 176 312 176z"
+    }
+};
+
+// Checked in this order, first match wins.
+const states = [{
+        value: true_value,
+        color: trueColor,
+        icon: true_icon
+    },
+    {
+        value: false_value,
+        color: falseColor,
+        icon: false_icon
+    },
+    {
+        value: state3_value,
+        color: state3_color,
+        icon: state3_icon
+    },
+    {
+        value: state4_value,
+        color: state4_color,
+        icon: state4_icon
+    }
+];
+
+// Returns true when a Boolean, Integer or String node value represents "on".
+function isTrue(value) {
+    return value === true || value === 1 || value === "1" || value === "true";
+}
+
+// Returns true when a Boolean, Integer or String node value represents "off".
+// Kept separate from isTrue() rather than using its negation, so a custom
+// state value like "Medium" is not accidentally caught by the false state.
+function isFalse(value) {
+    return value === false || value === 0 || value === "0" || value === "false";
+}
+
+// Matches a node value against one state's configured match value. "true" and
+// "false" are matched loosely so Boolean, Integer and String nodes all work.
+// Any other match value is compared as plain text, for custom states such as
+// "Heating" or "Cooling".
+function valuesMatch(node_value, match_value) {
+    if (match_value === "true") return isTrue(node_value);
+    if (match_value === "false") return isFalse(node_value);
+    return String(node_value) === match_value;
+}
+
+// Shows the coloured led and, if one is configured, the matching icon on top of it.
+// The icon path "d" (and fill-rule) are pulled from iconPaths and written onto
+// the single "icon_path" element instead of toggling between hardcoded icons.
+function showState(color, icon) {
+    webMI.gfx.setFill("led", color);
+
+    const iconData = iconPaths[icon];
+    if (iconData) {
+        document.getElementById("icon_path").setAttribute("d", iconData.d);
+        document.getElementById("icon_path").setAttribute("fill-rule", iconData.rule === "evenodd" ? "evenodd" : "nonzero");
+        webMI.gfx.setVisible("icon", true);
+    } else {
+        webMI.gfx.setVisible("icon", false);
+    }
+}
+
+webMI.gfx.setFill("icon_path", icon_color);
+
+webMI.data.subscribe(webMI.query["base"], function(e) {
+    if (e.value === null || e.value === undefined) {
+        showState(undefinedColor, undefined_icon);
+        return;
+    }
+
+    for (const state of states) {
+        if (!state.value) continue;
+        if (valuesMatch(e.value, state.value)) {
+            showState(state.color, state.icon);
+            return;
+        }
+    }
+
+    showState(undefinedColor, undefined_icon);
+});]]></script>
+</svg>

@@ -20,7 +20,9 @@ function parseIcon(name, source) {
         .slice(source.indexOf(rootTag) + rootTag.length, source.lastIndexOf("</svg>"))
         .replace(/<script\b[^>]*\/>|<script\b[\s\S]*?<\/script>/g, "")
         .replace(/<metadata\b[^>]*\/>|<metadata\b[\s\S]*?<\/metadata>/g, "")
-        .replace(/\sid="([^"]*)"/g, ` id="${name}__$1"`);
+        .replace(/\sid="([^"]*)"/g, ` id="${name}__$1"`)
+        .replace(/url\(#([^)]+)\)/g, `url(#${name}__$1)`)
+        .replace(/(xlink:)?href="#([^"]+)"/g, `$1href="#${name}__$2"`);
 
     return { width, height, body };
 }

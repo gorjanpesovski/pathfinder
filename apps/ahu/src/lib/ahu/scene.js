@@ -1,6 +1,8 @@
 import { ICONS } from "$lib/iconSprite.js";
-import { ELEMENT_TYPES, INDICATORS, LINES, MEASURES, RECUPERATION_TYPES, setpointId } from "./elements.js";
-import { registersOf } from "./registers.js";
+import { ELEMENT_TYPES, FITTINGS, INDICATORS, LINES, MEASURES, RECUPERATION_OPTIONS, RECUPERATION_TYPES, UNIT_OPTIONS, setpointId } from "./elements.js";
+import { CONTROLLERS, groupRegisters, registersOf } from "./registers.js";
+
+const MODE_PREFIX = "Način: ";
 
 export const READOUT = {
     labelWidth: 44,
@@ -48,14 +50,44 @@ function address(prefix, register){
     return register ? `${prefix}${register}` : null;
 }
 
+function round(value){
+    return Math.abs(value) < 1e-9 ? 0 : value;
+}
+
+export function iconItem({ id, sprite, slot, cx, cy, k, width, height, axis = null, rotation = 0, flip = false, args = {} }){
+    const turn = rotation * Math.PI / 180;
+    const cos = round(Math.cos(turn));
+    const sin = round(Math.sin(turn));
+    const sx = flip ? -k : k;
+    const a = cos * sx;
+    const b = sin * sx;
+    const c = -sin * k;
+    const d = cos * k;
+    const lift = axis === null ? 0 : (axis - height / 2) * k;
+    const ox = cx + sin * lift;
+    const oy = cy - cos * lift;
+    const e = ox - (a * width / 2 + c * height / 2);
+    const f = oy - (b * width / 2 + d * height / 2);
+    const boxWidth = Math.abs(cos) * width * k + Math.abs(sin) * height * k;
+    const boxHeight = Math.abs(sin) * width * k + Math.abs(cos) * height * k;
+    return {
+        kind: "icon", id, sprite, slot, args, k, width, height,
+        matrix: [a, b, c, d, e, f],
+        x: ox - boxWidth / 2, y: oy - boxHeight / 2, boxWidth, boxHeight
+    };
+}
+
 function indicatorIcon(id, element, cx, cy, scale, target){
     const indicator = INDICATORS[id];
-    const k = indicator.scale * scale;
-    return {
-        kind: "icon", id: `${element.key}_${id}`, sprite: indicator.sprite, slot: id,
-        x: cx - indicator.width * k / 2, y: cy - indicator.height * k / 2, k, width: indicator.width, height: indicator.height,
-        args: target ? { base: target } : {}
-    };
+    return iconItem({
+        id: `${element.key}_${id}`, sprite: indicator.sprite, slot: id, cx, cy, k: indicator.scale * scale,
+        width: indicator.width, height: indicator.height, args: target ? { base: target } : {}
+    });
+}
+
+function chosenFittings(element){
+    const allowed = ELEMENT_TYPES[element.type].fittings ?? [];
+    return (element.fittings ?? []).filter((id) => allowed.includes(id));
 }
 
 function measure(elements, scale){
@@ -69,7 +101,7 @@ function measure(elements, scale){
             const indicators = chosenIndicators(element);
             const icon = spec.width * k;
             const bracket = indicators.includes("dpSwitch") ? icon + 2 * DP.reach * scale : 0;
-            return { element, spec, k, rows, readout, indicators, icon, slot: Math.max(icon, bracket, rows.length ? readout.width : 0) };
+            return { element, spec, k, rows, readout, indicators, icon, slot: Math.max(icon, bracket) };
         });
 }
 
@@ -106,9 +138,10 @@ function between(entries, first, last, compact){
     });
 }
 
-export function sideCenters(first, second, start, end, scale){
-    const a = measure(first, scale);
-    const b = measure(second, scale);
+export function sideCenters(first, second, start, end, scale, lead = null){
+    const leading = lead ? [{ element: { key: lead.key }, icon: lead.width, slot: lead.width }] : [];
+    const a = [...leading, ...measure(first, scale)];
+    const b = [...leading, ...measure(second, scale)];
     const [long, short] = a.length >= b.length ? [a, b] : [b, a];
     const centers = new Map();
     if (!long.length) return centers;
@@ -130,10 +163,11 @@ export function sideCenters(first, second, start, end, scale){
     } else if (short.length > 1) {
         between(short, positions[0], positions.at(-1), compact).forEach((center, index) => centers.set(short[index].element.key, center));
     }
+    if (lead) centers.set(lead.key, positions[0]);
     return centers;
 }
 
-export function lineItems({ elements, y, outward, scale, controller, prefix, centers }){
+export function lineItems({ elements, y, outward, direction = 1, scale, controller, prefix, centers }){
     const placed = measure(elements, scale);
     if (!placed.length) return [];
 
@@ -148,7 +182,47 @@ export function lineItems({ elements, y, outward, scale, controller, prefix, cen
         const iconY = y - (spec.axis ?? spec.height / 2) * k;
         const base = spec.baseMeasure ? address(prefix, registers[spec.baseMeasure]) : null;
 
-        items.push({ kind: "icon", id: element.key, center: cx, sprite: spec.sprite, slot: element.type, x: iconX, y: iconY, k, width: spec.width, height: spec.height, args: base ? { base } : {} });
+        items.push({
+            ...iconItem({
+                id: element.key, sprite: spec.sprite, slot: element.type, cx, cy: iconY + iconHeight / 2, k,
+                width: spec.width, height: spec.height, flip: !!spec.directional && direction < 0, args: base ? { base } : {}
+            }),
+            center: cx
+        });
+
+        const fittings = chosenFittings(element);
+        let floor = iconY + iconHeight;
+        let valveRow = null;
+        if (fittings.length) {
+            const bottom = iconY + iconHeight;
+            const length = 150 * scale;
+            const leftX = cx - iconWidth * 0.28;
+            const rightX = cx + iconWidth * 0.28;
+            floor = bottom + length;
+            items.push({ kind: "polyline", id: `${element.key}_water_supply`, points: `${leftX},${bottom} ${leftX},${floor}`, color: spec.water.supply, width: 3 });
+            items.push({ kind: "polyline", id: `${element.key}_water_return`, points: `${rightX},${bottom} ${rightX},${floor}`, color: spec.water.return, width: 3 });
+            if (fittings.includes("valve")) {
+                const valveY = bottom + length * 0.7;
+                items.push({ kind: "polyline", id: `${element.key}_water_bypass`, points: `${leftX},${valveY} ${rightX},${valveY}`, color: spec.water.return, width: 3 });
+                items.push(junction(`${element.key}_water_junction`, leftX, valveY, 5 * scale, 2 * scale));
+                const valve = FITTINGS.valve;
+                items.push(iconItem({
+                    id: `${element.key}_valve`, sprite: valve.sprite, slot: "valve", cx: rightX, cy: valveY, k: valve.scale * scale,
+                    width: valve.width, height: valve.height, axis: valve.axis, rotation: 90
+                }));
+                valveRow = { x: rightX + 46 * scale, y: valveY };
+            }
+            if (fittings.includes("pump")) {
+                const pump = FITTINGS.pump;
+                const target = address(prefix, registers.pump);
+                const fault = address(prefix, registers.pumpFault);
+                items.push(iconItem({
+                    id: `${element.key}_pump`, sprite: pump.sprite, slot: "pump", cx: leftX, cy: bottom + length * 0.38, k: pump.scale * scale,
+                    width: pump.width, height: pump.height, rotation: 270,
+                    args: { ...(target ? { base: target } : {}), ...(fault ? { fault_base: fault } : {}) }
+                }));
+            }
+        }
 
         let ceiling = iconY;
         if (indicators.includes("dpSwitch")) {
@@ -160,13 +234,27 @@ export function lineItems({ elements, y, outward, scale, controller, prefix, cen
             const half = size / 2;
             items.push({ kind: "polyline", id: `${element.key}_dp_left`, points: `${left},${y} ${left},${py} ${cx - half},${py}`, color: INK, width: 1.5, dash: "6 4" });
             items.push({ kind: "polyline", id: `${element.key}_dp_right`, points: `${cx + half},${py} ${right},${py} ${right},${y}`, color: INK, width: 1.5, dash: "6 4" });
+            items.push(junction(`${element.key}_dp_left_junction`, left, y, 5 * scale, 2 * scale));
+            items.push(junction(`${element.key}_dp_right_junction`, right, y, 5 * scale, 2 * scale));
             items.push(indicatorIcon("dpSwitch", element, cx, py, scale, address(prefix, registers.dpSwitch)));
         }
 
-        if (rows.length) {
-            const top = outward < 0 ? ceiling - READOUT.gap * scale - readout.height : iconY + iconHeight + READOUT.gap * scale;
+        const stacked = valveRow ? rows.filter((row) => row.kind !== "position") : rows;
+        if (valveRow && stacked.length !== rows.length) {
+            const register = registers.position;
+            items.push({
+                kind: "field", id: `${element.key}_position`,
+                x: valveRow.x, y: valveRow.y - READOUT.rowHeight * scale / 2, width: READOUT.boxWidth * scale, height: READOUT.rowHeight * scale,
+                unit: MEASURES.position.unit, decimals: MEASURES.position.decimals, address: address(prefix, register), editable: false
+            });
+        }
+
+        if (stacked.length) {
+            const extent = readoutExtent(stacked, scale);
+            const top = outward < 0 ? ceiling - READOUT.gap * scale - extent.height : floor + READOUT.gap * scale;
             const boxX = cx - READOUT.boxWidth * scale / 2;
-            rows.forEach((row, index) => {
+            const shown = stacked.length === 1 ? stacked.map((row) => ({ ...row, label: "" })) : stacked;
+            shown.forEach((row, index) => {
                 const rowY = top + index * (READOUT.rowHeight + READOUT.rowGap) * scale;
                 const id = `${element.key}_${row.kind.replace(":", "_")}`;
                 const register = registers[row.kind];
@@ -183,11 +271,152 @@ export function lineItems({ elements, y, outward, scale, controller, prefix, cen
             });
         }
 
+        const middle = iconY + iconHeight / 2;
+        if (indicators.includes("status")) {
+            items.push(indicatorIcon("status", element, cx, middle, scale, address(prefix, registers.status)));
+        }
         if (indicators.includes("alarm")) {
-            items.push(indicatorIcon("alarm", element, cx, iconY + iconHeight / 2, scale, address(prefix, registers.alarm)));
+            const corner = indicators.includes("status");
+            items.push(indicatorIcon("alarm", element, corner ? iconX + iconWidth : cx, corner ? iconY : middle, scale, address(prefix, registers.alarm)));
         }
 
         for (let index = first; index < items.length; index += 1) items[index].owner = element.key;
+    }
+    return items;
+}
+
+const DUCT = "#94A3B8";
+
+function junction(id, cx, cy, radius, stroke){
+    return { kind: "junction", id, cx, cy, radius, stroke, color: INK };
+}
+const DAMPER = { width: 103, height: 241.49, axis: 139.73 };
+
+function readoutStack(rows, cx, top, scale, prefix, registers, idBase){
+    const items = [];
+    const labelled = rows.length > 1;
+    rows.forEach((row, index) => {
+        const rowY = top + index * (READOUT.rowHeight + READOUT.rowGap) * scale;
+        const boxX = cx - READOUT.boxWidth * scale / 2;
+        const id = `${idBase}_${row.id}`;
+        if (labelled) {
+            items.push({ kind: "text", id: `${id}_label`, text: MEASURES[row.measure].label, x: boxX - 8 * scale, y: rowY + (READOUT.rowHeight / 2 + 6.5) * scale, size: READOUT.labelSize * scale, anchor: "end", color: INK });
+        }
+        items.push({
+            kind: "field", id, x: boxX, y: rowY, width: READOUT.boxWidth * scale, height: READOUT.rowHeight * scale,
+            unit: MEASURES[row.measure].unit, decimals: MEASURES[row.measure].decimals, address: address(prefix, registers[row.id]), editable: false
+        });
+    });
+    return items;
+}
+
+function sideField(id, x, y, measure, scale, target){
+    return {
+        kind: "field", id, x, y: y - READOUT.rowHeight * scale / 2, width: READOUT.boxWidth * scale, height: READOUT.rowHeight * scale,
+        unit: MEASURES[measure].unit, decimals: MEASURES[measure].decimals, address: target, editable: false
+    };
+}
+
+export const MIXING_KEY = "mixing";
+
+export function mixingLead(scale){
+    return { key: MIXING_KEY, width: DAMPER.height * scale };
+}
+
+function ductFromCenter(center, scale){
+    return center - (DAMPER.axis - (DAMPER.height - DAMPER.axis)) / 2 * scale;
+}
+
+export function recuperationItems({ cx, width, height, displayHeight, recuperation, options, intakeY, supplyY, returnY, controller, prefix, scale = 1, mixingCenter = null }){
+    const registers = groupRegisters(controller, "recuperation");
+    const top = displayHeight / 2 - height / 2;
+    const bottom = displayHeight / 2 + height / 2;
+    const left = cx - width / 2;
+    const right = cx + width / 2;
+    const under = [];
+    const over = [];
+    let floor = bottom;
+
+    if (options.bypass) {
+        const lx = left - 30;
+        const rx = right + 30;
+        const dy = bottom + (DAMPER.axis + 20) * scale;
+        under.push({ kind: "polyline", id: "bypass_duct", points: `${lx},${intakeY} ${lx},${dy} ${rx},${dy} ${rx},${supplyY}`, color: DUCT, width: 8 });
+        over.push(junction("bypass_junction_in", lx, intakeY, 9, 3), junction("bypass_junction_out", rx, supplyY, 9, 3));
+        over.push(iconItem({ id: "bypass_damper", sprite: "damper", slot: "damper", cx, cy: dy, k: scale, width: DAMPER.width, height: DAMPER.height, axis: DAMPER.axis, args: registers.bypass ? { base: address(prefix, registers.bypass) } : {} }));
+        over.push(sideField("bypass_position", cx + (DAMPER.width / 2 + 16) * scale, dy, "position", scale, address(prefix, registers.bypass)));
+        floor = dy + (DAMPER.height - DAMPER.axis) * scale;
+    }
+
+    if (options.mixing && mixingCenter !== null) {
+        const mx = ductFromCenter(mixingCenter, scale);
+        const my = (returnY + supplyY) / 2;
+        under.push({ kind: "polyline", id: "mixing_duct", points: `${mx},${returnY} ${mx},${supplyY}`, color: DUCT, width: 8 });
+        over.push(junction("mixing_junction_return", mx, returnY, 9, 3), junction("mixing_junction_supply", mx, supplyY, 9, 3));
+        over.push(iconItem({ id: "mixing_damper", sprite: "damper", slot: "damper", cx: mx, cy: my, k: scale, width: DAMPER.width, height: DAMPER.height, axis: DAMPER.axis, rotation: 90, args: registers.mixing ? { base: address(prefix, registers.mixing) } : {} }));
+        over.push(sideField("mixing_position", mx + 14 * scale, my + (DAMPER.width / 2 + 12 + READOUT.rowHeight / 2) * scale, "position", scale, address(prefix, registers.mixing)));
+    }
+
+    const rows = RECUPERATION_OPTIONS.readouts
+        .filter((entry) => options.readouts.includes(entry.id) && (!entry.rotaryOnly || recuperation === "rotary-heat-exchanger"))
+        .map((entry) => ({ id: entry.id, measure: entry.measure }));
+    over.push(...readoutStack(rows, cx, floor + READOUT.gap * scale, scale, prefix, registers, "recuperation"));
+
+    if (options.indicators.includes("defrost")) {
+        over.push(indicatorIcon("status", { key: "recuperation_defrost" }, left + 22, top + 22, scale, address(prefix, registers.defrost)));
+    }
+    if (options.indicators.includes("dirty")) {
+        over.push(indicatorIcon("alarm", { key: "recuperation_dirty" }, right, top, scale, address(prefix, registers.dirty)));
+    }
+    return { under, over };
+}
+
+function textWidth(text, size){
+    return [...text].length * size * 0.56;
+}
+
+export function unitItems({ displayWidth, options, controller, prefix, scale = 1 }){
+    const registers = groupRegisters(controller, "unit");
+    const extraArgs = groupRegisters(controller, "unitArgs");
+    const items = [];
+
+    const mode = CONTROLLERS[controller]?.unitMode;
+    const showMode = options.status.includes("mode") && !!mode;
+    if (showMode) {
+        items.push({
+            kind: "text", id: "unit_mode", text: `${MODE_PREFIX}--`, x: displayWidth / 2, y: 128, size: 22, anchor: "middle", color: "#64748B",
+            live: { address: address(prefix, mode.register), prefix: MODE_PREFIX, states: mode.states }
+        });
+    }
+
+    const statuses = UNIT_OPTIONS.status.filter((entry) => !entry.text && options.status.includes(entry.id));
+    if (statuses.length) {
+        const size = 18;
+        const dot = INDICATORS.status.width * 0.9;
+        const widths = statuses.map((entry) => dot + 10 + textWidth(entry.label, size));
+        const gap = 40;
+        let x = displayWidth / 2 - (widths.reduce((sum, width) => sum + width, 0) + gap * (statuses.length - 1)) / 2;
+        const y = showMode ? 172 : 140;
+        statuses.forEach((entry, index) => {
+            const target = address(prefix, registers[entry.id]);
+            items.push(iconItem({
+                id: `unit_${entry.id}`, sprite: "statusIndicator", slot: "status", cx: x + dot / 2, cy: y, k: 0.9,
+                width: INDICATORS.status.width, height: INDICATORS.status.height, args: { ...(target ? { base: target } : {}), trueColor: entry.color, ...(extraArgs[entry.id] ?? {}) }
+            }));
+            items.push({ kind: "text", id: `unit_${entry.id}_label`, text: entry.label, x: x + dot + 10, y: y + size * 0.35, size, anchor: "start", color: INK });
+            x += widths[index] + gap;
+        });
+    }
+
+    const room = UNIT_OPTIONS.room.filter((entry) => options.room.includes(entry.id));
+    if (room.length) {
+        items.push({ kind: "text", id: "room_label", text: "Prostor", x: 60, y: 200, size: 22, anchor: "start", color: INK });
+        room.forEach((entry, index) => {
+            const spec = ELEMENT_TYPES[entry.slot];
+            const cy = 245 + index * 56;
+            items.push(iconItem({ id: `room_${entry.id}`, sprite: entry.sprite, slot: entry.slot, cx: 80, cy, k: (spec.scale ?? 1) * scale, width: spec.width, height: spec.height }));
+            items.push(sideField(`room_${entry.id}_value`, 112, cy, entry.measure, scale, address(prefix, registers[entry.id])));
+        });
     }
     return items;
 }
@@ -211,9 +440,11 @@ export function frameItems({ xLeft, xRight, xCenter, exhaustY, intakeY, returnY,
 
     const icon = ICONS[RECUPERATION_TYPES[recuperation].sprite];
     const over = [{
-        kind: "icon", id: "recuperation_unit", owner: "recuperation", center: xCenter, sprite: RECUPERATION_TYPES[recuperation].sprite, slot: recuperation,
-        x: xCenter - recuperationWidth / 2, y: displayHeight / 2 - recuperationHeight / 2,
-        k: recuperationWidth / icon.width, width: icon.width, height: icon.height, args: {}
+        ...iconItem({
+            id: "recuperation_unit", sprite: RECUPERATION_TYPES[recuperation].sprite, slot: recuperation,
+            cx: xCenter, cy: displayHeight / 2, k: recuperationWidth / icon.width, width: icon.width, height: icon.height
+        }),
+        owner: "recuperation", center: xCenter
     }];
 
     for (const { line, y, side, direction } of ends) {

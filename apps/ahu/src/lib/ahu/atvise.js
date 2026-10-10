@@ -31,11 +31,14 @@ function argumentsOf(args){
 
 function icon(item, library, names){
     const name = names[item.slot]?.trim();
-    const transform = `matrix(${round(item.k)},0,0,${round(item.k)},${round(item.x)},${round(item.y)})`;
-    const refpx = round(item.x + item.width * item.k / 2);
-    const refpy = round(item.y + item.height * item.k / 2);
+    const transform = `matrix(${item.matrix.map(round).join(",")})`;
+    const refpx = round(item.x + item.boxWidth / 2);
+    const refpy = round(item.y + item.boxHeight / 2);
     if (!name) {
-        const body = ICONS[item.sprite].body.replace(/\sid="/g, ` id="${item.id}__`);
+        const body = ICONS[item.sprite].body
+            .replace(/\sid="/g, ` id="${item.id}__`)
+            .replace(/url\(#/g, `url(#${item.id}__`)
+            .replace(/href="#/g, `href="#${item.id}__`);
         return `<g atv:refpx="${refpx}" atv:refpy="${refpy}" id="${escapeXml(item.id)}" transform="${transform}">${body}</g>`;
     }
     return element("svg", {
@@ -47,7 +50,7 @@ function icon(item, library, names){
         width: item.width,
         x: 0,
         y: 0,
-        "xlink:href": `${library}.${name}`
+        "xlink:href": name.startsWith("SYSTEM.") ? name : `${library}.${name}`
     }, argumentsOf(item.args));
 }
 
@@ -92,6 +95,20 @@ function polyline(item){
     });
 }
 
+function junction(item){
+    return element("circle", {
+        "atv:refpx": round(item.cx),
+        "atv:refpy": round(item.cy),
+        cx: round(item.cx),
+        cy: round(item.cy),
+        fill: "#ffffff",
+        id: item.id,
+        r: round(item.radius),
+        stroke: item.color,
+        "stroke-width": round(item.stroke)
+    });
+}
+
 function text(item){
     return element("text", {
         "atv:refpx": round(item.x),
@@ -107,11 +124,28 @@ function text(item){
     }, escapeXml(item.text));
 }
 
+export function displayScript(items){
+    return items
+        .filter((item) => item.live?.address)
+        .map((item) => {
+            const states = JSON.stringify(Object.fromEntries(item.live.states.map((label, index) => [String(index), label])));
+            return [
+                `webMI.data.subscribe(${JSON.stringify(item.live.address)}, function(e) {`,
+                `    var states = ${states};`,
+                `    var label = e.value === null || e.value === undefined ? undefined : states[String(e.value)];`,
+                `    webMI.gfx.setText(${JSON.stringify(item.id)}, ${JSON.stringify(item.live.prefix)} + (label || "--"));`,
+                `});`
+            ].join("\n");
+        })
+        .join("\n\n");
+}
+
 export function itemsToAtvise(items, library, names){
     return items.map((item) => {
         if (item.kind === "icon") return icon(item, library, names);
         if (item.kind === "field") return field(item);
         if (item.kind === "polyline") return polyline(item);
+        if (item.kind === "junction") return junction(item);
         return text(item);
     }).join("\n");
 }

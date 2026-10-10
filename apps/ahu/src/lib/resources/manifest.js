@@ -32,6 +32,13 @@ export const RESOURCES = [
         file: "./maps/carel-modbus-map.txt"
     },
     {
+        id: "access5-modbus-map",
+        group: "maps",
+        title: "Systemair Access 5 Modbus Table",
+        description: "",
+        file: "./maps/access5-modbus-map.txt"
+    },
+    {
         id: "carel-object-elements",
         group: "elements",
         title: "Carel Object Elements",
