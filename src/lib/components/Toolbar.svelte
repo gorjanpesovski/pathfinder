@@ -1,7 +1,7 @@
 <script>
   let { tool, onpick, onimage, elementsOpen = false, ontoggleelements, showHints = true,
         tools = null, general = null, special = null, automations = false, canplacedoors = false, canfurnish = false, onplacedoors, onfurnish,
-        pipeLabel = null, variablesOpen = false, ontogglevariables = null } = $props();
+        pipeLabel = null, variablesOpen = false, ontogglevariables = null, onadddevices = null } = $props();
 
   const PRIMARY = [
     { id: "select", label: "Select", key: "S", ready: true,
@@ -103,8 +103,9 @@
   }
 
   svg {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.6;
   }
 
   .tooltip {
@@ -280,6 +281,22 @@
       <span class="tooltip" role="tooltip">
         <span class="tooltip-title">Variables</span>
         {#if showHints}<span class="tooltip-hint">Show the variable names next to the tools. Drag a name onto an element or a value box to link it.</span>{/if}
+      </span>
+    </button>
+  {/if}
+  {#if onadddevices}
+    <div class="divider" role="separator"></div>
+    <button type="button" aria-label="Add devices" onclick={onadddevices}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="8" height="5" rx="1"/>
+        <rect x="3" y="11" width="8" height="5" rx="1"/>
+        <rect x="3" y="18" width="8" height="3" rx="1"/>
+        <path d="M17.5 9 V17 M13.5 13 H21.5"/>
+      </svg>
+      <span class="tooltip" role="tooltip">
+        <span class="tooltip-title">Add devices</span>
+        {#if showHints}<span class="tooltip-hint">Add many devices at once with numbered names, slave IDs and IP addresses. With a router, switch or gateway selected, use Add devices… in the options bar to connect them to it.</span>{/if}
       </span>
     </button>
   {/if}

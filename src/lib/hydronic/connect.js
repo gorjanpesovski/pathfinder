@@ -1,4 +1,5 @@
 import { HYDRONIC_ELEMENTS, mediumOf } from "./elements.js";
+import { symbolFile } from "./symbols.js";
 
 const NL = "\n";
 const SEPARATOR = " ";
@@ -278,7 +279,12 @@ export function connectConfig(shapes, { adapter = "" } = {}){
 
   const blocks = [STATION, ...SYSTEM_SECTIONS, ...sections.map((section) => modbusSection(section.name, section.ip, section.port, section.device.params?.slave ?? 1, adapter))];
   const text = blocks.map((lines) => lines.join(NL) + NL + SEPARATOR + NL).join("");
-  return { text, connections: sections.map((section) => section.name), skipped };
+  return {
+    text,
+    connections: sections.map((section) => section.name),
+    registers: new Map(sections.map((section) => [section.name, section.device.params?.symbols ?? []])),
+    skipped
+  };
 }
 
 export function connectFiles(shapes, options){
@@ -288,7 +294,8 @@ export function connectFiles(shapes, options){
     files: [
       { name: "DeviceConfig.netparameter", data: result.text },
       { name: "StatusVariables.ini", data: "[New variable table]\n" },
-      { name: "ItemRedirect.Symbol", data: "[]\n" }
+      { name: "ItemRedirect.Symbol", data: "[]\n" },
+      ...[...result.registers].filter(([, list]) => list.length).map(([name, list]) => ({ name: `Conn-${name}.Symbol`, data: symbolFile(list) }))
     ]
   };
 }

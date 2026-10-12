@@ -1,7 +1,7 @@
 <script>
   import { portal } from "$lib/actions/portal.js";
 
-  let { pages, active, onselect, onadd, onrename, ondelete, version = "", build = "", position = "" } = $props();
+  let { pages, active, onselect, onadd, onrename, ondelete, version = "", build = "", position = "", marked = new Set() } = $props();
 
   let editing = $state(null);
   let menu = $state(null);
@@ -64,7 +64,7 @@
     padding: 0 8px;
     overflow-x: auto;
     border-top: 1px solid #e2e8f0;
-    background: #f8fafc;
+    background: #ffffff;
   }
 
   .meta {
@@ -76,7 +76,7 @@
     flex: none;
     margin-left: auto;
     padding: 0 6px 0 12px;
-    background: #f8fafc;
+    background: #ffffff;
     font-size: 11px;
     font-weight: 500;
     color: #94a3b8;
@@ -85,6 +85,16 @@
   .position {
     font-variant-numeric: tabular-nums;
     color: #64748b;
+  }
+
+  .mark {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 6px;
+    border-radius: 50%;
+    background: #2563eb;
+    vertical-align: 2px;
   }
 
   .tools {
@@ -116,7 +126,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-right: 6px;
+    margin: 0 8px 0 -10px;
     padding: 0;
     border: none;
     border-radius: 4px;
@@ -137,7 +147,7 @@
 
   .name {
     height: 100%;
-    padding: 0 14px;
+    padding: 0 16px;
     border: none;
     background: none;
     font-family: inherit;
@@ -241,7 +251,7 @@
                onkeydown={(e) => editKey(e, page)} onblur={(e) => commit(page, e.currentTarget.value)}>
       {:else}
         <button type="button" class="name" role="tab" aria-selected={page.id === active} title="Double-click to rename · right-click for more"
-                onclick={() => onselect(page.id)} ondblclick={() => editing = page.id} oncontextmenu={(e) => openMenu(e, page)}>{page.name}</button>
+                onclick={() => onselect(page.id)} ondblclick={() => editing = page.id} oncontextmenu={(e) => openMenu(e, page)}>{page.name}{#if marked.has(page.id)}<span class="mark" title="Has matches for the variable search"></span>{/if}</button>
         {#if page.id === active}
           <button type="button" class="caret" aria-label="{page.name} options" title="Page options" onclick={(e) => menuAt(e, { page })}>
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 6 L12 6 L8 11 Z"/></svg>

@@ -11,7 +11,7 @@ const GRID = 10;
 const ROW_GAP = 120;
 const COLUMN_GAP = 40;
 const FIRST_ROW = 160;
-const ONE_ROW_LIMIT = 6;
+const ROW_LIMIT = 6;
 const STAR_LANE = 20;
 
 function snap(value){
@@ -185,17 +185,54 @@ export function connectNetwork(hub, devices, topology, medium, width, nextId){
   return pipes;
 }
 
-export function placeDevices(gateway, type, count, name, firstSlave){
+export function ipAt(first, index){
+  const parts = String(first ?? "").trim().split(".");
+  if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) return "";
+  const last = Number(parts[3]) + index;
+  return last > 255 ? "" : [...parts.slice(0, 3), String(last)].join(".");
+}
+
+export function belowAnchor(gateway){
+  return { x: gateway.x + gateway.width / 2, top: snap(gateway.y + gateway.height + FIRST_ROW) };
+}
+
+function rowsFor(type, count, maxWidth){
   const spec = HYDRONIC_ELEMENTS[type];
-  const perRow = count > ONE_ROW_LIMIT ? Math.ceil(count / 2) : count;
-  const rowCount = Math.ceil(count / perRow);
-  const centreX = gateway.x + gateway.width / 2;
-  const top = snap(gateway.y + gateway.height + FIRST_ROW);
+  const fit = Number.isFinite(maxWidth) && maxWidth > 0
+    ? Math.max(1, Math.floor((maxWidth + COLUMN_GAP) / (spec.width + COLUMN_GAP)))
+    : ROW_LIMIT;
+  const rowCount = Math.ceil(count / Math.min(fit, ROW_LIMIT, count));
+  const base = Math.floor(count / rowCount);
+  const extra = count % rowCount;
+  return { rowCount, sizes: Array.from({ length: rowCount }, (_, row) => base + (row < extra ? 1 : 0)) };
+}
+
+export function batchWidth(type, count, maxWidth){
+  const spec = HYDRONIC_ELEMENTS[type];
+  const widest = Math.max(...rowsFor(type, count, maxWidth).sizes);
+  return widest * spec.width + (widest - 1) * COLUMN_GAP;
+}
+
+export function batchHeight(type, count, maxWidth){
+  const spec = HYDRONIC_ELEMENTS[type];
+  const { rowCount } = rowsFor(type, count, maxWidth);
+  return rowCount * spec.height + (rowCount - 1) * ROW_GAP;
+}
+
+export function placeDevices(anchor, type, count, name, firstSlave, firstIp = "", maxWidth = null, symbols = []){
+  const spec = HYDRONIC_ELEMENTS[type];
+  const { sizes } = rowsFor(type, count, maxWidth);
+  const centreX = anchor.x;
+  const top = snap(anchor.top);
   const devices = [];
+  let row = 0;
+  let column = 0;
   for (let index = 0; index < count; index += 1) {
-    const row = Math.floor(index / perRow);
-    const inRow = row === rowCount - 1 ? count - row * perRow : perRow;
-    const column = index % perRow;
+    if (column >= sizes[row]) {
+      row += 1;
+      column = 0;
+    }
+    const inRow = sizes[row];
     const span = inRow * spec.width + (inRow - 1) * COLUMN_GAP;
     const number = index + 1;
     devices.push({
@@ -206,8 +243,13 @@ export function placeDevices(gateway, type, count, name, firstSlave){
       width: spec.width,
       height: spec.height,
       name: name.includes("{n}") ? name.replaceAll("{n}", String(number)) : `${name} ${number}`,
-      params: spec.device === "rtu" || spec.device === "ip" ? { slave: firstSlave + index } : {}
+      params: {
+        ...(spec.device === "rtu" || spec.device === "ip" ? { slave: firstSlave + index } : {}),
+        ...((spec.device === "ip" || spec.device === "gateway") && ipAt(firstIp, index) ? { ip: ipAt(firstIp, index) } : {}),
+        ...((spec.device === "rtu" || spec.device === "ip") && symbols.length ? { symbols: symbols.map((entry) => ({ ...entry })) } : {})
+      }
     });
+    column += 1;
   }
   return devices;
 }

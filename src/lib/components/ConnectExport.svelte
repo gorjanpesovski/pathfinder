@@ -120,7 +120,17 @@
     color: #94a3b8;
     cursor: not-allowed;
   }
+  .registers {
+    margin-left: 8px;
+    font-size: 11.5px;
+    color: #94a3b8;
+  }
 </style>
+
+{#snippet count(connection)}
+  {@const total = preview.registers.get(connection)?.length ?? 0}
+  <span class="registers">{total ? `${total} register${total === 1 ? "" : "s"}` : "no registers"}</span>
+{/snippet}
 
 <Modal title="atvise connect configuration" subtitle="{preview.connections.length} Modbus TCP connection{preview.connections.length === 1 ? '' : 's'} from the devices in this topology" width={620} {onclose}>
   <div class="content">
@@ -132,13 +142,13 @@
             <li class="group">{group}
               <ul>
                 {#each members as member}
-                  <li>{member}</li>
+                  <li>{member}{@render count(`${group}.${member}`)}</li>
                 {/each}
               </ul>
             </li>
           {:else}
             {#each members as member}
-              <li>{member}</li>
+              <li>{member}{@render count(member)}</li>
             {/each}
           {/if}
         {/each}

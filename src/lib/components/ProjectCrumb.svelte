@@ -96,8 +96,8 @@
     border-radius: 4px;
     background: none;
     font-family: inherit;
-    font-size: 11.5px;
-    color: #94a3b8;
+    font-size: 12px;
+    color: #64748b;
     white-space: nowrap;
   }
 

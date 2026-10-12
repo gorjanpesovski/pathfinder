@@ -51,7 +51,7 @@
     gap: 2px;
     padding: 8px 4px;
     overflow: hidden;
-    background: #f1f5f9;
+    background: #f8fafc;
     border-right: 1px solid #e2e8f0;
     box-sizing: border-box;
     transition: width 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
@@ -128,6 +128,7 @@
     flex: none;
     width: 18px;
     height: 18px;
+    stroke-width: 1.6;
   }
 
   .label {

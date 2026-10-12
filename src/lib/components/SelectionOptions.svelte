@@ -36,7 +36,9 @@
     onreadoutscale,
     onedittext,
     ontextstyle,
-    ondelete
+    ondelete,
+    registers = null,
+    onregisters = null
   } = $props();
 
   const GROUP_GAP = 12;
@@ -76,7 +78,7 @@
     identity: elementName !== null || elementNameSize !== undefined || !!fittings,
     geometry: !!plainElements || !!fittings || !!pipes || !!texts,
     display: !!(plainElements?.tanks || (plainElements?.bars && !pipes) || pipes || fittings?.measured || fittings?.meters || fittings?.sized || texts || plainElements?.branch),
-    data: !!(elements?.device || elements?.wiring || onvariables),
+    data: !!(elements?.device || elements?.wiring || onvariables || registers),
     actions: !!(fittings?.flippable || fittings?.turnable || (fittings?.sized && fittings?.moved) || plainElements || pipes || texts?.alone || network)
   });
   let order = $derived(["identity", "geometry", "display", "data", "actions"].filter((id) => applies[id]));
@@ -315,6 +317,16 @@
     background: #eff6ff;
     color: #1d4ed8;
     border-color: #93c5fd;
+  }
+
+  .badge {
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
   }
 
   .chip {
@@ -589,6 +601,9 @@
                onchange={(e) => { const next = readNumber(e, 0, 255); if (next !== null) ondeviceparam("slave", next); }} onkeydown={blurOnEnter}>
       </label>
     {/if}
+  {/if}
+  {#if registers && onregisters}
+    <button type="button" onclick={onregisters}>Registers…<span class="badge">{registers.count ?? "mixed"}</span></button>
   {/if}
   {#if elements?.wiring}
     {@const part = elements.wiring}

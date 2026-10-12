@@ -2,16 +2,15 @@
   import { HYDRONIC_ELEMENTS, mediaFor, DEFAULT_PROTOCOL } from "$lib/hydronic/elements.js";
   import { TOPOLOGIES } from "$lib/hydronic/network.js";
   import { portal } from "$lib/actions/portal.js";
+  import DeviceBatch from "./DeviceBatch.svelte";
 
   let { network, onconnect, onadddevices } = $props();
 
   const PROTOCOLS = mediaFor("network");
-  const DEVICE_TYPES = ["rtuDevice", "ipDevice"];
 
   let menu = $state(null);
   let topology = $state("bus");
   let medium = $state(DEFAULT_PROTOCOL);
-  let adding = $state({ type: "rtuDevice", count: 10, name: "JOY {n}", slave: 1, medium: "modbusRtu", topology: "daisy" });
 
   let centreLabel = $derived(network.centre ? network.centre.name || HYDRONIC_ELEMENTS[network.centre.type].label : "");
 
@@ -29,14 +28,9 @@
     menu = null;
   }
 
-  function add(){
-    onadddevices({ ...adding, count: Math.max(1, Math.min(64, Math.round(adding.count) || 1)), slave: Math.max(0, Math.round(adding.slave) || 0) });
+  function add(values){
+    onadddevices(values);
     menu = null;
-  }
-
-  function pickType(type){
-    adding.type = type;
-    adding.medium = type === "rtuDevice" ? "modbusRtu" : DEFAULT_PROTOCOL;
   }
 </script>
 
@@ -95,7 +89,6 @@
     font-weight: 600;
   }
 
-  .field input,
   .field select {
     height: 26px;
     min-width: 0;
@@ -177,36 +170,6 @@
   </div>
 {:else if menu?.kind === "add"}
   <div class="network-menu" role="dialog" aria-label="Add devices" use:portal style="left: {menu.x}px; top: {menu.y}px">
-    <p>Add devices under <strong>{centreLabel}</strong></p>
-    <label class="field">
-      Type
-      <select value={adding.type} onchange={(event) => pickType(event.currentTarget.value)}>
-        {#each DEVICE_TYPES as type (type)}
-          <option value={type}>{HYDRONIC_ELEMENTS[type].label}</option>
-        {/each}
-      </select>
-    </label>
-    <label class="field">
-      How many
-      <input type="number" min="1" max="64" bind:value={adding.count}>
-    </label>
-    <label class="field" title="{'{n}'} becomes 1, 2, 3 …">
-      Names
-      <input type="text" bind:value={adding.name}>
-    </label>
-    <label class="field">
-      First slave ID
-      <input type="number" min="0" max="255" bind:value={adding.slave}>
-    </label>
-    <label class="field">
-      Protocol
-      <select bind:value={adding.medium}>
-        {#each PROTOCOLS as entry (entry.id)}
-          <option value={entry.id}>{entry.label}</option>
-        {/each}
-      </select>
-    </label>
-    {@render topologyPicker(adding.topology, (id) => adding.topology = id)}
-    <button type="button" class="go" onclick={add}>Add {Math.max(1, Math.round(adding.count) || 1)} devices</button>
+    <DeviceBatch {centreLabel} onsubmit={add}/>
   </div>
 {/if}

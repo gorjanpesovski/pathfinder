@@ -43,7 +43,9 @@
   import PageTabs from "$lib/components/PageTabs.svelte";
   import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, DEFAULT_PROTOCOL, DEFAULT_WIRE, familyOf, isElectricType, mediumOf, isHydronicType, isInlineType, isDeviceType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
   import { branchDefaults, alignBranch, snapBranch, branchRiders, isBranch, branchParams, createBranch, rebuildBranch, ownedPipes, branchPipeIds, branchLegEnds, migrateBranches, isLeg, keepLegDistances, legSpan } from "$lib/hydronic/branch.js";
-  import { connectNetwork, placeDevices } from "$lib/hydronic/network.js";
+  import { connectNetwork, placeDevices, belowAnchor, batchHeight, batchWidth } from "$lib/hydronic/network.js";
+  import DeviceBatch from "$lib/components/DeviceBatch.svelte";
+  import RegisterEditor from "$lib/components/RegisterEditor.svelte";
   import { readoutLayout, readoutSpec, readoutRows, readoutExtent, readoutScaleOf, meterOptions, meterReadouts } from "$lib/hydronic/readout.js";
   import { placeSensors } from "$lib/hydronic/meter.js";
   import { findPort, endpointPose, manhattanRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, findPipePoint, cornerLegs, routePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
@@ -283,6 +285,11 @@
   function handleLeave(){
     cursor = null;
     pointer = null;
+  }
+
+  function commitFields(){
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement) active.blur();
   }
 
   function handleDown(event){
@@ -2514,15 +2521,38 @@
     showFileNotice(`Connected ${selection.devices.length} device${selection.devices.length === 1 ? "" : "s"} as a ${topology === "daisy" ? "daisy chain" : topology}`);
   }
 
-  function addDevices({ type, count, name, slave, medium, topology }){
-    const centre = networkSelection?.centre;
-    if (!centre) return;
-    const added = placeDevices($state.snapshot(centre), type, count, name, slave).map((device) => ({ id: nextId++, ...device }));
+  let deviceBatchOpen = $state(false);
+  let registersOpen = $state(false);
+  let registerDevices = $derived(app === "network" ? selectedElements().filter((element) => ["ip", "rtu"].includes(HYDRONIC_ELEMENTS[element.type]?.device)) : []);
+  let registerInfo = $derived.by(() => {
+    if (!registerDevices.length) return null;
+    const keys = registerDevices.map((device) => JSON.stringify(device.params?.symbols ?? []));
+    return { count: keys.every((key) => key === keys[0]) ? (registerDevices[0].params?.symbols ?? []).length : null };
+  });
+
+  function saveRegisters(list){
+    for (const device of registerDevices) device.params = { ...$state.snapshot(device.params ?? {}), symbols: list.map((entry) => ({ ...entry })) };
+    showFileNotice(`Saved ${list.length} register${list.length === 1 ? "" : "s"} to ${registerDevices.length === 1 ? registerDevices[0].name || "the device" : `${registerDevices.length} devices`}`);
+  }
+
+  function addDevices({ type, count, name, slave, ip, medium, topology, symbols = [] }, standalone = false){
+    const centre = standalone ? null : networkSelection?.centre;
+    const margin = 60;
+    const room = Math.max(0, boardWidth - margin * 2);
+    const middle = viewport.toWorld({ x: viewport.width / 2, y: viewport.height / 2 });
+    const start = centre ? belowAnchor($state.snapshot(centre)) : { x: middle.x, top: middle.y - batchHeight(type, count, room) / 2 };
+    const half = batchWidth(type, count, room) / 2;
+    const anchor = {
+      x: Math.min(boardWidth - margin - half, Math.max(margin + half, start.x)),
+      top: Math.max(margin, start.top)
+    };
+    const added = placeDevices(anchor, type, count, name, slave, ip, room, symbols).map((device) => ({ id: nextId++, ...device }));
     shapes.push(...added);
-    shapes.push(...connectNetwork($state.snapshot(centre), added, topology, medium, pipeThickness, () => nextId++));
+    if (centre) shapes.push(...connectNetwork($state.snapshot(centre), added, topology, medium, pipeThickness, () => nextId++));
+    pickTool("select");
     selectedIds = added.map((device) => device.id);
     selectedId = added[0]?.id ?? null;
-    showFileNotice(`Added ${added.length} device${added.length === 1 ? "" : "s"} under ${centre.name || "the gateway"}`);
+    showFileNotice(`Added ${added.length} device${added.length === 1 ? "" : "s"}${centre ? ` under ${centre.name || "the gateway"}` : ""}`);
   }
 
   function setDeviceParam(name, value){
@@ -4150,7 +4180,7 @@
 
   function handleKeydown(event){
     const target = event.target;
-    if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) return;
+    if (typingInto(target) || target?.isContentEditable) return;
     if (viewKeydown(event)) return;
     if (ioVisible) {
       const key = event.key.toLowerCase();
@@ -4237,6 +4267,25 @@
     if (!query && !hover) return null;
     return { names: query ? variableNames.filter((name) => name.toLowerCase().includes(query)) : null, hover };
   });
+  let variablePages = $derived.by(() => {
+    const result = new Map();
+    const set = pageSets.hydronic;
+    if (!showVariablePanel || !set) return result;
+    for (const page of set.list) {
+      const current = page.id === set.active;
+      const list = current && app === "hydronic" ? shapes : documents[`hydronic:${page.id}`]?.shapes ?? [];
+      for (const name of variableUsage(list).keys()) {
+        if (!result.has(name)) result.set(name, []);
+        result.get(name).push({ id: page.id, name: page.name, current });
+      }
+    }
+    return result;
+  });
+  let markedPages = $derived.by(() => {
+    if (!canvasFocus?.names) return new Set();
+    return new Set(canvasFocus.names.flatMap((name) => (variablePages.get(name) ?? []).filter((page) => !page.current).map((page) => page.id)));
+  });
+
   let selectedVariables = $derived.by(() => {
     if (!showVariablePanel) return [];
     const found = new Set();
@@ -4488,7 +4537,7 @@
     flex: none;
     width: 1px;
     height: 20px;
-    margin: 0 6px;
+    margin: 0 10px 0 12px;
     background: #e2e8f0;
   }
 
@@ -4892,12 +4941,13 @@
 
   .viewer-header {
     display: flex;
-    align-items: flex-start;
+    align-items: stretch;
     justify-content: space-between;
     gap: 16px;
     width: 100%;
     height: 40px;
-    padding: 0 12px;
+    padding: 0;
+    background: #ffffff;
     margin-bottom: 0;
     border-bottom: 1px solid #e2e8f0;
     box-sizing: border-box;
@@ -5508,10 +5558,11 @@
            canplacedoors={shapes.some((shape) => shape.kind === "room")}
            canfurnish={shapes.some((shape) => shape.kind === "room" && FURNISHABLE.includes(shape.category))}
            onplacedoors={placeDoors} onfurnish={furnishOffices}
-           variablesOpen={showVariablePanel} ontogglevariables={app === "hydronic" ? () => variablePanel = !variablePanel : null}/>
+           variablesOpen={showVariablePanel} ontogglevariables={app === "hydronic" ? () => variablePanel = !variablePanel : null}
+           onadddevices={app === "network" ? () => deviceBatchOpen = true : null}/>
   {#if showVariablePanel}
     <VariablePanel names={variableNames} usage={variableUse} dragging={draggingVariable} selected={selectedVariables}
-                   onfocus={(value) => variableFocus = value}
+                   onfocus={(value) => variableFocus = value} pages={variablePages} onpage={selectPage}
                    onmanage={() => variablesOpen = true} onclose={() => variablePanel = false}
                    ondrag={(name) => { draggingVariable = name; if (!name) linkHover = null; }}/>
   {/if}
@@ -5630,7 +5681,7 @@
                    placing={placingOptions} onrotateplacing={rotatePlacing}
                    fitting={fittingOptions} medium={pipeMedium} onmedium={setMedium}
                    pipewidth={pipeThickness} onpipewidth={setPipeWidth} onedittext={editSelectedText} ontextstyle={setTextStyle}
-                   onfittingflip={flipFitting} onfittingturn={turnFitting} onvariables={linkTarget ? () => linksOpen = true : null} ondelete={deleteSelected}
+                   onfittingflip={flipFitting} onfittingturn={turnFitting} onvariables={linkTarget ? () => linksOpen = true : null} ondelete={deleteSelected} registers={registerInfo} onregisters={() => registersOpen = true}
                    onfittingscale={setFittingScale} onreverse={reversePipes} onpipelayer={pipeLayer}
                    onresetsize={resetElementSize}
                    onfittingreadout={setFittingReadout} onmeterreadout={setMeterReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName} ondeviceparam={setDeviceParam}
@@ -5647,7 +5698,7 @@
            width="100%" height="100%"
            role="application" aria-label="Drawing canvas"
            use:panZoom={{ viewport, panTool: tool === "pan" }}
-           onpointerdown={handleDown} onpointermove={handleMove} onpointerleave={handleLeave}
+           onpointerdowncapture={commitFields} onpointerdown={handleDown} onpointermove={handleMove} onpointerleave={handleLeave}
            ondragover={variableOver} ondragleave={variableLeave} ondrop={variableDrop}
            oncontextmenu={openArrange}>
         <defs>
@@ -5846,7 +5897,7 @@
     {#if pageSet && !ioVisible}
       <PageTabs pages={pageSet.list} active={pageSet.active} onselect={selectPage} onadd={addPage} onrename={renamePage} ondelete={deletePage}
                 version={__APP_VERSION__} build={__APP_COMMIT__}
-                position={cursor ? `${draft ? `${draft.start.x}, ${draft.start.y} → ` : ""}${cursor.x}, ${cursor.y}` : ""}/>
+                marked={markedPages} position={cursor ? `${draft ? `${draft.start.x}, ${draft.start.y} → ` : ""}${cursor.x}, ${cursor.y}` : ""}/>
     {/if}
   </div>
 </div>
@@ -6013,6 +6064,16 @@
         {/if}
       </div>
     </div>
+  </Modal>
+{/if}
+
+{#if registersOpen && registerDevices.length}
+  <RegisterEditor devices={$state.snapshot(registerDevices)} onsave={saveRegisters} onclose={() => registersOpen = false}/>
+{/if}
+
+{#if deviceBatchOpen}
+  <Modal title="Add devices" width={340} onclose={() => deviceBatchOpen = false}>
+    <DeviceBatch onsubmit={(values) => { deviceBatchOpen = false; addDevices(values, true); }}/>
   </Modal>
 {/if}
 

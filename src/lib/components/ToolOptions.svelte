@@ -70,7 +70,9 @@
     onlabelsize,
     onhideedges,
     onshowname,
-    ondelete
+    ondelete,
+    registers = null,
+    onregisters = null
   } = $props();
 
   const NAMES = {
@@ -125,12 +127,8 @@
     gap: 6px 14px;
     min-width: 0;
     min-height: 40px;
-    margin-left: -12px;
-    padding: 6px 12px;
+    padding: 6px 14px;
     align-content: center;
-    border-bottom: 1px solid #e2e8f0;
-    border-radius: 0 0 8px 8px;
-    box-shadow: 0 6px 12px -10px rgba(15, 23, 42, 0.25);
     background: #ffffff;
     box-sizing: border-box;
     white-space: nowrap;
@@ -148,6 +146,11 @@
 
   .tool-options.fixed > :global(.bar) {
     flex-shrink: 1;
+  }
+
+  .idle {
+    font-weight: 400;
+    color: #94a3b8;
   }
 
   .tool-name {
@@ -286,7 +289,7 @@
     {#if groups}
       <SelectionOptions {groups} bind:keepRatio {onelementsize} {onelementrotate} {onresetsize} {onnamesize} {ontankprobe}
                         {onbranchparam} {onbranchname} {ondeviceparam} {network} {onconnect} {onadddevices} {onmedium} {onpipewidth} {onreverse} {onpipelayer} {onfittingreadout} {onmeterreadout} {onreadoutreset}
-                        {onfittingflip} {onfittingturn} {onvariables} {onfittingscale} {onfittingnamesize} {onreadoutscale} {onfittingname} {onedittext} {ontextstyle} {ondelete}/>
+                        {onfittingflip} {onfittingturn} {onvariables} {onfittingscale} {onfittingnamesize} {onreadoutscale} {onfittingname} {onedittext} {ontextstyle} {ondelete} {registers} {onregisters}/>
     {:else if furniture}
       <span>{furniture.label} · {furniture.roomName}</span>
       <button type="button" onclick={onfurnitureremove}>Remove</button>
@@ -382,6 +385,8 @@
         </label>
         <button type="button" onclick={onfitimage}>Fit to display</button>
       {/if}
+    {:else}
+      <span class="idle">Nothing selected · click an element, or drag to select an area</span>
     {/if}
     {#if selection && selection.roomCount > 0 && selection.points === 0 && selection.edges === 0}
       <label>
