@@ -11,14 +11,37 @@ export const ELECTRIC_DEFAULTS = {
   cable: { name: "-W1", params: { conductors: ["1", "2"], cableType: "J-H(St)H 2x2x0,8mm2" } },
   relayCoil: { name: "-K1", params: { note: "" } },
   relayContact: { name: "-K1", params: {} },
-  fieldDevice: { name: "-B1", params: { terminals: ["1", "2"], model: "", description: "" } }
+  fieldDevice: { name: "-B1", params: { terminals: ["1", "2"], model: "", description: "", symbol: "" } },
+  protection: { name: "-F1", params: { kind: "mcb", poles: ["L"], rating: "C10", note: "" } },
+  psu: { name: "-T1", params: { kind: "dc", terminals: ["L", "N", "PE"], rating: "230VAC/24VDC" } },
+  supply: { name: "", params: { terminals: ["L1", "L2", "L3", "N", "PE"], description: "DOVOD" } }
 };
+
+export const PROTECTION_KINDS = [
+  { id: "mcb", label: "MCB" },
+  { id: "rcbo", label: "RCBO" },
+  { id: "rcd", label: "RCD" },
+  { id: "fuse", label: "Fuse" },
+  { id: "mpcb", label: "Motor protection" },
+  { id: "switch", label: "Switch" }
+];
+
+export const DEVICE_SYMBOLS = [
+  { id: "", label: "None" },
+  { id: "motor", label: "Motor" },
+  { id: "heater", label: "Heater" },
+  { id: "socket", label: "Socket" },
+  { id: "light", label: "Light" }
+];
 
 const SLOTTED = {
   controller: { key: "terminals", sides: ["bottom"] },
   terminalStrip: { key: "terminals", sides: ["top", "bottom"] },
   cable: { key: "conductors", sides: ["top", "bottom"] },
-  fieldDevice: { key: "terminals", sides: ["top"] }
+  fieldDevice: { key: "terminals", sides: ["top"] },
+  protection: { key: "poles", sides: ["top", "bottom"] },
+  psu: { key: "terminals", sides: ["left"] },
+  supply: { key: "terminals", sides: ["top"] }
 };
 
 export function slotsOf(element){
@@ -43,14 +66,68 @@ export function electricSize(type, params = {}){
   if (type === "controller") return { width: Math.max(200, span), height: 80 };
   if (type === "terminalStrip") return { width: span, height: 40 };
   if (type === "cable") return { width: span + 100, height: 40 };
-  if (type === "fieldDevice") return { width: Math.max(140, span), height: 80 };
+  if (type === "fieldDevice") return { width: Math.max(120, span), height: 80 };
+  if (type === "protection") return { width: span, height: 60 };
+  if (type === "psu") return params.kind === "ac" ? { width: 80, height: 72 } : params.kind === "socket" ? { width: 60, height: 96 } : { width: 160, height: 72 };
+  if (type === "supply") return { width: Math.max(80, span), height: 60 };
   if (type === "relayCoil") return { width: 40, height: 60 };
   if (type === "relayContact") return { width: 60, height: 40 };
   return { width: 40, height: 40 };
 }
 
+function poleLabel(label, index, side){
+  if (label === "N") return "N";
+  const number = index * 2 + 1;
+  return String(side === "top" ? number : number + 1);
+}
+
+export function psuOutputs(element){
+  return element.params?.kind === "ac" ? ["24V", "0V"] : ["+", "-"];
+}
+
+export const PSU_PORTS = {
+  dc: { inputs: [16, 36, 56], outputs: [26, 46] },
+  ac: { line: 20, neutral: 20, earth: 40, outputs: [12, 60] },
+  socket: { line: 20, neutral: 20, earth: 40 }
+};
+
 export function electricPorts(element){
   const spec = SLOTTED[element.type];
+  if (element.type === "protection") {
+    let line = 0;
+    return slotsOf(element).flatMap((label, index) => {
+      if (!label) return [];
+      const position = label === "N" ? 0 : line++;
+      return spec.sides.map((side) => ({ side, offset: (index + 1) * SLOT, label: poleLabel(label, position, side) }));
+    });
+  }
+  if (element.type === "psu" && element.params?.kind === "socket") {
+    const ports = PSU_PORTS.socket;
+    return [
+      { side: "top", offset: ports.line, label: "L" },
+      { side: "bottom", offset: ports.neutral, label: "N" },
+      { side: "bottom", offset: ports.earth, label: "PE" }
+    ];
+  }
+  if (element.type === "psu") {
+    const [plus, minus] = psuOutputs(element);
+    if (element.params?.kind === "ac") {
+      const ports = PSU_PORTS.ac;
+      return [
+        { side: "top", offset: ports.line, label: "L" },
+        { side: "bottom", offset: ports.neutral, label: "N" },
+        { side: "bottom", offset: ports.earth, label: "PE" },
+        { side: "right", offset: ports.outputs[0], label: plus },
+        { side: "right", offset: ports.outputs[1], label: minus }
+      ];
+    }
+    const ports = PSU_PORTS.dc;
+    return [
+      ...["L", "N", "PE"].map((label, index) => ({ side: "left", offset: ports.inputs[index], label })),
+      { side: "right", offset: ports.outputs[0], label: plus },
+      { side: "right", offset: ports.outputs[1], label: minus }
+    ];
+  }
   if (spec) {
     return slotsOf(element).flatMap((label, index) => label
       ? spec.sides.map((side) => ({ side, offset: (index + 1) * SLOT, label }))
@@ -149,9 +226,157 @@ function fieldDevice(element){
   });
   parts.push(text(x + 6, y + 34, element.name, { size: 11, bold: true }));
   parts.push(text(x + 6, y + height - 8, element.params?.model, { size: 8 }));
-  wrap(element.params?.description, Math.max(12, Math.floor(width / 6.2))).slice(0, 4).forEach((row, index) => {
-    parts.push(text(x + width / 2, y + height + 14 + index * 12, row, { size: 9, anchor: "middle" }));
+  parts.push(deviceGlyph(element));
+  String(element.params?.description ?? "").split("\n").map((part) => part.trim()).filter(Boolean).slice(0, 5).forEach((row, index, rows) => {
+    const centred = Math.max(...rows.map((entry) => entry.length)) * 5.4 <= width + 40;
+    parts.push(text(centred ? x + width / 2 : x, y + height + 14 + index * 12, row, { size: 9, anchor: centred ? "middle" : "start" }));
   });
+  return parts.join("");
+}
+
+const GLYPHS = {
+  motor: (cx, cy, element) => {
+    const three = slotsOf(element).some((label) => /^(U|V|W|L2|L3)$/.test(label));
+    return `<circle cx="${cx}" cy="${cy}" r="15" fill="#FFFFFF" stroke="${INK}" stroke-width="1.2"/>`
+      + text(cx, cy - 1, "M", { size: 11, anchor: "middle", bold: true }) + text(cx, cy + 10, three ? "3~" : "1~", { size: 8, anchor: "middle" });
+  },
+  heater: (cx, cy) => box(cx - 14, cy - 10, 28, 20, 1.2) + `<polyline points="${cx - 10},${cy} ${cx - 6},${cy - 6} ${cx - 2},${cy + 6} ${cx + 2},${cy - 6} ${cx + 6},${cy + 6} ${cx + 10},${cy}" fill="none" stroke="${INK}" stroke-width="1"/>`,
+  socket: (cx, cy) => `<path d="M ${cx - 13} ${cy + 6} A 13 13 0 0 1 ${cx + 13} ${cy + 6}" fill="none" stroke="${INK}" stroke-width="1.2"/>` + line(cx - 16, cy + 6, cx + 16, cy + 6) + line(cx, cy + 6, cx, cy + 14),
+  light: (cx, cy) => `<circle cx="${cx}" cy="${cy}" r="12" fill="#FFFFFF" stroke="${INK}" stroke-width="1.2"/>` + line(cx - 8.5, cy - 8.5, cx + 8.5, cy + 8.5) + line(cx - 8.5, cy + 8.5, cx + 8.5, cy - 8.5)
+};
+
+function deviceGlyph(element){
+  const draw = GLYPHS[element.params?.symbol];
+  return draw ? draw(element.x + element.width - 30, element.y + 48, element) : "";
+}
+
+function protection(element){
+  const { x, y } = element;
+  const kind = element.params?.kind ?? "mcb";
+  const parts = [];
+  const poles = slotsOf(element).map((label, index) => label ? x + (index + 1) * SLOT : null).filter((value) => value !== null);
+  for (const cx of poles) {
+    if (kind === "fuse") {
+      parts.push(line(cx, y, cx, y + 14), box(cx - 5, y + 14, 10, 32, 1.2), line(cx, y + 14, cx, y + 46), line(cx, y + 46, cx, y + 60));
+      continue;
+    }
+    parts.push(line(cx, y, cx, y + 18), line(cx, y + 44, cx - 11, y + 21), line(cx, y + 44, cx, y + 60));
+    if (kind === "switch") parts.push(line(cx - 4, y + 18, cx + 4, y + 18));
+    if (kind === "contact") parts.push(line(cx, y + 18, cx + 5, y + 18));
+    if (kind === "mcb" || kind === "rcbo" || kind === "mpcb") parts.push(line(cx - 3.5, y + 14.5, cx + 3.5, y + 21.5), line(cx - 3.5, y + 21.5, cx + 3.5, y + 14.5));
+  }
+  if (kind !== "fuse" && poles.length) {
+    const right = poles[poles.length - 1];
+    const link = kind === "rcd" || kind === "rcbo" ? right + 22 : right;
+    if (link > poles[0]) parts.push(`<line x1="${poles[0] - 6}" y1="${y + 32}" x2="${link}" y2="${y + 32}" stroke="${INK}" stroke-width="1" stroke-dasharray="3 2"/>`);
+    if (kind === "rcd" || kind === "rcbo") {
+      parts.push(`<ellipse cx="${right + 28}" cy="${y + 32}" rx="6" ry="9" fill="#FFFFFF" stroke="${INK}" stroke-width="1.2"/>`);
+      parts.push(text(right + 36, y + 36, "IΔ", { size: 8 }));
+    }
+    if (kind === "mpcb") parts.push(text(right + 16, y + 36, "I>", { size: 8 }));
+  }
+  const onRight = element.params?.labels === "right";
+  const last = poles[poles.length - 1] ?? x + SLOT;
+  const anchor = onRight ? "start" : "end";
+  const left = onRight ? last + (kind === "rcd" || kind === "rcbo" ? 52 : kind === "mpcb" ? 30 : 12) : (poles[0] ?? x + SLOT) - 14;
+  parts.push(text(left, y + 26, element.name, { size: 11, bold: true, anchor }));
+  parts.push(text(left, y + 39, element.params?.rating, { size: 9, anchor }));
+  parts.push(text(left, y + 51, element.params?.note, { size: 8, anchor }));
+  return parts.join("");
+}
+
+function coil(cx, top, bottom, toward){
+  const turns = 3;
+  const step = (bottom - top) / turns;
+  let path = `M ${cx} ${top}`;
+  for (let index = 0; index < turns; index += 1) path += ` a ${step / 2} ${step / 2} 0 0 ${toward > 0 ? 1 : 0} 0 ${step}`;
+  return `<path d="${path}" fill="none" stroke="${INK}" stroke-width="1.2"/>`;
+}
+
+function transformer(element){
+  const { x, y, width, height } = element;
+  const ports = PSU_PORTS.ac;
+  const [high, low] = psuOutputs(element);
+  const primary = x + ports.line;
+  const secondary = x + width - 20;
+  const parts = [
+    line(primary, y, primary, y + 18), coil(primary, y + 18, y + 54, 1), line(primary, y + 54, primary, y + height),
+    line(x + 36, y + 14, x + 36, y + 58, 1.4), line(x + ports.earth, y + 14, x + ports.earth, y + 58, 1.4),
+    line(x + ports.earth, y + 58, x + ports.earth, y + height, 1),
+    coil(secondary, y + 18, y + 54, -1),
+    line(secondary, y + 18, secondary, y + ports.outputs[0]), line(secondary, y + ports.outputs[0], x + width, y + ports.outputs[0]),
+    line(secondary, y + 54, secondary, y + ports.outputs[1]), line(secondary, y + ports.outputs[1], x + width, y + ports.outputs[1])
+  ];
+  parts.push(text(primary - 4, y + 12, "L", { size: 8, anchor: "end" }));
+  parts.push(text(primary - 4, y + height - 4, "N", { size: 8, anchor: "end" }));
+  parts.push(text(x + width + 2, y + ports.outputs[0] - 3, high, { size: 8 }));
+  parts.push(text(x + width + 2, y + ports.outputs[1] - 3, low, { size: 8 }));
+  parts.push(text(primary - 14, y + 34, element.name, { size: 11, bold: true, anchor: "end" }));
+  parts.push(text(primary - 14, y + 47, element.params?.rating, { size: 8, anchor: "end" }));
+  return parts.join("");
+}
+
+function dinSocket(element){
+  const { x, y, width, height } = element;
+  const ports = PSU_PORTS.socket;
+  const parts = [box(x, y, width, height, 1.5)];
+  const cell = (offset, top, label) => {
+    parts.push(box(x + offset - 10, top, 20, 18, 1));
+    parts.push(text(x + offset, top + 13, label, { size: 8, anchor: "middle" }));
+  };
+  parts.push(line(x, y + 18, x + width, y + 18, 1), line(x, y + height - 18, x + width, y + height - 18, 1));
+  cell(ports.line, y, "L");
+  cell(ports.neutral, y + height - 18, "N");
+  cell(ports.earth, y + height - 18, "PE");
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  parts.push(`<circle cx="${cx}" cy="${cy}" r="17" fill="#FFFFFF" stroke="${INK}" stroke-width="1.2"/>`);
+  parts.push(`<circle cx="${cx - 7}" cy="${cy}" r="2.6" fill="none" stroke="${INK}" stroke-width="1"/>`);
+  parts.push(`<circle cx="${cx + 7}" cy="${cy}" r="2.6" fill="none" stroke="${INK}" stroke-width="1"/>`);
+  parts.push(line(cx, cy - 17, cx, cy - 12, 1.2), line(cx, cy + 12, cx, cy + 17, 1.2));
+  parts.push(text(x - 8, cy - 4, element.name, { size: 11, bold: true, anchor: "end" }));
+  String(element.params?.description ?? "").split("\n").map((part) => part.trim()).filter(Boolean).slice(0, 4).forEach((row, index) => {
+    parts.push(text(x - 8, cy + 9 + index * 10, row, { size: 8, anchor: "end" }));
+  });
+  return parts.join("");
+}
+
+function psu(element){
+  if (element.params?.kind === "socket") return dinSocket(element);
+  if (element.params?.kind === "ac") return transformer(element);
+  const { x, y, width, height } = element;
+  const ports = PSU_PORTS.dc;
+  const [plus, minus] = psuOutputs(element);
+  const parts = [box(x, y, width, height, 1.5)];
+  ["L", "N", "PE"].forEach((label, index) => {
+    parts.push(box(x + 4, y + ports.inputs[index] - 8, 20, 16, 1));
+    parts.push(text(x + 14, y + ports.inputs[index] + 3, label, { size: 7, anchor: "middle" }));
+  });
+  [plus, minus].forEach((label, index) => {
+    parts.push(box(x + width - 24, y + ports.outputs[index] - 8, 20, 16, 1));
+    parts.push(text(x + width - 14, y + ports.outputs[index] + 4, label, { size: 9, anchor: "middle" }));
+  });
+  parts.push(line(x + 34, y + height - 4, x + width - 34, y + 4, 1));
+  parts.push(text(x + 48, y + 26, "~", { size: 14, anchor: "middle" }));
+  parts.push(text(x + width - 48, y + height - 12, "==", { size: 11, anchor: "middle" }));
+  parts.push(text(x + width / 2, y - 18, element.name, { size: 11, bold: true, anchor: "middle" }));
+  parts.push(text(x + width / 2, y - 5, element.params?.rating, { size: 8, anchor: "middle" }));
+  return parts.join("");
+}
+
+function supply(element){
+  const { x, y, width } = element;
+  const parts = [];
+  const slots = slotsOf(element).map((label, index) => label ? { label, cx: x + (index + 1) * SLOT } : null).filter(Boolean);
+  if (!slots.length) return "";
+  const first = slots[0].cx;
+  const last = slots[slots.length - 1].cx;
+  for (const { label, cx } of slots) {
+    parts.push(line(cx, y, cx, y + 30));
+    parts.push(text(cx + 3, y + 10, label, { size: 7 }));
+  }
+  parts.push(`<polygon points="${first - 10},${y + 30} ${last + 10},${y + 30} ${(first + last) / 2},${y + 52}" fill="none" stroke="${INK}" stroke-width="1.2"/>`);
+  parts.push(text(x + width / 2, y + 68, element.params?.description, { size: 10, anchor: "middle" }));
   return parts.join("");
 }
 
@@ -181,18 +406,18 @@ function relayContact(element, refs){
   return parts.join("");
 }
 
-const DRAW = { controller, terminalStrip, cable, fieldDevice, relayCoil, relayContact };
+const DRAW = { controller, terminalStrip, cable, fieldDevice, relayCoil, relayContact, protection, psu, supply };
 
 export function electricSvg(element, refs = null){
   return DRAW[element.type]?.(element, refs) ?? "";
 }
 
-const PREFIXES = { controller: "-N", relayCoil: "-K", fieldDevice: "-B", cable: "-W" };
+const PREFIXES = { controller: "-N", relayCoil: "-K", fieldDevice: "-B", cable: "-W", protection: "-F", psu: "-T" };
 
 export function nextElectricName(type, shapes){
   if (type === "terminalStrip") return ELECTRIC_DEFAULTS.terminalStrip.name;
   const prefix = PREFIXES[type] ?? "-K";
-  const pattern = new RegExp(`^${prefix}(\d+)$`);
+  const pattern = new RegExp(`^${prefix}(\\d+)$`);
   const kin = type === "relayContact" ? "relayCoil" : type;
   let top = 0;
   for (const shape of shapes) {

@@ -49,10 +49,11 @@ export const APPS = [
   defineApp({
     id: "electrical",
     label: "Wiring diagram",
-    description: "Controller terminals, relays, terminal strips and cables",
+    description: "Power, control and communication wiring",
     special: ["pipe"],
     specialShortcuts: { p: "pipe" },
     elements: ELECTRIC_GROUPS,
+    views: [{ id: "drawing", label: "Drawing" }, { id: "io", label: "Wiring list" }],
     pipeLabel: "Wire",
     automations: false,
     exports: ["pdf"]

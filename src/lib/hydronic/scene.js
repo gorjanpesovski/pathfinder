@@ -120,13 +120,13 @@ function protocolLabel(group, obstacles, solids, taken){
   return null;
 }
 
-function relayRefs(elements){
+function relayRefs(elements, paper){
   const spots = { relayCoil: new Map(), relayContact: new Map() };
   for (const element of elements) {
     const map = spots[element.type];
     if (!map || !element.name) continue;
     if (!map.has(element.name)) map.set(element.name, []);
-    map.get(element.name).push(location(element.x + element.width / 2));
+    map.get(element.name).push(location(element.x + element.width / 2, paper));
   }
   return (element) => {
     if (element.type === "relayCoil") return spots.relayContact.get(element.name) ?? [];
@@ -142,6 +142,7 @@ function railLabels(pipe, points){
   const ends = [[pipe.from, points[0], points[1]], [pipe.to, points[points.length - 1], points[points.length - 2]]];
   ends.forEach(([end, point, next], index) => {
     if (end?.id !== undefined || end?.pipe !== undefined || point.y !== next.y) return;
+    if (Array.isArray(pipe.railEnds) && !pipe.railEnds.includes(index)) return;
     const leftward = next.x > point.x;
     const x = leftward ? point.x + 4 : point.x - 4;
     labels.push({ kind: "label", id: `pipe_${pipe.id}_rail_${index}`, text: rail, x, y: point.y - 5, size: 12, anchor: leftward ? "start" : "end", color: INK,
@@ -162,7 +163,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   const { crossings: allCrossings, junctions, arrows } = pipeDecorations(pipes, style, bars);
   const electricPipes = new Set(pipes.filter(({ pipe }) => mediumOf(pipe.medium).electric).map(({ pipe }) => pipe.id));
   const crossings = allCrossings.filter((crossing) => !electricPipes.has(crossing.upper) && !electricPipes.has(crossing.lower));
-  const refsOf = relayRefs(equipment);
+  const refsOf = relayRefs(equipment, options.paper ?? style.paper);
   const items = [];
 
   for (const { pipe, route } of pipes) {

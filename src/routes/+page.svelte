@@ -72,7 +72,9 @@
   import IoView from "$lib/components/IoView.svelte";
   import ConnectExport from "$lib/components/ConnectExport.svelte";
   import WiringActions from "$lib/components/WiringActions.svelte";
-  import { boardSize, sheetsSvg, sheetDate } from "$lib/electric/sheet.js";
+  import WiringList from "$lib/components/WiringList.svelte";
+  import { drawPower, emptyPower, normalizePower, powerPageCount, shiftShapes, isPowerShape, LOADS as POWER_LOADS, SIZING_DEFAULTS } from "$lib/electric/power.js";
+  import { PAPERS, DEFAULT_PAPER, paperOf, pageLeft, boardSize, sheetsSvg, sheetDate } from "$lib/electric/sheet.js";
   import { wiringFromIo } from "$lib/electric/generate.js";
   import { printSheets } from "$lib/electric/print.js";
   import { electricSize, electricDefaults, nextElectricName } from "$lib/electric/symbols.js";
@@ -158,7 +160,9 @@
   let aim = $state(null);
   let selectedId = $state(null);
   let nextId = 1;
-  let electricBoard = $derived(app === "electrical" ? boardSize(shapes) : null);
+  let wiringPaper = $state(DEFAULT_PAPER);
+  let paper = $derived(paperOf(wiringPaper));
+  let electricBoard = $derived(app === "electrical" ? boardSize(shapes, paper) : null);
   let boardWidth = $derived(electricBoard?.width ?? canvasWidth);
   let boardHeight = $derived(electricBoard?.height ?? canvasHeight);
 
@@ -193,7 +197,19 @@
   let fitted = false;
 
   function fitContent(){
-    viewport.fit({ x: 0, y: 0, width: boardWidth, height: boardHeight });
+    viewport.fit(sheetRect ?? { x: 0, y: 0, width: boardWidth, height: boardHeight });
+  }
+
+  let sheet = $state(0);
+  let sheetLast = $derived(electricBoard ? electricBoard.pages - 1 : 0);
+  let sheetShown = $derived(Math.min(sheet, sheetLast));
+  let sheetRect = $derived(electricBoard ? { x: pageLeft(sheetShown, paper), y: 0, width: paper.width, height: paper.height } : null);
+  let sheetTotal = $derived(electricBoard ? Math.max(electricBoard.used, sheetShown + 1, 1) : 1);
+
+  function showSheet(index){
+    if (!electricBoard) return;
+    sheet = Math.max(0, Math.min(sheetLast, index));
+    viewport.fit({ x: pageLeft(sheet, paper), y: 0, width: paper.width, height: paper.height });
   }
 
   function zoomToSelection(){
@@ -1026,6 +1042,11 @@
       setTimeout(() => document.querySelector("input.branch-name")?.select(), 0);
       return true;
     }
+    if (repeated && shape.kind === "equipment" && shape.type === "fieldDevice") {
+      selectShape(shape.id);
+      describingId = shape.id;
+      return true;
+    }
     if (repeated && shape.kind === "equipment" && hasNameLabel(shape)) {
       selectShape(shape.id);
       renamingElementId = shape.id;
@@ -1061,9 +1082,19 @@
     const step = snapToGrid ? gridSize : 1;
     let moved = false;
     const pressed = group.find((entry) => entry.shape === shape)?.original;
-    const centre = snapToGrid && shape.kind === "equipment" && !isBranch(shape) && pressed
+    const centre = snapToGrid && shape.kind === "equipment" && !isBranch(shape) && !isElectricType(shape.type) && pressed
       ? { x: pressed.x + pressed.width / 2, y: pressed.y + pressed.height / 2 }
       : null;
+    const rails = new Map(shapes.filter((entry) => entry.kind === "pipe" && !movingIds.has(entry.id) && mediumOf(entry.medium).electric
+      && Number.isFinite(entry.from?.y) && entry.from.y === entry.to?.y).map((entry) => [entry.id, entry]));
+    const sliders = shapes.filter((entry) => entry.kind === "pipe" && !movingIds.has(entry.id)).flatMap((entry) => {
+      const ends = [["from", "to"], ["to", "from"]];
+      return ends.filter(([own, other]) => movingIds.has(entry[own]?.id) && rails.has(entry[other]?.pipe))
+        .map(([, other]) => {
+          const rail = rails.get(entry[other].pipe);
+          return { pipe: entry, end: other, x: entry[other].x, min: Math.min(rail.from.x, rail.to.x), max: Math.max(rail.from.x, rail.to.x) };
+        });
+    });
 
     history.beginGesture();
     dragPointer(svgEl, event, {
@@ -1081,6 +1112,7 @@
         }
         if (delta.dx !== 0 || delta.dy !== 0) moved = true;
         for (const entry of group) Object.assign(entry.shape, translateShape(entry.original, delta.dx, delta.dy, movingIds));
+        for (const slider of sliders) slider.pipe[slider.end] = { ...slider.pipe[slider.end], x: Math.min(slider.max, Math.max(slider.min, slider.x + delta.dx)) };
       },
       onend: () => {
         history.endGesture();
@@ -1680,7 +1712,7 @@
   }
 
   function handleCopy(event){
-    if (ioVisible) return;
+    if (ioVisible || wiringListVisible) return;
     if (!typingInto(event.target) && copyFurniture(event)) return;
     if (!typingInto(event.target) && copyFittingSelection(event)) return;
     if (typingInto(event.target) || selectionIds.length === 0) return;
@@ -1695,7 +1727,7 @@
   }
 
   function handleCut(event){
-    if (ioVisible) return;
+    if (ioVisible || wiringListVisible) return;
     handleCopy(event);
     if (!event.defaultPrevented) return;
     if (clipboardFurniture && partGroup.length) removeParts();
@@ -1744,7 +1776,7 @@
   }
 
   function handlePaste(event){
-    if (ioVisible) return;
+    if (ioVisible || wiringListVisible) return;
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
     const text = event.clipboardData?.getData("text/plain");
@@ -2217,7 +2249,7 @@
   let freshPipes = $state([]);
   let selectedFitting = $state(null);
   let extraFittings = $state([]);
-  let hydronicStyle = $derived({ ...HYDRONIC_STYLE, library: hydronicLibrary, nodePrefix, background: canvasFill, native: ICON_SIZES, bounds: { width: boardWidth, height: boardHeight } });
+  let hydronicStyle = $derived({ ...HYDRONIC_STYLE, library: hydronicLibrary, nodePrefix, background: canvasFill, native: ICON_SIZES, bounds: { width: boardWidth, height: boardHeight }, paper });
   let shapeIndex = $derived(new Map(shapes.map((shape) => [shape.id, shape])));
   let pipeRoutes = $derived(computeRoutes(shapes));
   let snapRadius = $derived(Math.max(20, 16 / viewport.zoom));
@@ -2352,6 +2384,17 @@
   let freshTextId = null;
   let editingText = $derived(shapes.find((shape) => shape.id === editingTextId && shape.kind === "text") ?? null);
   let textEditPosition = $derived(editingText ? viewport.toScreen({ x: editingText.x, y: editingText.y }) : null);
+  let describingId = $state(null);
+  let describing = $derived(shapes.find((shape) => shape.id === describingId && shape.type === "fieldDevice") ?? null);
+  let describePosition = $derived(describing ? viewport.toScreen({ x: describing.x, y: describing.y + describing.height + 4 }) : null);
+
+  function commitDescription(value){
+    const shape = describing;
+    describingId = null;
+    if (!shape) return;
+    selectShape(shape.id);
+    setDeviceParam("description", value.split("\n").map((part) => part.trim()).join("\n").trim());
+  }
 
   function placeText(point){
     const id = nextId++;
@@ -2560,13 +2603,34 @@
       if (!isDeviceType(element.type) && !isElectricType(element.type)) continue;
       element.params = { ...$state.snapshot(element.params ?? {}), [name]: value };
       if (isElectricType(element.type)) Object.assign(element, electricSize(element.type, element.params));
+      const row = element.source?.row ? powerList.rows.find((entry) => entry.id === element.source.row) : null;
+      if (row && name === "description") row.description = value;
     }
   }
 
-  let sheetMeta = $derived({ project: documentName ?? "", date: sheetDate() });
+  let powerPages = $derived(app === "electrical" ? powerPageCount(shapes, paper) : 0);
+  let supplyNote = $derived(`Sistem: ${powerList.supply.system} · ${powerList.supply.phases === 1 ? "230 V" : "400/230 V"}, 50 Hz`);
+  let sheetMeta = $derived({ project: documentName ?? "", date: sheetDate(), pages: Array.from({ length: powerPages }, () => "NAPAJANJE"), notes: Array.from({ length: powerPages }, () => supplyNote) });
+
+  function drawPowerPages(){
+    const before = powerPageCount(shapes, paper);
+    const current = $state.snapshot(shapes);
+    const removed = new Set(current.filter(isPowerShape).map((shape) => shape.id));
+    const touches = (end) => removed.has(end?.id) || removed.has(end?.pipe);
+    const kept = current.filter((shape) => !removed.has(shape.id) && !(shape.kind === "pipe" && (touches(shape.from) || touches(shape.to))));
+    const result = drawPower($state.snapshot(powerList), () => nextId++, paper);
+    shiftShapes(kept, (result.pages - before) * (paper.width + paper.gap));
+    shapes = [...result.shapes, ...kept];
+    sheet = 0;
+    setTimeout(fitContent, 0);
+    selectedId = null;
+    selectedIds = [];
+    ioOpen = false;
+    showFileNotice(`Drew ${powerList.rows.length} power device${powerList.rows.length === 1 ? "" : "s"} on ${result.pages} page${result.pages === 1 ? "" : "s"}`);
+  }
 
   function generateWiring(options){
-    const result = wiringFromIo($state.snapshot(ioPoints), $state.snapshot(shapes), () => nextId++, options);
+    const result = wiringFromIo($state.snapshot(ioPoints), $state.snapshot(shapes), () => nextId++, { ...options, paper: wiringPaper });
     if (!result.shapes.length) return;
     shapes.push(...result.shapes);
     selectedId = null;
@@ -2575,7 +2639,7 @@
   }
 
   function printWiring(){
-    printSheets($state.snapshot(shapes), sheetMeta);
+    printSheets($state.snapshot(shapes), sheetMeta, paper);
   }
 
   function setBranchName(value){
@@ -3652,6 +3716,8 @@
   let ioOthers = $state([]);
   let ioOpen = $state(false);
   let ioVisible = $derived(ioOpen && app === "hydronic");
+  let wiringListVisible = $derived(ioOpen && app === "electrical");
+  let powerList = $state(emptyPower());
   let ioBranches = $derived(ioVisible ? pageShapes("hydronic").filter(isBranch).map((shape, index) => ({ id: shape.id, label: shape.name?.trim() || `Branch ${index + 1}`, type: branchParams(shape).branch_type })) : []);
   let documentName = $state(null);
   let saveDialog = $state(null);
@@ -3786,7 +3852,8 @@
         roomFill, roomStroke, labelColor: roomLabelColor, floorFill, floorStroke, categoryColors: $state.snapshot(categoryColors),
         furnitureOpacity, floorWallWidth, roomWallWidth, wallStroke, wallWidth
       },
-      hydronic: { library: hydronicLibrary, nodePrefix }
+      hydronic: { library: hydronicLibrary, nodePrefix },
+      wiring: { paper: wiringPaper }
     };
   }
 
@@ -3821,6 +3888,7 @@
     wallWidth = number(rooms.wallWidth, WALL_STYLE.width);
     hydronicLibrary = text(settings?.hydronic?.library, HYDRONIC_STYLE.library);
     nodePrefix = typeof settings?.hydronic?.nodePrefix === "string" ? settings.hydronic.nodePrefix : "";
+    wiringPaper = PAPERS[settings?.wiring?.paper] ? settings.wiring.paper : DEFAULT_PAPER;
   }
 
   function usedImages(apps, pages){
@@ -3838,10 +3906,16 @@
       canvas: { width: canvasWidth, height: canvasHeight, fill: canvasFill },
       name,
       io: { points: $state.snapshot(ioPoints), others: $state.snapshot(ioOthers) },
+      wiring: { power: $state.snapshot(powerList) },
       settings: projectSettings(),
       images: withImages ? usedImages(apps, pages) : null,
       variables: $state.snapshot(variableNames)
     });
+  }
+
+  function hasWiring(doc){
+    const list = doc.pages?.electrical?.list;
+    return Array.isArray(list) ? list.some((page) => page.shapes?.length) : Boolean(doc.apps?.electrical?.length);
   }
 
   function applyDocument(doc){
@@ -3874,10 +3948,12 @@
     }
     documentName = doc.name ?? null;
     applySettings(doc.settings);
+    if (!doc.settings?.wiring && hasWiring(doc)) wiringPaper = "A3";
     variableNames = doc.variables ?? [];
     imageSources = doc.images ?? {};
     ioPoints = doc.io?.points ?? [];
     ioOthers = doc.io?.others ?? [];
+    powerList = normalizePower(doc.wiring?.power);
   }
 
   const autosaved = loadAutosave();
@@ -4182,7 +4258,12 @@
     const target = event.target;
     if (typingInto(target) || target?.isContentEditable) return;
     if (viewKeydown(event)) return;
-    if (ioVisible) {
+    if (electricBoard && !wiringListVisible && (event.key === "PageUp" || event.key === "PageDown")) {
+      event.preventDefault();
+      showSheet(sheetShown + (event.key === "PageDown" ? 1 : -1));
+      return;
+    }
+    if (ioVisible || wiringListVisible) {
       const key = event.key.toLowerCase();
       if ((event.ctrlKey || event.metaKey) && (key === "s" || key === "o")) appKeydown(event);
       return;
@@ -4252,7 +4333,7 @@
 
   const SETTINGS_SECTIONS = [
     { label: "Options", items: [{ id: "general", label: "General" }, { id: "canvas", label: "Canvas" }, { id: "shapes", label: "Shapes" }] },
-    { label: "Views", items: [{ id: "floorplan", label: "Floor plan" }, { id: "hydronic", label: "Hydronic station" }] }
+    { label: "Views", items: [{ id: "floorplan", label: "Floor plan" }, { id: "hydronic", label: "Hydronic station" }, { id: "wiring", label: "Wiring diagram" }] }
   ];
 
   let connectOpen = $state(false);
@@ -4774,6 +4855,17 @@
     color: #64748b;
   }
 
+  .settings-select {
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    font-family: inherit;
+    font-size: 13px;
+    color: #334155;
+  }
+
   .settings-button {
     height: 32px;
     padding: 0 14px;
@@ -4918,6 +5010,64 @@
     align-items: stretch;
     height: calc(100dvh - 44px);
     margin: 0;
+  }
+
+  .sheet-nav {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+    transform: translateX(-50%);
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  .sheet-nav span {
+    min-width: 56px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sheet-nav button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #334155;
+    cursor: pointer;
+  }
+
+  .sheet-nav button:hover:not(:disabled) {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  .sheet-nav button:disabled {
+    color: #cbd5e1;
+    cursor: default;
+  }
+
+  .sheet-nav svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .app-layout.no-tools {
+    grid-template-columns: var(--activity-width, 48px) 0 auto minmax(0, 1fr) auto;
   }
 
   .app-layout > :global(.toolbar) {
@@ -5535,6 +5685,8 @@
 
   <div class="header-right">
     {#if app === "electrical"}
+      <button class="header-action" type="button" onclick={() => ioOpen = !ioOpen} aria-pressed={ioOpen}
+              title={ioOpen ? "Back to the drawing" : "The list of power devices and loads the diagram is drawn from"}>{ioOpen ? "Drawing" : "Wiring list"}</button>
       <button class="header-action" type="button" onclick={() => wiringOpen = true}
               title="Draw the controller terminals of IO points that are not in the drawing yet">From IO list…</button>
     {/if}
@@ -5550,8 +5702,9 @@
   </div>
 </div>
 
-<div class="app-layout" style:--activity-width={viewsOnHover ? "6px" : "40px"}>
+<div class="app-layout" class:no-tools={wiringListVisible} style:--activity-width={viewsOnHover ? "6px" : "40px"}>
   <ActivityBar apps={APPS} current={app} onswitch={switchApp} view={ioOpen ? "io" : "drawing"} onview={(id) => ioOpen = id === "io"} autohide={viewsOnHover}/>
+  {#if !wiringListVisible}
   <Toolbar {tool} onpick={pickTool} onimage={openImagePicker} showHints={showToolHints}
            {elementsOpen} ontoggleelements={() => elementsOpen = !elementsOpen}
            tools={currentApp.tools} general={GENERAL_TOOLS} special={currentApp.special} pipeLabel={currentApp.pipeLabel ?? null} automations={currentApp.automations}
@@ -5560,6 +5713,7 @@
            onplacedoors={placeDoors} onfurnish={furnishOffices}
            variablesOpen={showVariablePanel} ontogglevariables={app === "hydronic" ? () => variablePanel = !variablePanel : null}
            onadddevices={app === "network" ? () => deviceBatchOpen = true : null}/>
+  {/if}
   {#if showVariablePanel}
     <VariablePanel names={variableNames} usage={variableUse} dragging={draggingVariable} selected={selectedVariables}
                    onfocus={(value) => variableFocus = value} pages={variablePages} onpage={selectPage}
@@ -5702,11 +5856,11 @@
            ondragover={variableOver} ondragleave={variableLeave} ondrop={variableDrop}
            oncontextmenu={openArrange}>
         <defs>
-          <pattern id="grid_minor" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
+          <pattern id="grid_minor" x={sheetRect?.x ?? 0} width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
             <path d="M {gridSize} 0 L 0 0 L 0 {gridSize}" fill="none"
                   stroke={gridMinorColor} stroke-width={1 / viewport.zoom}/>
           </pattern>
-          <pattern id="grid_major" width={majorSize} height={majorSize} patternUnits="userSpaceOnUse">
+          <pattern id="grid_major" x={sheetRect?.x ?? 0} width={majorSize} height={majorSize} patternUnits="userSpaceOnUse">
             {#if showMinorGrid && gridSize * viewport.zoom >= MIN_GRID_PX}
               <rect x="0" y="0" width={majorSize} height={majorSize} fill="url(#grid_minor)"/>
             {/if}
@@ -5715,7 +5869,14 @@
           </pattern>
         </defs>
 
-        <g transform={viewport.transform}>
+        {#if sheetRect}
+          <defs>
+            <clipPath id="sheet-clip">
+              <rect x={sheetRect.x} y={sheetRect.y} width={sheetRect.width} height={sheetRect.height}/>
+            </clipPath>
+          </defs>
+        {/if}
+        <g transform={viewport.transform} clip-path={sheetRect ? "url(#sheet-clip)" : undefined}>
         <rect x="0" y="0" width={boardWidth} height={boardHeight} fill={canvasFill}/>
         <ImageLayer {shapes} sources={imageSources} interactive={tool === "select"}/>
         {#if showGrid && majorSize * viewport.zoom >= MIN_GRID_PX}
@@ -5724,7 +5885,7 @@
         <rect x="0" y="0" width={boardWidth} height={boardHeight} fill="none"
               stroke="#94A3B8" stroke-width="1" vector-effect="non-scaling-stroke" pointer-events="none"/>
         {#if electricBoard}
-          <g pointer-events="none">{@html sheetsSvg(electricBoard.pages, electricBoard.used, sheetMeta)}</g>
+          <g pointer-events="none">{@html sheetsSvg(electricBoard.pages, electricBoard.used, sheetMeta, paper)}</g>
         {/if}
 
         <RoomLayer {shapes} {draft} {cursor} selectedIds={selectionIds} zoom={viewport.zoom} style={roomStyle} labelsMovable={tool === "select"}
@@ -5871,6 +6032,14 @@
         {/key}
       {/if}
 
+      {#if describing && describePosition}
+        {#key describingId}
+          <TextEditor x={describePosition.x} y={describePosition.y} zoom={viewport.zoom}
+                      shape={{ text: describing.params?.description ?? "", fontSize: 9, color: "#1E293B", bold: false, width: Math.max(describing.width, 180) }}
+                      oncommit={commitDescription} oncancel={() => describingId = null}/>
+        {/key}
+      {/if}
+
       {#if editingText && textEditPosition}
         {#key editingTextId}
           <TextEditor x={textEditPosition.x} y={textEditPosition.y} zoom={viewport.zoom} shape={editingText}
@@ -5880,11 +6049,29 @@
 
       <CanvasNotice message={notice}/>
 
-      <ZoomControls {viewport} onfit={fitContent} onselection={transformBox ? zoomToSelection : null}/>
+      {#if !wiringListVisible}
+        <ZoomControls {viewport} onfit={fitContent} onselection={transformBox ? zoomToSelection : null}/>
+      {/if}
+      {#if electricBoard && !wiringListVisible}
+        <div class="sheet-nav" role="group" aria-label="Sheets">
+          <button type="button" aria-label="Previous sheet" title="Previous sheet (Page Up)" disabled={sheetShown === 0} onclick={() => showSheet(sheetShown - 1)}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 L5 8 L10 13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <span>{sheetShown + 1} / {sheetTotal}</span>
+          <button type="button" aria-label="Next sheet" title="Next sheet (Page Down)" disabled={sheetShown >= sheetLast} onclick={() => showSheet(sheetShown + 1)}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 L11 8 L6 13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      {/if}
     </div>
 
     {#if ioVisible}
       <IoView bind:points={ioPoints} bind:others={ioOthers} branches={ioBranches} onnotice={showFileNotice}/>
+      <CanvasNotice message={notice}/>
+    {/if}
+
+    {#if wiringListVisible}
+      <WiringList bind:power={powerList} ondraw={drawPowerPages} onnotice={showFileNotice}/>
       <CanvasNotice message={notice}/>
     {/if}
 
@@ -6060,6 +6247,67 @@
           <div class="settings-card">
             {@render textRow("atvise object folder", "Library path of the object displays that elements reference in the atvise export.", hydronicLibrary, (value) => hydronicLibrary = value || HYDRONIC_STYLE.library)}
             {@render textRow("Variable node path", "Written in front of each linked variable name, into the base parameter of the exported element.", nodePrefix, (value) => nodePrefix = value, "AGENT.OBJECTS.Toplotne_Postaje.Celica_1")}
+          </div>
+        {:else if settingsSection === "wiring"}
+          <h3>Wiring diagram</h3>
+          <p class="settings-note">Saved with the project.</p>
+          <div class="settings-card">
+            {#snippet paperControl()}
+              <select class="settings-select" aria-label="Sheet size" value={wiringPaper} onchange={(e) => wiringPaper = e.currentTarget.value}>
+                {#each Object.values(PAPERS) as entry (entry.id)}
+                  <option value={entry.id}>{entry.id} landscape · {entry.mm[0]} × {entry.mm[1]} mm</option>
+                {/each}
+              </select>
+            {/snippet}
+            {@render settingRow("Sheet size", "Size of every wiring page, on screen and when printing. Pages already drawn keep their positions, so change it before generating.", paperControl)}
+          </div>
+          <h4>Protection sizing</h4>
+          <p class="settings-note">Used for every Rating left empty in the wiring list.</p>
+          <div class="settings-card">
+            {@render numberRow("Phase voltage", "Single-phase loads: I = P / (U × cos φ).", powerList.sizing.voltage, (value) => powerList.sizing.voltage = value, 100, 500, 1, "V")}
+            {@render numberRow("Line voltage", "Three-phase loads: I = P / (√3 × U × cos φ).", powerList.sizing.lineVoltage, (value) => powerList.sizing.lineVoltage = value, 100, 1000, 1, "V")}
+            {@render numberRow("Breaker loading", "The load current may use at most this share of the rating. At 80 % a 9,7 A load needs at least 12,1 A, so it gets 13 A.", powerList.sizing.loading, (value) => powerList.sizing.loading = value, 10, 100, 5, "%")}
+            {@render numberRow("Simultaneity", "Share of the loads expected to run at the same time, for RCD groups and the main switch.", powerList.sizing.simultaneity, (value) => powerList.sizing.simultaneity = value, 10, 100, 5, "%")}
+            {#snippet curveControl()}
+              <select class="settings-select" aria-label="Breaker characteristic" bind:value={powerList.sizing.characteristic}>
+                <option value="B">B · 3–5 × In, resistive loads</option>
+                <option value="C">C · 5–10 × In, general and motors</option>
+                <option value="D">D · 10–20 × In, high inrush</option>
+              </select>
+            {/snippet}
+            {@render settingRow("Breaker characteristic", "Letter in front of MCB and RCBO ratings.", curveControl)}
+            {#snippet sensitivityControl()}
+              <select class="settings-select" aria-label="RCD sensitivity" bind:value={powerList.sizing.sensitivity}>
+                {#each ["10mA", "30mA", "100mA", "300mA"] as value (value)}
+                  <option {value}>{value}</option>
+                {/each}
+              </select>
+            {/snippet}
+            {@render settingRow("RCD sensitivity", "Rated residual current of RCDs and RCBOs. 30 mA protects people, 300 mA is fire protection.", sensitivityControl)}
+          </div>
+          <h4>Minimum ratings</h4>
+          <div class="settings-card">
+            {@render numberRow("Feeders", "Smallest breaker for an ordinary load.", powerList.sizing.minimum.feeder, (value) => powerList.sizing.minimum.feeder = value, 0, 125, 1, "A")}
+            {@render numberRow("PSU and transformer", "Smallest breaker in front of a 24 V supply.", powerList.sizing.minimum.cabinet, (value) => powerList.sizing.minimum.cabinet = value, 0, 125, 1, "A")}
+            {@render numberRow("Socket on DIN rail", "Smallest breaker for a socket.", powerList.sizing.minimum.socket, (value) => powerList.sizing.minimum.socket = value, 0, 125, 1, "A")}
+            {@render numberRow("Heat pump / compressor", "Covers the compressor starting current. Data sheets often ask for 16 A.", powerList.sizing.minimum.heatPump, (value) => powerList.sizing.minimum.heatPump = value, 0, 125, 1, "A")}
+            {@render numberRow("RCD groups and main switch", "Smallest rating before rounding up to the RCD or switch sizes.", powerList.sizing.minimum.group, (value) => powerList.sizing.minimum.group = value, 0, 250, 1, "A")}
+          </div>
+          <h4>Power factor (cos φ)</h4>
+          <div class="settings-card">
+            {#each POWER_LOADS.filter((entry) => entry.id !== "none") as entry (entry.id)}
+              {@render numberRow(entry.label, "", powerList.sizing.cosphi[entry.id] ?? entry.cosphi ?? 1, (value) => powerList.sizing.cosphi[entry.id] = value, 0.1, 1, 0.01)}
+            {/each}
+          </div>
+          <h4>Standard sizes</h4>
+          <div class="settings-card">
+            {@render textRow("MCB, RCBO and fuse", "Ratings to choose from, in A, separated by commas.", powerList.sizing.mcbSizes, (value) => powerList.sizing.mcbSizes = value || SIZING_DEFAULTS.mcbSizes)}
+            {@render textRow("RCD", "Rated currents of RCDs, in A.", powerList.sizing.rcdSizes, (value) => powerList.sizing.rcdSizes = value || SIZING_DEFAULTS.rcdSizes)}
+            {@render textRow("Switch", "Rated currents of main switches and isolators, in A.", powerList.sizing.switchSizes, (value) => powerList.sizing.switchSizes = value || SIZING_DEFAULTS.switchSizes)}
+            {#snippet sizingReset()}
+              <button type="button" class="settings-button" onclick={() => powerList.sizing = structuredClone(SIZING_DEFAULTS)}>Reset</button>
+            {/snippet}
+            {@render settingRow("Reset protection sizing", "Go back to the default values above.", sizingReset)}
           </div>
         {/if}
       </div>

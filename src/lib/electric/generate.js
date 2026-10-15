@@ -1,31 +1,49 @@
 import { SLOT, electricSize } from "./symbols.js";
-import { pageLeft, usedPages } from "./sheet.js";
+import { paperOf, pageLeft, usedPages } from "./sheet.js";
 import { cleanChannel } from "../io/patterns.js";
 import { displayLabel } from "../io/mask.js";
 
-const LAYOUT = {
-  controllerY: 160,
-  sp: 300,
-  coilY: 380,
-  sn: 560,
-  contactY: 600,
-  stripY: 680,
-  cableY: 760,
-  deviceY: 840,
-  firstSlot: 80,
-  railLeft: 40,
-  railRight: 1640,
-  slots: 78,
-  prefix: 3,
-  group: 8
+const LAYOUTS = {
+  A4: {
+    controllerY: 100,
+    sp: 220,
+    coilY: 260,
+    sn: 360,
+    contactY: 380,
+    stripY: 440,
+    cableY: 500,
+    deviceY: 560,
+    firstSlot: 80,
+    railLeft: 40,
+    railRight: 1148,
+    slots: 53,
+    prefix: 3,
+    group: 8
+  },
+  A3: {
+    controllerY: 160,
+    sp: 300,
+    coilY: 380,
+    sn: 560,
+    contactY: 600,
+    stripY: 680,
+    cableY: 760,
+    deviceY: 840,
+    firstSlot: 80,
+    railLeft: 40,
+    railRight: 1640,
+    slots: 78,
+    prefix: 3,
+    group: 8
+  }
 };
 
 const WIRE_WIDTH = 1.5;
 
 export const WIRING_DEFAULTS = { relay: true, cable: "J-H(St)H {pairs}x2x0,8mm2", strip: "-X2" };
 
-function slotX(page, slot){
-  return pageLeft(page) + LAYOUT.firstSlot + slot * SLOT;
+function slotX(page, slot, paper, layout){
+  return pageLeft(page, paper) + layout.firstSlot + slot * SLOT;
 }
 
 function highest(shapes, type, pattern){
@@ -61,7 +79,7 @@ function cableType(template, conductors){
   return template.replace("{pairs}", String(Math.ceil(conductors / 2)));
 }
 
-function paginate(points){
+function paginate(points, LAYOUT){
   const pages = [];
   const perPage = Math.floor((LAYOUT.slots - LAYOUT.prefix) / LAYOUT.group);
   let board = null;
@@ -84,6 +102,8 @@ export function missingPoints(points, shapes){
 
 export function wiringFromIo(points, shapes, nextId, options = {}){
   const settings = { ...WIRING_DEFAULTS, ...options };
+  const paper = paperOf(options.paper);
+  const LAYOUT = LAYOUTS[paper.id];
   const pending = missingPoints(points, shapes);
   const added = [];
   const boards = new Map();
@@ -92,7 +112,7 @@ export function wiringFromIo(points, shapes, nextId, options = {}){
   }
   let terminal = highest(shapes, "terminalStrip", /^(\d+)$/);
   let relay = highest(shapes, "relayCoil", /^-K(\d+)$/);
-  let pageNumber = usedPages(shapes);
+  let pageNumber = usedPages(shapes, paper);
 
   const element = (type, x, y, name, params, source = null) => {
     const shape = { id: nextId(), kind: "equipment", type, x, y, ...electricSize(type, params), name, params, ...(source ? { source } : {}) };
@@ -106,7 +126,7 @@ export function wiringFromIo(points, shapes, nextId, options = {}){
   };
   const port = (shape, side, slot) => ({ id: shape.id, side, offset: (slot + 1) * SLOT });
 
-  for (const page of paginate(pending)) {
+  for (const page of paginate(pending, LAYOUT)) {
     const index = pageNumber;
     pageNumber += 1;
     if (!boards.has(page.board)) boards.set(page.board, `-N${boards.size + 1}`);
@@ -120,10 +140,11 @@ export function wiringFromIo(points, shapes, nextId, options = {}){
     }
     if (hasDo) terminals[2] = "C";
 
-    const left = pageLeft(index);
+    const left = pageLeft(index, paper);
     const sp = wire({ x: left + LAYOUT.railLeft, y: LAYOUT.sp }, { x: left + LAYOUT.railRight, y: LAYOUT.sp }, "sp");
     const sn = wire({ x: left + LAYOUT.railLeft, y: LAYOUT.sn }, { x: left + LAYOUT.railRight, y: LAYOUT.sn }, "sn");
-    const rail = (pipe, slot) => ({ pipe: pipe.id, x: slotX(index, slot), y: pipe === sp ? LAYOUT.sp : LAYOUT.sn });
+    const at = (slot) => slotX(index, slot, paper, LAYOUT);
+    const rail = (pipe, slot) => ({ pipe: pipe.id, x: at(slot), y: pipe === sp ? LAYOUT.sp : LAYOUT.sn });
 
     if (page.first) {
       controllerWires.push((controller) => wire(port(controller, "bottom", 0), rail(sp, 0)));
@@ -137,12 +158,12 @@ export function wiringFromIo(points, shapes, nextId, options = {}){
       if (point.kind !== "DO") terminals[slot + 1] = "GND";
     }
     const used = terminals.reduce((last, label, position) => label ? position : last, 0);
-    const controller = element("controller", slotX(index, 0) - SLOT, LAYOUT.controllerY, controllerName,
+    const controller = element("controller", at(0) - SLOT, LAYOUT.controllerY, controllerName,
       { model: page.board ? `Extension ${page.board}` : "Controller", terminals: terminals.slice(0, used + 1) }, { board: page.board });
     controllerWires.forEach((make) => make(controller));
 
     for (const { point, slot } of groups) {
-      const x = slotX(index, slot) - SLOT;
+      const x = at(slot) - SLOT;
       const label = displayLabel(point);
       const name = deviceName(point);
       const direct = point.kind === "DO" && !settings.relay;
@@ -171,5 +192,5 @@ export function wiringFromIo(points, shapes, nextId, options = {}){
       }
     }
   }
-  return { shapes: added, points: pending.length, pages: pageNumber - usedPages(shapes) };
+  return { shapes: added, points: pending.length, pages: pageNumber - usedPages(shapes, paper) };
 }

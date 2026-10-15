@@ -2,7 +2,7 @@ export const DOCUMENT_FORMAT = "pathfinder";
 export const DOCUMENT_VERSION = 1;
 export const AUTOSAVE_KEY = "pathfinder.autosave";
 
-export function serializeDocument({ app, apps, pages = null, canvas, name = null, io = null, settings = null, images = null, variables = null }){
+export function serializeDocument({ app, apps, pages = null, canvas, name = null, io = null, wiring = null, settings = null, images = null, variables = null }){
   return JSON.stringify({
     format: DOCUMENT_FORMAT,
     version: DOCUMENT_VERSION,
@@ -13,6 +13,7 @@ export function serializeDocument({ app, apps, pages = null, canvas, name = null
     apps,
     pages,
     io,
+    wiring,
     settings,
     images,
     variables
@@ -34,7 +35,8 @@ export function parseDocument(text){
     ? Object.fromEntries(Object.entries(data.images).filter(([, source]) => typeof source === "string" && source.startsWith("data:image/")))
     : {};
   const variables = Array.isArray(data.variables) ? [...new Set(data.variables.filter((name) => typeof name === "string" && name.trim()).map((name) => name.trim()))] : [];
-  return { app: data.app, canvas: data.canvas ?? null, apps, pages, io, settings, images, variables, name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : null };
+  const wiring = data.wiring && typeof data.wiring === "object" ? data.wiring : null;
+  return { app: data.app, canvas: data.canvas ?? null, apps, pages, io, wiring, settings, images, variables, name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : null };
 }
 
 export function highestId(apps){

@@ -49,10 +49,14 @@ export const HYDRONIC_ELEMENTS = {
   cable: { label: "Cable", ...electricSize("cable"), electric: true, ownLabel: true },
   relayCoil: { label: "Relay coil", ...electricSize("relayCoil"), electric: true, ownLabel: true },
   relayContact: { label: "Relay contact", ...electricSize("relayContact"), electric: true, ownLabel: true },
-  fieldDevice: { label: "Field device", ...electricSize("fieldDevice"), electric: true, ownLabel: true }
+  fieldDevice: { label: "Field device", ...electricSize("fieldDevice"), electric: true, ownLabel: true },
+  protection: { label: "Protection device", ...electricSize("protection"), electric: true, ownLabel: true },
+  psu: { label: "Power supply", ...electricSize("psu"), electric: true, ownLabel: true },
+  supply: { label: "Incoming supply", ...electricSize("supply"), electric: true, ownLabel: true }
 };
 
 export const ELECTRIC_GROUPS = [
+  { id: "power", label: "Power", items: ["supply", "protection", "psu"] },
   { id: "control", label: "Control", items: ["controller", "relayCoil", "relayContact"] },
   { id: "wiring", label: "Wiring", items: ["terminalStrip", "cable", "fieldDevice"] }
 ];
@@ -105,6 +109,9 @@ export const PIPE_MEDIA = [
   { id: "opcUa", label: "OPC UA", color: "#0F766E", network: true },
   { id: "ethernet", label: "Ethernet", color: "#64748B", network: true },
   { id: "wire", label: "Wire", color: "#1E293B", electric: true },
+  { id: "l1", label: "L1", color: "#1E293B", electric: true, rail: "L1" },
+  { id: "l2", label: "L2", color: "#1E293B", electric: true, rail: "L2" },
+  { id: "l3", label: "L3", color: "#1E293B", electric: true, rail: "L3" },
   { id: "sp", label: "SP (24 V AC)", color: "#1E293B", electric: true, rail: "SP" },
   { id: "sn", label: "SN (24 V AC)", color: "#1E293B", electric: true, rail: "SN" },
   { id: "dcPlus", label: "DC+ (24 V DC)", color: "#1E293B", electric: true, rail: "DC+" },
