@@ -49,6 +49,7 @@ export const HYDRONIC_ELEMENTS = {
   cable: { label: "Cable", ...electricSize("cable"), electric: true, ownLabel: true },
   relayCoil: { label: "Relay coil", ...electricSize("relayCoil"), electric: true, ownLabel: true },
   relayContact: { label: "Relay contact", ...electricSize("relayContact"), electric: true, ownLabel: true },
+  changeover: { label: "Changeover contact", ...electricSize("changeover"), electric: true, ownLabel: true },
   fieldDevice: { label: "Field device", ...electricSize("fieldDevice"), electric: true, ownLabel: true },
   protection: { label: "Protection device", ...electricSize("protection"), electric: true, ownLabel: true },
   psu: { label: "Power supply", ...electricSize("psu"), electric: true, ownLabel: true },
@@ -57,7 +58,7 @@ export const HYDRONIC_ELEMENTS = {
 
 export const ELECTRIC_GROUPS = [
   { id: "power", label: "Power", items: ["supply", "protection", "psu"] },
-  { id: "control", label: "Control", items: ["controller", "relayCoil", "relayContact"] },
+  { id: "control", label: "Control", items: ["controller", "relayCoil", "relayContact", "changeover"] },
   { id: "wiring", label: "Wiring", items: ["terminalStrip", "cable", "fieldDevice"] }
 ];
 

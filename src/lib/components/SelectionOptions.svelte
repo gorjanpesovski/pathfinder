@@ -572,6 +572,16 @@
     <input type="color" aria-label="Text colour" title="Text colour" value={texts.color} oninput={(e) => ontextstyle("color", e.currentTarget.value.toUpperCase())}>
     <button type="button" class="icon" class:active={texts.bold} aria-pressed={texts.bold} aria-label="Bold" title="Bold"
             onclick={() => ontextstyle("bold", !texts.bold)}><b>B</b></button>
+    <button type="button" class="icon" class:active={texts.italic} aria-pressed={texts.italic} aria-label="Italic" title="Italic"
+            onclick={() => ontextstyle("italic", !texts.italic)}><i>I</i></button>
+    <button type="button" class="icon" class:active={texts.underline} aria-pressed={texts.underline} aria-label="Underline" title="Underline"
+            onclick={() => ontextstyle("underline", !texts.underline)}><u>U</u></button>
+    <div class="segmented" role="group" aria-label="Text alignment">
+      {#each [["left", "Left"], ["center", "Centre"], ["right", "Right"]] as [value, label] (value)}
+        <button type="button" class:active={texts.align === value} aria-pressed={texts.align === value} title="Align {label.toLowerCase()}"
+                onclick={() => ontextstyle("align", value)}>{label}</button>
+      {/each}
+    </div>
   {/if}
   {#if plainElements?.branch}
     <BranchOptions element={plainElements.branch} onchange={onbranchparam}/>

@@ -1,7 +1,7 @@
 import { escapeXml } from "../export/atvise.js";
 import { HYDRONIC_STYLE } from "./elements.js";
 import { DRAIN_SVG } from "./branch.js";
-import { textLines, TEXT_LINE } from "../tools/text.js";
+import { layoutText } from "../tools/text.js";
 import { buildScene, showsIn } from "./scene.js";
 
 export const PGD_VERSION = { ver: "020900744", v: "02.09.00.744" };
@@ -303,10 +303,12 @@ ${variable ? dataLink(variable, "float", "value") : ""}</object>`);
   }
 
   for (const text of shapes.filter((entry) => entry.kind === "text")) {
-    const size = text.fontSize ?? 16;
-    textLines(text).forEach((line, index) => {
-      label(line, text.x, text.y + index * size * TEXT_LINE, Math.max(text.width ?? 0, size) + 6, size * TEXT_LINE, size, { bold: text.bold, color: text.color });
-    });
+    const layout = layoutText(text);
+    for (const line of layout.lines) {
+      const first = line.segments[0]?.style;
+      if (!first) continue;
+      label(line.segments.map((segment) => segment.text).join(""), text.x, text.y + line.top, Math.max(layout.width, first.size) + 6, line.advance, first.size, { bold: first.bold, color: first.color, align: layout.align });
+    }
   }
 
   const mlTexts = texts.map((entry) => `     <MLText ${attributes({ L1: entry.text, id: entry.id })}/>`).join("\n");

@@ -1,6 +1,7 @@
 import { HYDRONIC_ELEMENTS } from "../hydronic/elements.js";
 import { portStep, scaledOffset } from "../hydronic/route.js";
 import { rotationOf, turnPort } from "../hydronic/frame.js";
+import { textExtent, scaleRich } from "./text.js";
 
 function round2(value){
   return Math.round(value * 100) / 100;
@@ -118,8 +119,22 @@ function boxShape(original, t){
     const center = t.point({ x: original.x + original.width / 2, y: original.y + original.height / 2 });
     return { x: round2(center.x - original.width / 2), y: round2(center.y - original.height / 2) };
   }
-  if (original.kind === "text") patch.fontSize = Math.max(6, round2(original.fontSize * uniform(t)));
+  if (original.kind === "text") return textBox(original, patch, t);
   return patch;
+}
+
+function textBox(original, patch, t){
+  if (t.textScale) {
+    const factor = uniform(t);
+    patch.fontSize = Math.max(6, round2(original.fontSize * factor));
+    if (original.rich) patch.rich = scaleRich(original.rich, factor);
+    if (original.wrap) patch.wrap = round2(original.wrap * Math.abs(t.sx));
+    if (original.boxHeight) patch.boxHeight = round2(original.boxHeight * Math.abs(t.sy));
+  } else {
+    if (t.sx !== 1) patch.wrap = Math.max(original.fontSize ?? 16, patch.width);
+    if (t.sy !== 1) patch.boxHeight = patch.height;
+  }
+  return { ...patch, ...textExtent({ ...original, ...patch }) };
 }
 
 function mirrorsGraphic(spec){

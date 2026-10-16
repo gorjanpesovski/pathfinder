@@ -105,7 +105,10 @@ export function summarizeSelection(shapes, fittings = [], fallback = {}){
       alone: texts.length === 1 && shapes.length === 1 && fittings.length === 0,
       fontSize: common(texts, (text) => text.fontSize),
       color: common(texts, (text) => text.color) ?? texts[0].color,
-      bold: texts.every((text) => text.bold)
+      bold: texts.every((text) => text.bold),
+      italic: texts.every((text) => text.italic),
+      underline: texts.every((text) => text.underline),
+      align: common(texts, (text) => text.align ?? "left")
     } : null
   };
 }

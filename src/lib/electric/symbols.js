@@ -10,6 +10,7 @@ export const ELECTRIC_DEFAULTS = {
   terminalStrip: { name: "-X2", params: { terminals: ["1", "2"] } },
   cable: { name: "-W1", params: { conductors: ["1", "2"], cableType: "J-H(St)H 2x2x0,8mm2" } },
   relayCoil: { name: "-K1", params: { note: "" } },
+  changeover: { name: "-K1", params: { variant: "A", index: 1, ref: "" } },
   relayContact: { name: "-K1", params: {} },
   fieldDevice: { name: "-B1", params: { terminals: ["1", "2"], model: "", description: "", symbol: "" } },
   protection: { name: "-F1", params: { kind: "mcb", poles: ["L"], rating: "C10", note: "" } },
@@ -71,6 +72,7 @@ export function electricSize(type, params = {}){
   if (type === "psu") return params.kind === "ac" ? { width: 80, height: 72 } : params.kind === "socket" ? { width: 60, height: 96 } : { width: 160, height: 72 };
   if (type === "supply") return { width: Math.max(80, span), height: 60 };
   if (type === "relayCoil") return { width: 40, height: 60 };
+  if (type === "changeover") return { width: 60, height: 60 };
   if (type === "relayContact") return { width: 60, height: 40 };
   return { width: 40, height: 40 };
 }
@@ -90,6 +92,18 @@ export const PSU_PORTS = {
   ac: { line: 20, neutral: 20, earth: 40, outputs: [12, 60] },
   socket: { line: 20, neutral: 20, earth: 40 }
 };
+
+export const CHANGEOVER = {
+  A: { common: ["top", 40], nc: ["bottom", 20], no: ["bottom", 40] },
+  AR: { common: ["top", 20], nc: ["bottom", 40], no: ["bottom", 20] },
+  B: { common: ["bottom", 40], nc: ["top", 20], no: ["top", 40] },
+  BL: { common: ["bottom", 20], nc: ["top", 40], no: ["top", 20] }
+};
+
+export function changeoverNumbers(index){
+  const k = Math.max(1, Number(index) || 1);
+  return { common: `${k}1`, nc: `${k}2`, no: `${k}4` };
+}
 
 export function electricPorts(element){
   const spec = SLOTTED[element.type];
@@ -134,6 +148,11 @@ export function electricPorts(element){
       : []);
   }
   if (element.type === "relayCoil") return [{ side: "top", offset: 20, label: "A1" }, { side: "bottom", offset: 20, label: "A2" }];
+  if (element.type === "changeover") {
+    const layout = CHANGEOVER[element.params?.variant] ?? CHANGEOVER.A;
+    const numbers = changeoverNumbers(element.params?.index);
+    return ["common", "nc", "no"].map((role) => ({ side: layout[role][0], offset: layout[role][1], label: numbers[role] }));
+  }
   if (element.type === "relayContact") return [{ side: "bottom", offset: 20, label: "11" }, { side: "bottom", offset: 40, label: "14" }];
   return [];
 }
@@ -171,12 +190,55 @@ function controller(element){
   parts.push(text(x + 8, y + 18, element.name, { size: 13, bold: true }));
   parts.push(text(x + 8, y + 34, element.params?.model, { size: 10 }));
   parts.push(line(x, y + height - 20, x + width, y + height - 20));
+  const marks = element.params?.marks ?? [];
   slotsOf(element).forEach((label, index) => {
     if (!label) return;
     const cx = x + (index + 1) * SLOT;
     parts.push(box(cx - SLOT / 2, y + height - 20, SLOT, 20, 1));
     parts.push(text(cx, y + height - 6, label, { size: label.length > 3 ? 7 : 8, anchor: "middle" }));
+    parts.push(text(cx, y + height - 24, marks[index], { size: 6, anchor: "middle" }));
   });
+  return parts.join("");
+}
+
+function haloText(x, y, value, { size = 10, anchor = "start", bold = false } = {}){
+  if (!value) return "";
+  return `<text x="${x}" y="${y}" font-family="${FONT}" font-size="${size}"${bold ? ` font-weight="bold"` : ""}${anchor === "start" ? "" : ` text-anchor="${anchor}"`} fill="${INK}" stroke="#FFFFFF" stroke-width="3" stroke-linejoin="round" paint-order="stroke">${escapeXml(value)}</text>`;
+}
+
+function changeover(element){
+  const { x, y } = element;
+  const layout = CHANGEOVER[element.params?.variant] ?? CHANGEOVER.A;
+  const numbers = changeoverNumbers(element.params?.index);
+  const top = layout.common[0] === "top";
+  const cx = x + layout.common[1];
+  const ncx = x + layout.nc[1];
+  const nox = x + layout.no[1];
+  const pivot = top ? y + 18 : y + 42;
+  const tip = top ? y + 42 : y + 18;
+  const far = top ? y + 60 : y;
+  const parts = [
+    line(cx, top ? y : y + 60, cx, pivot),
+    line(cx, pivot, ncx + (ncx > cx ? -2 : 2), tip),
+    line(ncx, tip, ncx, far),
+    line(ncx, tip, ncx + (ncx > cx ? -6 : 6), tip),
+    line(nox, top ? tip - 4 : tip + 4, nox, far),
+    line(nox - 4, top ? tip - 4 : tip + 4, nox + 4, top ? tip - 4 : tip + 4)
+  ];
+  parts.push(text(cx + 3, top ? y + 10 : y + 56, numbers.common, { size: 7 }));
+  parts.push(text(ncx + 3, top ? y + 56 : y + 10, numbers.nc, { size: 7 }));
+  parts.push(text(nox + 3, top ? y + 56 : y + 10, numbers.no, { size: 7 }));
+  if (top) {
+    const left = Math.min(cx, ncx, nox) - 8;
+    parts.push(haloText(left, y + 28, element.name, { size: 11, bold: true, anchor: "end" }));
+    parts.push(haloText(left, y + 41, element.params?.ref, { size: 8, anchor: "end" }));
+  } else {
+    const right = cx === Math.min(cx, ncx, nox);
+    const anchor = right ? "start" : "end";
+    const at = right ? cx + 15 : cx - 5;
+    parts.push(haloText(at, y + 54, element.name, { size: 11, bold: true, anchor }));
+    parts.push(haloText(at, y + 66, element.params?.ref, { size: 8, anchor }));
+  }
   return parts.join("");
 }
 
@@ -218,12 +280,18 @@ function cable(element){
 function fieldDevice(element){
   const { x, y, width, height } = element;
   const parts = [box(x, y, width, height, 1.5)];
-  slotsOf(element).forEach((label, index) => {
-    if (!label) return;
-    const cx = x + (index + 1) * SLOT;
-    parts.push(box(cx - SLOT / 2, y, SLOT, 16, 1));
-    parts.push(text(cx, y + 12, label, { size: label.length > 3 ? 6 : 7, anchor: "middle" }));
-  });
+  const slots = slotsOf(element);
+  for (let index = 0; index < slots.length; index += 1) {
+    const label = slots[index];
+    if (!label) continue;
+    let last = index;
+    while (last + 1 < slots.length && slots[last + 1] === label && label.length > 3) last += 1;
+    const left = x + (index + 1) * SLOT - SLOT / 2;
+    const span = (last - index + 1) * SLOT;
+    parts.push(box(left, y, span, 16, 1));
+    parts.push(text(left + span / 2, y + 12, label, { size: label.length > 3 && span === SLOT ? 6 : 7, anchor: "middle" }));
+    index = last;
+  }
   parts.push(text(x + 6, y + 34, element.name, { size: 11, bold: true }));
   parts.push(text(x + 6, y + height - 8, element.params?.model, { size: 8 }));
   parts.push(deviceGlyph(element));
@@ -242,6 +310,7 @@ const GLYPHS = {
   },
   heater: (cx, cy) => box(cx - 14, cy - 10, 28, 20, 1.2) + `<polyline points="${cx - 10},${cy} ${cx - 6},${cy - 6} ${cx - 2},${cy + 6} ${cx + 2},${cy - 6} ${cx + 6},${cy + 6} ${cx + 10},${cy}" fill="none" stroke="${INK}" stroke-width="1"/>`,
   socket: (cx, cy) => `<path d="M ${cx - 13} ${cy + 6} A 13 13 0 0 1 ${cx + 13} ${cy + 6}" fill="none" stroke="${INK}" stroke-width="1.2"/>` + line(cx - 16, cy + 6, cx + 16, cy + 6) + line(cx, cy + 6, cx, cy + 14),
+  sensor: (cx, cy) => box(cx - 12, cy - 6, 24, 12, 1.2) + line(cx - 16, cy + 10, cx + 16, cy - 10, 1) + line(cx + 10, cy - 10, cx + 16, cy - 10, 1),
   light: (cx, cy) => `<circle cx="${cx}" cy="${cy}" r="12" fill="#FFFFFF" stroke="${INK}" stroke-width="1.2"/>` + line(cx - 8.5, cy - 8.5, cx + 8.5, cy + 8.5) + line(cx - 8.5, cy + 8.5, cx + 8.5, cy - 8.5)
 };
 
@@ -382,12 +451,15 @@ function supply(element){
 
 function relayCoil(element, refs){
   const { x, y } = element;
-  const parts = [line(x + 20, y, x + 20, y + 20), box(x + 6, y + 20, 28, 20, 1.5), line(x + 20, y + 40, x + 20, y + 60)];
+  const parts = [line(x + 20, y, x + 20, y + 20), box(x + 2, y + 20, 36, 20, 1.5), line(x + 20, y + 40, x + 20, y + 60)];
   parts.push(text(x + 23, y + 13, "A1", { size: 7 }));
   parts.push(text(x + 23, y + 55, "A2", { size: 7 }));
-  parts.push(text(x + 40, y + 29, element.name, { size: 11, bold: true }));
+  parts.push(text(x + 44, y + 29, element.name, { size: 11, bold: true }));
   parts.push(text(x + 40, y + 42, element.params?.note, { size: 8 }));
   if (refs?.length) parts.push(text(x + 40, y + 54, `14 → ${refs.join(", ")}`, { size: 8, fill: "#475569" }));
+  (element.params?.contacts ?? []).forEach((entry, index) => {
+    parts.push(text(x + 26, y + 76 + index * 11, `${entry.numbers}  →  ${entry.ref}`, { size: 8, fill: "#334155" }));
+  });
   return parts.join("");
 }
 
@@ -406,7 +478,7 @@ function relayContact(element, refs){
   return parts.join("");
 }
 
-const DRAW = { controller, terminalStrip, cable, fieldDevice, relayCoil, relayContact, protection, psu, supply };
+const DRAW = { controller, terminalStrip, cable, fieldDevice, relayCoil, relayContact, protection, psu, supply, changeover };
 
 export function electricSvg(element, refs = null){
   return DRAW[element.type]?.(element, refs) ?? "";

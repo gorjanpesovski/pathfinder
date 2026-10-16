@@ -15,7 +15,8 @@
   import RoomNameEditor from "$lib/components/RoomNameEditor.svelte";
   import TextLayer from "$lib/components/TextLayer.svelte";
   import TextEditor from "$lib/components/TextEditor.svelte";
-  import { newText, refitText, describeText, textToSvg } from "$lib/tools/text.js";
+  import RichTextEditor from "$lib/components/RichTextEditor.svelte";
+  import { newText, refitText, describeText, textToSvg, clearRunStyle } from "$lib/tools/text.js";
   import PenPreview from "$lib/components/PenPreview.svelte";
   import { samePoint, rectPoints, constrainOrtho, nearestVertex, wouldCross, closingCrosses, removeCollinear, polygonSelfIntersects, polygonBounds, maxCornerRadius, distance, pointInPolygon } from "$lib/tools/polygon.js";
   import { isRoomTool, isPolygonTool, isRoomShape, roomKindLabel, nextRoomName, describeRoom, snapVertices, snapToEdges, labelPoint, roomLabelPoint, layered, roomsToSvg, VERTEX_SNAP_PX, ROOM_STYLE, thermostatFit, thermostatGlobalScale } from "$lib/tools/rooms.js";
@@ -73,10 +74,12 @@
   import ConnectExport from "$lib/components/ConnectExport.svelte";
   import WiringActions from "$lib/components/WiringActions.svelte";
   import WiringList from "$lib/components/WiringList.svelte";
+  import { drawControl, emptyControl, normalizeControl, crossReference } from "$lib/electric/control.js";
   import { drawPower, emptyPower, normalizePower, powerPageCount, shiftShapes, isPowerShape, LOADS as POWER_LOADS, SIZING_DEFAULTS } from "$lib/electric/power.js";
   import { PAPERS, DEFAULT_PAPER, paperOf, pageLeft, boardSize, sheetsSvg, sheetDate } from "$lib/electric/sheet.js";
   import { wiringFromIo } from "$lib/electric/generate.js";
   import { printSheets } from "$lib/electric/print.js";
+  import { downloadDxf } from "$lib/electric/dxf.js";
   import { electricSize, electricDefaults, nextElectricName } from "$lib/electric/symbols.js";
   import { summarizeSelection } from "$lib/tools/selectionSummary.js";
   import { junctionMedium } from "$lib/hydronic/inherit.js";
@@ -799,6 +802,7 @@
     const apply = (t) => parts ? transformParts(parts, t) : applyTransformation(group, t);
     const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
     const rigid = !!group?.entries.some((entry) => entry.shape.kind === "equipment" || entry.shape.kind === "pipe");
+    const textOnly = !!group?.entries.length && group.entries.every((entry) => entry.shape.kind === "text");
     history.beginGesture();
     dragPointer(svgEl, event, {
       onmove: (next) => {
@@ -817,8 +821,10 @@
         const corner = handle.length === 2;
         let sx = (!branchSelected || corner) && (handle.includes("w") || handle.includes("e")) ? scaleRatio(point.x, start.x, anchor.x) : 1;
         let sy = handle.includes("n") || handle.includes("s") ? scaleRatio(point.y, start.y, anchor.y) : 1;
-        if (corner && (branchSelected || !next.shiftKey)) sx = sy = Math.max(sx, sy);
-        apply(scaling(anchor, sx, sy));
+        if (corner && (branchSelected || (textOnly ? next.shiftKey : !next.shiftKey))) sx = sy = Math.max(sx, sy);
+        const t = scaling(anchor, sx, sy);
+        t.textScale = textOnly ? next.shiftKey : true;
+        apply(t);
         if (branchSelected && group) scaleBranchFittings(group, corner ? sx : 1);
       },
       onend: () => history.endGesture()
@@ -2379,7 +2385,7 @@
     for (const shape of selectedShapes) if (shape.kind === "pipe") shape.width = value;
   }
 
-  let textStyle = $state({ fontSize: 16, color: "#1E293B", bold: false });
+  let textStyle = $state({ fontSize: 16, color: "#1E293B", bold: false, italic: false, underline: false, align: "left" });
   let editingTextId = $state(null);
   let freshTextId = null;
   let editingText = $derived(shapes.find((shape) => shape.id === editingTextId && shape.kind === "text") ?? null);
@@ -2405,16 +2411,19 @@
     editingTextId = id;
   }
 
-  function commitText(value){
+  function commitText({ text, rich, align }){
     const shape = editingText;
     editingTextId = null;
     freshTextId = null;
     if (!shape) return;
-    if (!value.trim()) {
+    if (!text.trim()) {
       removeShape(shape.id);
       return;
     }
-    shape.text = value;
+    shape.text = text;
+    if (rich) shape.rich = rich;
+    else delete shape.rich;
+    shape.align = align;
     refitText(shape);
   }
 
@@ -2435,6 +2444,7 @@
     for (const shape of selectedShapes) {
       if (shape.kind !== "text") continue;
       shape[key] = value;
+      clearRunStyle(shape, key);
       refitText(shape);
     }
   }
@@ -2610,7 +2620,16 @@
 
   let powerPages = $derived(app === "electrical" ? powerPageCount(shapes, paper) : 0);
   let supplyNote = $derived(`Sistem: ${powerList.supply.system} · ${powerList.supply.phases === 1 ? "230 V" : "400/230 V"}, 50 Hz`);
-  let sheetMeta = $derived({ project: documentName ?? "", date: sheetDate(), pages: Array.from({ length: powerPages }, () => "NAPAJANJE"), notes: Array.from({ length: powerPages }, () => supplyNote) });
+  let sheetTitles = $derived.by(() => {
+    const titles = Array.from({ length: powerPages }, () => "");
+    for (const shape of shapes) {
+      if (shape.kind !== "equipment" || !shape.source?.sheet) continue;
+      const index = Math.floor(shape.x / (paper.width + paper.gap));
+      if (index >= 0 && index < titles.length && !titles[index]) titles[index] = shape.source.sheet;
+    }
+    return titles;
+  });
+  let sheetMeta = $derived({ project: documentName ?? "", date: sheetDate(), pages: sheetTitles, notes: sheetTitles.map((title) => title === "NAPAJANJE" ? supplyNote : "") });
 
   function drawPowerPages(){
     const before = powerPageCount(shapes, paper);
@@ -2619,14 +2638,16 @@
     const touches = (end) => removed.has(end?.id) || removed.has(end?.pipe);
     const kept = current.filter((shape) => !removed.has(shape.id) && !(shape.kind === "pipe" && (touches(shape.from) || touches(shape.to))));
     const result = drawPower($state.snapshot(powerList), () => nextId++, paper);
-    shiftShapes(kept, (result.pages - before) * (paper.width + paper.gap));
-    shapes = [...result.shapes, ...kept];
+    const control = drawControl($state.snapshot(controlList), $state.snapshot(powerList), () => nextId++, paper, result.pages);
+    const generated = crossReference([...result.shapes, ...control.shapes], paper);
+    shiftShapes(kept, (result.pages + control.pages - before) * (paper.width + paper.gap));
+    shapes = [...generated, ...kept];
     sheet = 0;
     setTimeout(fitContent, 0);
     selectedId = null;
     selectedIds = [];
     ioOpen = false;
-    showFileNotice(`Drew ${powerList.rows.length} power device${powerList.rows.length === 1 ? "" : "s"} on ${result.pages} page${result.pages === 1 ? "" : "s"}`);
+    showFileNotice(`Drew ${result.pages} power and ${control.pages} control page${control.pages === 1 ? "" : "s"}`);
   }
 
   function generateWiring(options){
@@ -2640,6 +2661,11 @@
 
   function printWiring(){
     printSheets($state.snapshot(shapes), sheetMeta, paper);
+  }
+
+  function exportDxf(){
+    downloadDxf($state.snapshot(shapes), sheetMeta, paper, documentName || "vezalna-shema");
+    showFileNotice("Downloaded the DXF drawing");
   }
 
   function setBranchName(value){
@@ -3718,6 +3744,7 @@
   let ioVisible = $derived(ioOpen && app === "hydronic");
   let wiringListVisible = $derived(ioOpen && app === "electrical");
   let powerList = $state(emptyPower());
+  let controlList = $state(emptyControl());
   let ioBranches = $derived(ioVisible ? pageShapes("hydronic").filter(isBranch).map((shape, index) => ({ id: shape.id, label: shape.name?.trim() || `Branch ${index + 1}`, type: branchParams(shape).branch_type })) : []);
   let documentName = $state(null);
   let saveDialog = $state(null);
@@ -3906,7 +3933,7 @@
       canvas: { width: canvasWidth, height: canvasHeight, fill: canvasFill },
       name,
       io: { points: $state.snapshot(ioPoints), others: $state.snapshot(ioOthers) },
-      wiring: { power: $state.snapshot(powerList) },
+      wiring: { power: $state.snapshot(powerList), control: $state.snapshot(controlList) },
       settings: projectSettings(),
       images: withImages ? usedImages(apps, pages) : null,
       variables: $state.snapshot(variableNames)
@@ -3954,6 +3981,7 @@
     ioPoints = doc.io?.points ?? [];
     ioOthers = doc.io?.others ?? [];
     powerList = normalizePower(doc.wiring?.power);
+    controlList = normalizeControl(doc.wiring?.control);
   }
 
   const autosaved = loadAutosave();
@@ -4487,7 +4515,8 @@
     currentApp.exports.includes("pgd") ? { label: "Copy pGD page", hint: "pGD page code (wgtPage), to the clipboard", disabled: shapes.length === 0, onclick: copyPgd } : null,
     currentApp.exports.includes("pgd") ? { label: "Download pGD images", hint: "Images this page uses, for the project's images folder", disabled: shapes.length === 0, onclick: downloadPgdImages } : null,
     app === "network" ? { label: "atvise connect configuration…", hint: "Modbus connections for all topology pages", disabled: pageShapes("network").length === 0, onclick: () => connectOpen = true } : null,
-    app === "electrical" ? { label: "Print / Save as PDF", hint: "Choose Save as PDF in the print dialog", disabled: !shapes.some((shape) => shape.kind === "equipment"), onclick: printWiring } : null
+    app === "electrical" ? { label: "Print / Save as PDF", hint: "Choose Save as PDF in the print dialog", disabled: !shapes.some((shape) => shape.kind === "equipment"), onclick: printWiring } : null,
+    app === "electrical" ? { label: "Download DXF", hint: "All pages in one drawing, in millimetres, for AutoCAD and other CAD tools", disabled: !shapes.some((shape) => shape.kind === "equipment"), onclick: exportDxf } : null
   ]);
 
   function readHex(event, current){
@@ -6042,8 +6071,8 @@
 
       {#if editingText && textEditPosition}
         {#key editingTextId}
-          <TextEditor x={textEditPosition.x} y={textEditPosition.y} zoom={viewport.zoom} shape={editingText}
-                      oncommit={commitText} oncancel={cancelText}/>
+          <RichTextEditor x={textEditPosition.x} y={textEditPosition.y} zoom={viewport.zoom} shape={editingText}
+                          oncommit={commitText} oncancel={cancelText}/>
         {/key}
       {/if}
 
@@ -6071,7 +6100,7 @@
     {/if}
 
     {#if wiringListVisible}
-      <WiringList bind:power={powerList} ondraw={drawPowerPages} onnotice={showFileNotice}/>
+      <WiringList bind:power={powerList} bind:control={controlList} ondraw={drawPowerPages} onnotice={showFileNotice}/>
       <CanvasNotice message={notice}/>
     {/if}
 

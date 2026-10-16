@@ -1,5 +1,5 @@
 <script>
-  import { TEXT_FONT, TEXT_LINE } from "$lib/tools/text.js";
+  import { TEXT_FONT, lineOf } from "$lib/tools/text.js";
 
   let { x, y, zoom = 1, shape, oncommit, oncancel } = $props();
 
@@ -60,7 +60,7 @@
 </style>
 
 <textarea bind:this={area} value={shape.text} aria-label="Text" {rows} spellcheck="false"
-          style="left: {x - 2}px; top: {y}px; font-family: {TEXT_FONT}; font-size: {shape.fontSize * zoom}px; line-height: {TEXT_LINE}; font-weight: {shape.bold ? 700 : 400}; color: {shape.color}; width: {Math.max(60, shape.width * zoom + 24)}px"
+          style="left: {x - 2}px; top: {y}px; font-family: {TEXT_FONT}; font-size: {shape.fontSize * zoom}px; line-height: {lineOf(shape)}; font-weight: {shape.bold ? 700 : 400}; color: {shape.color}; width: {Math.max(60, shape.width * zoom + 24)}px"
           oninput={(event) => rows = Math.max(1, event.currentTarget.value.split('\n').length)}
           onkeydown={handleKey} onblur={commit}
           onpointerdown={(event) => event.stopPropagation()}></textarea>

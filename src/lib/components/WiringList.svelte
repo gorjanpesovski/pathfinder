@@ -1,9 +1,290 @@
+<script module>
+  const shared = { power: null, control: null };
+</script>
+
 <script>
   import { PROTECTION_KINDS } from "$lib/electric/symbols.js";
+  import { expand, moveRows, moveBy, addToGroup, ungroup, dissolve, copyRows, pasteRows } from "$lib/electric/rowGroups.js";
   import { POLES, LOADS, PHASES, COLUMNS, SYSTEMS, CABLE_TYPES, LOAD_LIBRARY, newPowerRow, libraryRow, parsePowerTable, powerTable, powerTree, powerSizing, loadTags, loadOf, formatNumber } from "$lib/electric/power.js";
+  import { CONTROLLER_MODELS, CONTROL_TYPES, controlTypeOf, modelTerminals, newController, newControlRow, terminalUse, contactUse, isRelayType, sharesOutput, CUSTOM_CONNECTIONS, CUSTOM_SYMBOLS, newTemplate, customTypes, contactPairs } from "$lib/electric/control.js";
   import { portal } from "$lib/actions/portal.js";
+  import { loadLibrary, saveToLibrary, removeFromLibrary, templateFromLibrary, exportLibrary, importLibrary } from "$lib/electric/deviceLibrary.js";
 
-  let { power = $bindable(), ondraw, onnotice } = $props();
+  let { power = $bindable(), control = $bindable(), ondraw, onnotice } = $props();
+
+  let part = $state("power");
+  let owner = $derived(part === "power" ? power : control);
+  let selected = $state([]);
+  let selectedSet = $derived(new Set(selected));
+  let anchorId = null;
+  let clip = $state.raw({ ...shared });
+
+  function switchPart(next){
+    part = next;
+    selected = [];
+    anchorId = null;
+  }
+
+  function onField(event){
+    return Boolean(event.target.closest?.("input, textarea, select, button, label, .grip"));
+  }
+
+  function release(){
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused !== document.body) focused.blur();
+  }
+
+  function pickRow(event, row){
+    if (onField(event)) return;
+    const ctrl = event.ctrlKey || event.metaKey;
+    const ids = owner.rows.map((entry) => entry.id);
+    if (event.shiftKey && anchorId && ids.includes(anchorId)) {
+      const [a, b] = [ids.indexOf(anchorId), ids.indexOf(row.id)].sort((x, y) => x - y);
+      const range = ids.slice(a, b + 1);
+      selected = ctrl ? [...new Set([...selected, ...range])] : range;
+      window.getSelection()?.removeAllRanges();
+    } else {
+      if (ctrl) selected = selectedSet.has(row.id) ? selected.filter((id) => id !== row.id) : [...selected, row.id];
+      else selected = selected.length === 1 && selected[0] === row.id ? [] : [row.id];
+      anchorId = row.id;
+    }
+    release();
+  }
+
+  function groupOf(id){
+    return owner.groups?.find((group) => group.id === id) ?? null;
+  }
+
+  function membersOf(id){
+    return owner.rows.filter((row) => row.group === id);
+  }
+
+  function pickGroup(event, id){
+    if (onField(event)) return;
+    const ids = membersOf(id).map((row) => row.id);
+    if (event.ctrlKey || event.metaKey) {
+      const all = ids.every((entry) => selectedSet.has(entry));
+      selected = all ? selected.filter((entry) => !ids.includes(entry)) : [...new Set([...selected, ...ids])];
+    } else selected = ids;
+    anchorId = ids[ids.length - 1] ?? null;
+    release();
+  }
+
+  function ordered(){
+    return owner.rows.filter((row) => selectedSet.has(row.id)).map((row) => row.id);
+  }
+
+  function copySelected(){
+    if (!selected.length) return;
+    const data = copyRows(owner, ordered());
+    shared[part] = data;
+    clip = { ...shared };
+    if (part === "power") navigator.clipboard?.writeText(powerTable(data.rows)).catch(() => {});
+    onnotice?.(`Copied ${data.rows.length} row${data.rows.length === 1 ? "" : "s"}`);
+  }
+
+  function makeRow(rows, source){
+    const { id, tag, ...rest } = source;
+    if (part === "power") return newPowerRow(rows, { ...rest, from: rest.from === "supply" ? "" : rest.from });
+    const row = newControlRow({ ...control, rows }, rest);
+    if (source.type === "aux") row.tag = tag;
+    return row;
+  }
+
+  function remap(row, ids){
+    if (part === "power") {
+      if (ids.has(row.from)) row.from = ids.get(row.from);
+      return;
+    }
+    for (const key of Object.keys(row.signals ?? {})) {
+      const value = row.signals[key];
+      if (ids.has(value)) row.signals[key] = ids.get(value);
+      else if (!control.rows.some((entry) => entry.id === value)) row.signals[key] = "";
+    }
+  }
+
+  function insertRows(data){
+    const order = ordered();
+    const ids = pasteRows(owner, data, order[order.length - 1] ?? null, makeRow, remap);
+    selected = ids;
+    return ids.length;
+  }
+
+  function pasteClip(){
+    const data = clip[part];
+    if (!data) return;
+    const count = insertRows(data);
+    onnotice?.(`Pasted ${count} row${count === 1 ? "" : "s"}`);
+  }
+
+  function duplicateSelected(){
+    if (!selected.length) return;
+    insertRows(copyRows(owner, ordered()));
+  }
+
+  function removeSelected(){
+    const ids = [...selected];
+    selected = [];
+    for (const id of ids) part === "power" ? removeRow(id) : removeControl(id);
+  }
+
+  function groupSelected(groupId = null){
+    if (!selected.length) return;
+    addToGroup(owner, ordered(), groupId);
+  }
+
+  function ungroupSelected(){
+    ungroup(owner, ordered());
+  }
+
+  function moveSelected(step){
+    if (selected.length) moveBy(owner, ordered(), step);
+  }
+
+  function listKeydown(event){
+    const target = event.target;
+    const typing = (target instanceof HTMLInputElement && target.type !== "checkbox") || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
+    if (typing || pasting) return;
+    const ctrl = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+    if (ctrl && key === "a") selected = owner.rows.map((row) => row.id);
+    else if (ctrl && key === "c" && selected.length) copySelected();
+    else if (ctrl && key === "x" && selected.length) { copySelected(); removeSelected(); }
+    else if (ctrl && key === "v" && clip[part]) pasteClip();
+    else if (ctrl && key === "d" && selected.length) duplicateSelected();
+    else if (ctrl && key === "g" && selected.length) event.shiftKey ? ungroupSelected() : groupSelected();
+    else if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown") && selected.length) moveSelected(event.key === "ArrowUp" ? -1 : 1);
+    else if ((event.key === "Delete") && selected.length) removeSelected();
+    else if (event.key === "Escape" && selected.length) selected = [];
+    else return;
+    event.preventDefault();
+  }
+  let terminalsUsed = $derived(terminalUse(control));
+  let contactsUsed = $derived(contactUse(control, power));
+  let relayRows = $derived(control.rows.filter((row) => isRelayType(row.type)));
+
+  let customList = $derived(customTypes(control));
+  let library = $state(loadLibrary());
+  let libraryOnly = $derived(library.filter((entry) => !(control.templates ?? []).some((template) => template.libraryId === entry.id)));
+
+  function useLibrary(id){
+    const entry = library.find((item) => item.id === id);
+    if (!entry) return null;
+    let template = (control.templates ?? []).find((item) => item.libraryId === id);
+    if (!template) {
+      control.templates = [...(control.templates ?? []), templateFromLibrary(entry)];
+      template = control.templates[control.templates.length - 1];
+    }
+    return template;
+  }
+
+  function storeTemplate(template){
+    const { list, updated } = saveToLibrary(template);
+    library = list;
+    onnotice?.(`${updated ? "Updated" : "Saved"} ${template.name || "the device"} ${updated ? "in" : "to"} the library`);
+  }
+
+  function forgetLibrary(id){
+    library = removeFromLibrary(id);
+  }
+
+  function downloadLibrary(){
+    const url = URL.createObjectURL(new Blob([exportLibrary()], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "pathfinder-devices.json";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function loadLibraryFile(event){
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    try {
+      const result = importLibrary(await file.text());
+      library = result.list;
+      onnotice?.(`Library: ${result.added} added, ${result.updated} updated`);
+    } catch {
+      onnotice?.("That file is not a device library");
+    }
+  }
+
+  function addTemplate(){
+    control.templates = [...(control.templates ?? []), newTemplate()];
+  }
+
+  function removeTemplate(id){
+    if (control.rows.some((row) => row.type === `custom:${id}`)) return;
+    control.templates = control.templates.filter((entry) => entry.id !== id);
+  }
+
+  function addTerminal(template){
+    template.terminals.push({ label: String(template.terminals.length + 1), connect: "none" });
+  }
+
+  function templateWarning(template){
+    const count = (kind) => template.terminals.filter((terminal) => terminal.connect === kind).length;
+    if (count("contactA") !== count("contactB")) return "Each contact needs one common side and one switched side";
+    if (count("gnd") && !count("U")) return "GND of the analog input needs an analog input U";
+    if (count("common") && !count("ID")) return "Digital input common needs a digital input ID";
+    return "";
+  }
+
+  function addController(){
+    control.controllers.push(newController(control.controllers));
+  }
+
+  function removeController(id){
+    if (control.controllers.length <= 1) return;
+    control.controllers = control.controllers.filter((entry) => entry.id !== id);
+    const first = control.controllers[0].id;
+    for (const row of control.rows) if (row.controller === id) row.controller = first;
+  }
+
+  function addControl(type){
+    if (!type) return;
+    if (type.startsWith("lib:")) {
+      const template = useLibrary(type.slice(4));
+      if (template) control.rows.push(newControlRow(control, { type: `custom:${template.id}` }));
+      return;
+    }
+    control.rows.push(newControlRow(control, { type }));
+  }
+
+  function removeControl(id){
+    control.rows = control.rows.filter((row) => row.id !== id);
+    for (const row of control.rows) {
+      for (const key of Object.keys(row.signals ?? {})) if (row.signals[key] === id) row.signals[key] = "";
+    }
+  }
+
+  function setControlType(row, type){
+    row.type = type;
+    row.signals = {};
+    row.contact = controlTypeOf(type, control).contact ?? "NO";
+  }
+
+  function modelFor(row){
+    return control.controllers.find((entry) => entry.id === row.controller)?.model ?? "large";
+  }
+
+  function takenBy(row, signal, name){
+    const others = (terminalsUsed.get(`${row.controller}:${name}`) ?? []).filter((entry) => entry.row.id !== row.id);
+    if (!others.length) return "";
+    if (signal.kind === "NO" && isRelayType(row.type) && others.every((entry) => isRelayType(entry.row.type))) return "";
+    if (signal.kind === "Y" && sharesOutput(row.type) && others.every((entry) => sharesOutput(entry.row.type))) return "";
+    return others[0].row.tag || "?";
+  }
+
+  function relayLoad(id){
+    const relay = relayRows.find((entry) => entry.id === id);
+    return { count: contactsUsed.get(id)?.length ?? 0, capacity: controlTypeOf(relay?.type).contacts ?? 0 };
+  }
+
+  function hasInput(row){
+    return controlTypeOf(row.type, control).signals.some((signal) => signal.kind === "ID");
+  }
 
   let pasting = $state(null);
   let pasteArea = $state(null);
@@ -79,39 +360,41 @@
     return () => observer.disconnect();
   });
 
-  let dragId = $state(null);
+  let dragIds = $state([]);
   let dropAt = $state(null);
 
-  function dragStart(event, row){
-    dragId = row.id;
+  function beginDrag(event, ids, label){
+    dragIds = ids;
     event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", row.tag);
+    event.dataTransfer.setData("text/plain", label);
     const line = event.currentTarget.closest("tr");
     if (line) event.dataTransfer.setDragImage(line, 16, line.offsetHeight / 2);
   }
 
-  function dragOver(event, row){
-    if (!dragId) return;
+  function dragStart(event, row){
+    beginDrag(event, expand(owner, selectedSet.has(row.id) ? ordered() : [row.id]), row.tag);
+  }
+
+  function dragGroupStart(event, id){
+    beginDrag(event, membersOf(id).map((row) => row.id), groupOf(id)?.name ?? "");
+  }
+
+  function dragOver(event, row, after = null){
+    if (!dragIds.length || dragIds.includes(row.id)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     const box = event.currentTarget.getBoundingClientRect();
-    dropAt = { id: row.id, after: event.clientY > box.top + box.height / 2 };
+    dropAt = { id: row.id, after: after ?? event.clientY > box.top + box.height / 2 };
   }
 
   function dropRow(event){
     event.preventDefault();
-    if (dragId && dropAt && dropAt.id !== dragId) {
-      const moved = power.rows.find((row) => row.id === dragId);
-      const list = power.rows.filter((row) => row.id !== dragId);
-      const index = list.findIndex((row) => row.id === dropAt.id) + (dropAt.after ? 1 : 0);
-      list.splice(index, 0, moved);
-      power.rows = list;
-    }
+    if (dragIds.length && dropAt) moveRows(owner, dragIds, dropAt.id, dropAt.after);
     endDrag();
   }
 
   function endDrag(){
-    dragId = null;
+    dragIds = [];
     dropAt = null;
   }
 
@@ -381,6 +664,47 @@
     left: 8px;
   }
 
+  table.compact {
+    min-width: 0;
+    max-width: 900px;
+  }
+
+  table.control {
+    min-width: 1440px;
+  }
+
+  .signals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+
+  .signal {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #64748b;
+  }
+
+  .signal select {
+    width: 112px;
+  }
+
+  .inline-field {
+    display: inline-flex;
+    white-space: nowrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-weight: 600;
+    color: #475569;
+  }
+
+  .inline-field input {
+    width: 90px;
+  }
+
   .grip {
     display: flex;
     align-items: center;
@@ -404,6 +728,214 @@
 
   tr.dragging td {
     opacity: 0.4;
+  }
+
+  .handle {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  tbody tr {
+    cursor: default;
+  }
+
+  tr.in-group td:first-child,
+  tr.group-head td:first-child {
+    border-left: 5px solid var(--row-group);
+  }
+
+  tr.selected td {
+    background: #bfdbfe;
+  }
+
+  tr.group-head td {
+    padding: 4px 6px;
+    background: color-mix(in srgb, var(--row-group) 14%, #ffffff);
+    border-bottom: 1px solid color-mix(in srgb, var(--row-group) 30%, #ffffff);
+  }
+
+  .group-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .group-bar .group-name {
+    width: 220px;
+    height: 26px;
+    font-weight: 700;
+    color: color-mix(in srgb, var(--row-group) 70%, #0f172a);
+  }
+
+  .group-bar button {
+    height: 24px;
+  }
+
+  input.group-color {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+  }
+
+  h3 button {
+    margin-left: 8px;
+  }
+
+  .templates {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .template {
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+  }
+
+  .template-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px 12px;
+    margin-bottom: 8px;
+  }
+
+  .template-head label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 200px;
+    font-weight: 600;
+    color: #475569;
+  }
+
+  .template-head label.short {
+    width: 120px;
+  }
+
+  .template table.terminal-table {
+    max-width: 760px;
+  }
+
+  .template table.terminal-table td {
+    padding: 4px 6px;
+  }
+
+  .template-foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .library-box {
+    margin: 0 0 10px;
+    padding: 6px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+  }
+
+  .library-box summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #475569;
+  }
+
+  .library-actions {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0;
+  }
+
+  .file-button {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-weight: 600;
+    color: #475569;
+    cursor: pointer;
+  }
+
+  .file-button:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  .file-button input {
+    display: none;
+  }
+
+  .library-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: 560px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .library-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 4px;
+    border-radius: 4px;
+  }
+
+  .library-list li:hover {
+    background: #f8fafc;
+  }
+
+  .library-name {
+    flex: 1;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .warn {
+    color: #b45309;
+    font-weight: 600;
+  }
+
+  .row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 8px;
+  }
+
+  .row-actions kbd {
+    margin-left: 4px;
+    padding: 0 4px;
+    border: 1px solid #e2e8f0;
+    border-radius: 3px;
+    background: #f8fafc;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 500;
+    color: #94a3b8;
+  }
+
+  .row-actions .count {
+    min-width: 120px;
+    margin-right: 4px;
+  }
+
+  button.danger:hover:not(:disabled) {
+    background: #fef2f2;
+    color: #dc2626;
   }
 
   tr.drop-before td {
@@ -573,6 +1105,71 @@
   }
 </style>
 
+<svelte:window onkeydown={listKeydown}/>
+
+{#snippet rowHandle(row)}
+  <div class="handle">
+    <span class="grip" role="button" tabindex="-1" draggable="true" aria-label="Drag to reorder" title="Drag to reorder · drags all selected rows and whole groups"
+          ondragstart={(event) => dragStart(event, row)} ondragend={endDrag}>
+      <svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+        <circle cx="4" cy="2.5" r="1.1"/><circle cx="8" cy="2.5" r="1.1"/><circle cx="4" cy="6" r="1.1"/><circle cx="8" cy="6" r="1.1"/><circle cx="4" cy="9.5" r="1.1"/><circle cx="8" cy="9.5" r="1.1"/>
+      </svg>
+    </span>
+  </div>
+{/snippet}
+
+{#snippet groupHead(row, span)}
+  {@const group = groupOf(row.group)}
+  {@const members = membersOf(row.group)}
+  {#if group}
+    <tr class="group-head" style:--row-group={group.color}
+        class:drop-before={dropAt?.id === members[0]?.id && !dropAt.after && !dragIds.includes(members[0]?.id)}
+        ondragover={(event) => dragOver(event, members[0], false)} ondrop={dropRow} onclick={(event) => pickGroup(event, group.id)}>
+      <td>
+        <div class="handle">
+          <span class="grip" role="button" tabindex="-1" draggable="true" aria-label="Drag the group" title="Drag the whole group"
+                ondragstart={(event) => dragGroupStart(event, group.id)} ondragend={endDrag}>
+            <svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+              <circle cx="4" cy="2.5" r="1.1"/><circle cx="8" cy="2.5" r="1.1"/><circle cx="4" cy="6" r="1.1"/><circle cx="8" cy="6" r="1.1"/><circle cx="4" cy="9.5" r="1.1"/><circle cx="8" cy="9.5" r="1.1"/>
+            </svg>
+          </span>
+        </div>
+      </td>
+      <td colspan={span}>
+        <div class="group-bar">
+          <input type="color" class="group-color" aria-label="Group colour" title="Group colour" value={group.color} oninput={(event) => group.color = event.currentTarget.value.toUpperCase()}>
+          <input type="text" class="group-name" aria-label="Group name" bind:value={group.name} spellcheck="false">
+          <span class="count">{members.length} row{members.length === 1 ? "" : "s"}</span>
+          <button type="button" onclick={() => dissolve(owner, group.id)} title="Keep the rows, remove the group">Ungroup</button>
+        </div>
+      </td>
+    </tr>
+  {/if}
+{/snippet}
+
+{#snippet rowActions()}
+  {#if owner.rows.length || clip[part]}
+    <div class="row-actions">
+      <span class="count">{selected.length ? `${selected.length} selected` : "Click a row to select it · Ctrl+click adds rows · Shift+click selects a range"}</span>
+      <button type="button" disabled={!selected.length} onclick={copySelected} title="Copy the selected rows · Ctrl+C">Copy <kbd>Ctrl+C</kbd></button>
+      <button type="button" disabled={!clip[part]} onclick={pasteClip} title="Paste after the last selected row, or at the end · Ctrl+V">Paste <kbd>Ctrl+V</kbd></button>
+      <button type="button" disabled={!selected.length} onclick={duplicateSelected} title="Copy and paste in one step · Ctrl+D">Duplicate <kbd>Ctrl+D</kbd></button>
+      <button type="button" disabled={!selected.length} onclick={() => moveSelected(-1)} title="Move up · Alt+↑" aria-label="Move up">↑</button>
+      <button type="button" disabled={!selected.length} onclick={() => moveSelected(1)} title="Move down · Alt+↓" aria-label="Move down">↓</button>
+      <select class="library" aria-label="Add the selected rows to a group" value="" disabled={!selected.length}
+              onchange={(event) => { const value = event.currentTarget.value; event.currentTarget.value = ""; if (value) groupSelected(value === "new" ? null : value); }}>
+        <option value="">Add to group…</option>
+        <option value="new">New group · Ctrl+G</option>
+        {#each owner.groups ?? [] as group (group.id)}
+          <option value={group.id}>{group.name || "Group"}</option>
+        {/each}
+      </select>
+      <button type="button" disabled={!selected.some((id) => owner.rows.find((row) => row.id === id)?.group)} onclick={ungroupSelected} title="Take the selected rows out of their group · Ctrl+Shift+G">Ungroup</button>
+      <button type="button" class="danger" disabled={!selected.length} onclick={removeSelected} title="Delete">Delete</button>
+    </div>
+  {/if}
+{/snippet}
+
 <datalist id="cable-types">
   {#each CABLE_TYPES as type (type)}
     <option value={type}></option>
@@ -583,12 +1180,36 @@
   <div class="bar">
     <h2>Wiring list</h2>
     <div class="tabs" role="tablist" aria-label="Wiring list part">
-      <button type="button" role="tab" class="active" aria-selected="true">Power</button>
-      <button type="button" role="tab" aria-selected="false" disabled title="Comes next">Control</button>
+      <button type="button" role="tab" class:active={part === "power"} aria-selected={part === "power"} onclick={() => switchPart("power")}>Power</button>
+      <button type="button" role="tab" class:active={part === "control"} aria-selected={part === "control"} onclick={() => switchPart("control")}>Control</button>
       <button type="button" role="tab" aria-selected="false" disabled title="Comes next">Communication</button>
     </div>
-    <span class="count">{rows.length} device{rows.length === 1 ? "" : "s"}</span>
+    <span class="count">{part === "power" ? rows.length : control.rows.length} device{(part === "power" ? rows.length : control.rows.length) === 1 ? "" : "s"}</span>
     <span class="spacer"></span>
+    {#if part === "control"}
+      <button type="button" onclick={addController} title="Another controller or extension module">+ Controller</button>
+      <select class="library" aria-label="Add a control device" value=""
+              onchange={(event) => { addControl(event.currentTarget.value); event.currentTarget.value = ""; }}>
+        <option value="">+ Add device…</option>
+        {#each CONTROL_TYPES as type (type.id)}
+          <option value={type.id}>{type.label}</option>
+        {/each}
+        {#if customList.length}
+          <optgroup label="Custom devices">
+            {#each customList as type (type.id)}
+              <option value={type.id}>{type.label}</option>
+            {/each}
+          </optgroup>
+        {/if}
+        {#if libraryOnly.length}
+          <optgroup label="From the library">
+            {#each libraryOnly as entry (entry.id)}
+              <option value={`lib:${entry.id}`}>{entry.name || "Custom device"}</option>
+            {/each}
+          </optgroup>
+        {/if}
+      </select>
+    {:else}
     <button type="button" onclick={() => addRow({ protection: "switch", poles: power.supply.phases === 1 ? "1p+N" : "3p+N", load: "none", from: mains.length ? "" : "supply", description: "Glavno stikalo" })}
             disabled={mains.length > 0} title="The main switch or breaker between the incoming supply and the rails">+ Main switch</button>
     <button type="button" onclick={() => addRow({ protection: "rcd", poles: power.supply.phases === 1 ? "1p+N" : "3p+N", load: "none" })}
@@ -603,11 +1224,284 @@
     </select>
     <button type="button" onclick={startPaste} title="Rows copied from Excel, in the column order of this table">Paste from Excel</button>
     <button type="button" disabled={!rows.length} onclick={copyTable} title="The list as a table, to paste into Excel">Copy table</button>
+    {/if}
     <button type="button" class="primary" onclick={draw}
-            title="Draw the power pages at the start of the wiring diagram · drawn power pages are replaced, control pages move along">Draw power pages</button>
+            title="Draw the power and control pages at the start of the wiring diagram · pages drawn before are replaced">Draw pages</button>
   </div>
 
   <div class="scroll">
+    {#if part === "control"}
+    <section>
+      <h3>Controllers <span class="count">{control.controllers.length}</span></h3>
+      <table class="compact">
+        <colgroup>
+          <col style="width: 90px">
+          <col style="width: 260px">
+          <col>
+          <col style="width: 30px">
+        </colgroup>
+        <thead>
+          <tr><th>Tag</th><th>Model</th><th>Description</th><th></th></tr>
+        </thead>
+        <tbody>
+          {#each control.controllers as entry (entry.id)}
+            <tr>
+              <td><input type="text" bind:value={entry.tag} aria-label="Controller tag" spellcheck="false"></td>
+              <td>
+                <select aria-label="Controller model" bind:value={entry.model}>
+                  {#each CONTROLLER_MODELS as model (model.id)}
+                    <option value={model.id}>{model.label}{model.part ? ` · ${model.part}` : ""}</option>
+                  {/each}
+                </select>
+              </td>
+              <td><input type="text" bind:value={entry.description} aria-label="Controller description"></td>
+              <td><button type="button" class="icon remove" aria-label="Remove controller" disabled={control.controllers.length <= 1} onclick={() => removeController(entry.id)}>✕</button></td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+      <label class="inline-field">Control terminals <input type="text" bind:value={control.strip} placeholder="-X2" spellcheck="false"></label>
+    </section>
+
+    <section>
+      <h3>Custom devices <span class="count">{control.templates?.length ?? 0}</span>
+        <button type="button" onclick={addTemplate} title="A device of your own · set its terminals and where each one connects">+ Custom device</button>
+        <select class="library" aria-label="Use a device from the library" value="" disabled={!libraryOnly.length}
+                onchange={(event) => { const value = event.currentTarget.value; event.currentTarget.value = ""; if (value) useLibrary(value); }}>
+          <option value="">+ From library…</option>
+          {#each libraryOnly as entry (entry.id)}
+            <option value={entry.id}>{entry.name || "Custom device"}</option>
+          {/each}
+        </select>
+      </h3>
+      <details class="library-box">
+        <summary>Device library · {library.length} device{library.length === 1 ? "" : "s"} · shared by all projects in this browser</summary>
+        <div class="library-actions">
+          <button type="button" onclick={downloadLibrary} disabled={!library.length} title="Save the library as a file, to back it up or give it to a colleague">Export library</button>
+          <label class="file-button" title="Add devices from a library file · devices already in the library are updated">Import library
+            <input type="file" accept=".json,application/json" onchange={loadLibraryFile}>
+          </label>
+        </div>
+        {#if library.length}
+          <ul class="library-list">
+            {#each library as entry (entry.id)}
+              <li>
+                <span class="library-name">{entry.name || "Custom device"}</span>
+                <span class="count">{entry.prefix || "no prefix"} · {entry.terminals.length} terminal{entry.terminals.length === 1 ? "" : "s"}</span>
+                <button type="button" class="icon remove" aria-label="Remove from the library" title="Remove from the library · projects that use it keep their copy"
+                        onclick={() => forgetLibrary(entry.id)}>✕</button>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="help">Empty · press Save to library on a custom device to keep it for other projects.</p>
+        {/if}
+      </details>
+      {#if !control.templates?.length}
+        <div class="empty">Make a device of your own: give it a name, add its terminals and pick where each one connects. It then appears under + Add device.</div>
+      {:else}
+        <div class="templates">
+          {#each control.templates as template (template.id)}
+            {@const used = control.rows.filter((row) => row.type === `custom:${template.id}`).length}
+            {@const warning = templateWarning(template)}
+            {@const pairs = contactPairs(template)}
+            <div class="template">
+              <div class="template-head">
+                <label>Name <input type="text" bind:value={template.name} aria-label="Custom device name"></label>
+                <label class="short">Tag prefix <input type="text" bind:value={template.prefix} spellcheck="false" placeholder="-E"></label>
+                <label>Cable <input type="text" list="cable-types" bind:value={template.cable} spellcheck="false"></label>
+                <label class="short">Symbol
+                  <select bind:value={template.symbol}>
+                    {#each CUSTOM_SYMBOLS as symbol (symbol.id)}
+                      <option value={symbol.id}>{symbol.label}</option>
+                    {/each}
+                  </select>
+                </label>
+                <span class="spacer"></span>
+                <span class="count">{used ? `${used} in the list` : "not used yet"}</span>
+                <button type="button" onclick={() => storeTemplate(template)}
+                        title="Keep this device for other projects · a device taken from the library updates its library copy">{template.libraryId && library.some((entry) => entry.id === template.libraryId) ? "Update library" : "Save to library"}</button>
+                <button type="button" onclick={() => addControl(`custom:${template.id}`)}>+ Add to list</button>
+                <button type="button" class="icon remove" aria-label="Remove custom device" disabled={used > 0}
+                        title={used ? "Remove its devices from the list first" : "Remove"} onclick={() => removeTemplate(template.id)}>✕</button>
+              </div>
+              <table class="compact terminal-table">
+                <colgroup>
+                  <col style="width: 40px">
+                  <col style="width: 150px">
+                  <col style="width: 260px">
+                  <col>
+                  <col style="width: 30px">
+                </colgroup>
+                <thead>
+                  <tr><th>#</th><th>Terminal label</th><th>Connects to</th><th></th><th></th></tr>
+                </thead>
+                <tbody>
+                  {#each template.terminals as terminal, index (index)}
+                    {@const pair = pairs.findIndex((entry) => entry.includes(index))}
+                    <tr>
+                      <td class="current">{index + 1}</td>
+                      <td><input type="text" bind:value={terminal.label} aria-label="Terminal label" spellcheck="false"></td>
+                      <td>
+                        <select bind:value={terminal.connect} aria-label="Connects to">
+                          {#each CUSTOM_CONNECTIONS as connection (connection.id)}
+                            <option value={connection.id}>{connection.label}</option>
+                          {/each}
+                        </select>
+                      </td>
+                      <td class="current">
+                        {#if terminal.connect === "U" || terminal.connect === "ID" || terminal.connect === "Y"}picked per device under Connection
+                        {:else if pair >= 0}contact {pair + 1} · relay or controller output picked per device
+                        {:else if terminal.connect === "none"}shown on the device, no wire{/if}
+                      </td>
+                      <td><button type="button" class="icon remove" aria-label="Remove terminal" disabled={template.terminals.length <= 1}
+                                  onclick={() => template.terminals.splice(index, 1)}>✕</button></td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+              <div class="template-foot">
+                <button type="button" onclick={() => addTerminal(template)}>+ Terminal</button>
+                {#if warning}<span class="warn">{warning}</span>{/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+    <section>
+      <h3>Control devices <span class="count">{control.rows.length}</span></h3>
+      {@render rowActions()}
+      {#if !control.rows.length}
+        <div class="empty">No control devices yet · add sensors, valves, relays and pumps with + Add device</div>
+      {:else}
+        <div class="table-frame">
+        <div class="table-scroll">
+        <table class="control">
+          <colgroup>
+            <col style="width: 30px">
+            <col style="width: 80px">
+            <col style="width: 200px">
+            <col style="width: 220px">
+            <col style="width: 90px">
+            <col style="width: 300px">
+            <col style="width: 70px">
+            <col style="width: 70px">
+            <col style="width: 170px">
+            <col style="width: 140px">
+            <col style="width: 30px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Tag</th>
+              <th>Description</th>
+              <th>Device</th>
+              <th>Controller</th>
+              <th title="Controller terminal or relay for each signal of the device · terminals in use elsewhere are shown with their tag">Connection</th>
+              <th title="Contact type of a digital input, written above the controller terminal">Contact</th>
+              <th title="Terminal strip · empty uses the control terminals above">Terminals</th>
+              <th>Cable</th>
+              <th title="Type or model printed in the device box">Model</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each control.rows as row, index (row.id)}
+              {@const type = controlTypeOf(row.type, control)}
+              {#if row.group && control.rows[index - 1]?.group !== row.group}
+                {@render groupHead(row, 10)}
+              {/if}
+              <tr class:dragging={dragIds.includes(row.id)} class:selected={selectedSet.has(row.id)} class:in-group={row.group} style:--row-group={groupOf(row.group)?.color}
+                  class:drop-before={dropAt?.id === row.id && !dropAt.after}
+                  class:drop-after={dropAt?.id === row.id && dropAt.after}
+                  ondragover={(event) => dragOver(event, row)} ondrop={dropRow} onclick={(event) => pickRow(event, row)}>
+                <td>{@render rowHandle(row)}</td>
+                <td><input type="text" bind:value={row.tag} aria-label="Tag" spellcheck="false" placeholder={row.type === "aux" ? "-F5" : ""}
+                           class:bad={row.type === "aux" && !row.tag} title={row.type === "aux" ? "Tag of the breaker whose auxiliary contact this is" : undefined}></td>
+                <td><textarea class="multi" rows="1" bind:value={row.description} aria-label="Description"></textarea></td>
+                <td>
+                  <select aria-label="Device" value={row.type} onchange={(event) => setControlType(row, event.currentTarget.value)}>
+                    {#each CONTROL_TYPES as entry (entry.id)}
+                      <option value={entry.id}>{entry.label}</option>
+                    {/each}
+                    {#if customList.length}
+                      <optgroup label="Custom devices">
+                        {#each customList as entry (entry.id)}
+                          <option value={entry.id}>{entry.label}</option>
+                        {/each}
+                      </optgroup>
+                    {/if}
+                  </select>
+                </td>
+                <td>
+                  <select aria-label="Controller" bind:value={row.controller}>
+                    {#each control.controllers as entry (entry.id)}
+                      <option value={entry.id}>{entry.tag || "?"}</option>
+                    {/each}
+                  </select>
+                </td>
+                <td><div class="signals">
+                  {#each type.signals as signal (signal.key)}
+                    <label class="signal">
+                      <span>{signal.label}</span>
+                      {#if signal.kind === "relay"}
+                        {@const load = relayLoad(row.signals?.[signal.key])}
+                        <select aria-label={signal.label} class:bad={!row.signals?.[signal.key] || load.count > load.capacity}
+                                bind:value={() => row.signals?.[signal.key] ?? "", (value) => row.signals[signal.key] = value}>
+                          <option value="">—</option>
+                          <optgroup label="Relay contact (potential-free)">
+                            {#each relayRows as relay (relay.id)}
+                              {@const use = relayLoad(relay.id)}
+                              <option value={relay.id}>{relay.tag || "?"} · {use.count}/{use.capacity} contacts</option>
+                            {:else}
+                              <option value="" disabled>Add a relay first</option>
+                            {/each}
+                          </optgroup>
+                          <optgroup label="Controller output (24 VAC)">
+                            {#each modelTerminals(modelFor(row), "NO") as name (name)}
+                              {@const taken = takenBy(row, signal, name)}
+                              <option value={name} disabled={Boolean(taken) && row.signals?.[signal.key] !== name}>{name} · 24 VAC{taken ? ` · ${taken}` : ""}</option>
+                            {/each}
+                          </optgroup>
+                        </select>
+                      {:else}
+                        <select aria-label={signal.label} class:bad={!row.signals?.[signal.key]}
+                                bind:value={() => row.signals?.[signal.key] ?? "", (value) => row.signals[signal.key] = value}>
+                          <option value="">—</option>
+                          {#each modelTerminals(modelFor(row), signal.kind) as name (name)}
+                            {@const taken = takenBy(row, signal, name)}
+                            <option value={name} disabled={Boolean(taken) && row.signals?.[signal.key] !== name}>{name}{taken ? ` · ${taken}` : ""}</option>
+                          {/each}
+                        </select>
+                      {/if}
+                    </label>
+                  {/each}
+                </div></td>
+                <td>
+                  <select aria-label="Contact" bind:value={row.contact} disabled={!hasInput(row)}>
+                    <option value="NO">NO</option>
+                    <option value="NC">NC</option>
+                  </select>
+                </td>
+                <td><input type="text" bind:value={row.strip} aria-label="Terminal strip" placeholder={isRelayType(row.type) || row.type === "aux" ? "" : control.strip || "-X2"}
+                           disabled={isRelayType(row.type) || row.type === "aux"} spellcheck="false"></td>
+                <td><input type="text" list="cable-types" bind:value={row.cable} aria-label="Cable" placeholder={type.cable ?? ""}
+                           disabled={isRelayType(row.type) || row.type === "aux"} spellcheck="false"></td>
+                <td><input type="text" bind:value={row.model} aria-label="Model" disabled={isRelayType(row.type) || row.type === "aux"}></td>
+                <td><button type="button" class="icon remove" aria-label="Remove" onclick={() => removeControl(row.id)}>✕</button></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        </div>
+        </div>
+        <p class="help">Relays and contactors take a controller output; their contacts are used by devices that pick them under Connection, and by power feeders whose Switched by is the relay's tag. Several relays may share one output. A device can also take a controller output directly, which switches live 24 VAC from SP; its return goes to SN.
+          Digital inputs are fed from SP on c.pCO Large and Extralarge, and from the input's GND on c.pCO mini and c.pCOe.</p>
+      {/if}
+    </section>
+    {:else}
     <section>
       <h3>Incoming supply</h3>
       <div class="supply">
@@ -651,6 +1545,7 @@
 
     <section>
       <h3>Protection and loads <span class="count">{rows.length}</span></h3>
+      {@render rowActions()}
       {#if !rows.length}
         <div class="empty">No devices yet · add a main switch, RCD groups and feeders with the buttons above, or paste rows from Excel</div>
       {:else}
@@ -706,18 +1601,15 @@
               {@const load = loadOf(row.load)}
               {@const groupChild = row.from && row.from !== "supply" && tree.units.some((unit) => unit.children.includes(row))}
               {@const tint = groupTint.get(row.id)}
-              <tr class:child={groupChild} class:grouped={tint} style:--group-fill={tint?.fill} style:--group-line={tint?.line} class:dragging={dragId === row.id}
-                  class:drop-before={dropAt?.id === row.id && !dropAt.after && dragId !== row.id}
-                  class:drop-after={dropAt?.id === row.id && dropAt.after && dragId !== row.id}
-                  ondragover={(event) => dragOver(event, row)} ondrop={dropRow}>
-                <td>
-                  <span class="grip" role="button" tabindex="-1" draggable="true" aria-label="Drag to reorder" title="Drag to reorder"
-                        ondragstart={(event) => dragStart(event, row)} ondragend={endDrag}>
-                    <svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-                      <circle cx="4" cy="2.5" r="1.1"/><circle cx="8" cy="2.5" r="1.1"/><circle cx="4" cy="6" r="1.1"/><circle cx="8" cy="6" r="1.1"/><circle cx="4" cy="9.5" r="1.1"/><circle cx="8" cy="9.5" r="1.1"/>
-                    </svg>
-                  </span>
-                </td>
+              {#if row.group && power.rows[index - 1]?.group !== row.group}
+                {@render groupHead(row, 18)}
+              {/if}
+              <tr class:child={groupChild} class:grouped={tint} style:--group-fill={tint?.fill} style:--group-line={tint?.line} class:dragging={dragIds.includes(row.id)}
+                  class:selected={selectedSet.has(row.id)} class:in-group={row.group} style:--row-group={groupOf(row.group)?.color}
+                  class:drop-before={dropAt?.id === row.id && !dropAt.after}
+                  class:drop-after={dropAt?.id === row.id && dropAt.after}
+                  ondragover={(event) => dragOver(event, row)} ondrop={dropRow} onclick={(event) => pickRow(event, row)}>
+                <td>{@render rowHandle(row)}</td>
                 <td><input type="text" class:bad={row.protection === "none" ? Boolean(row.tag) && (tagCounts.get(row.tag) ?? 0) > 1 : !row.tag || (tagCounts.get(row.tag) ?? 0) > 1}
                            bind:value={row.tag} aria-label="Tag" spellcheck="false" placeholder={row.protection === "none" ? "—" : ""}></td>
                 <td><textarea class="multi" rows="1" bind:value={row.description} aria-label="Description" placeholder={fedLabel(row)}
@@ -797,6 +1689,7 @@
           An empty Rating is sized automatically: feeders from their kW, RCD groups and the main switch from everything below them. Check the result against the cable and the installation rules.</p>
       {/if}
     </section>
+    {/if}
   </div>
 </div>
 

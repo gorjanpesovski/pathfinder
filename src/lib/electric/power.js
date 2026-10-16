@@ -1,5 +1,6 @@
 import { SLOT, PROTECTION_KINDS, PSU_PORTS, electricSize } from "./symbols.js";
-import { paperOf, pageLeft, pageIndex } from "./sheet.js";
+import { paperOf, pageLeft, pageIndex, noteText, noteWidth } from "./sheet.js";
+import { normalizeGroups } from "./rowGroups.js";
 
 export const POLES = [
   { id: "1p", lines: 1, neutral: false },
@@ -158,12 +159,13 @@ export function newPowerRow(rows, values = {}){
     strip: "",
     switchedBy: "",
     lvProtection: "",
+    group: "",
     ...values
   };
 }
 
 export function emptyPower(){
-  return { supply: { ...SUPPLY_DEFAULTS }, rows: [], sizing: structuredClone(SIZING_DEFAULTS) };
+  return { supply: { ...SUPPLY_DEFAULTS }, rows: [], groups: [], sizing: structuredClone(SIZING_DEFAULTS) };
 }
 
 export function normalizePower(data){
@@ -172,7 +174,7 @@ export function normalizePower(data){
   const supply = { ...base.supply, ...(data.supply ?? {}) };
   supply.phases = supply.phases === 1 ? 1 : 3;
   const rows = Array.isArray(data.rows) ? data.rows.filter((row) => row && typeof row === "object").map((row) => newPowerRow([], { ...row, id: typeof row.id === "string" && row.id ? row.id : uid() })) : [];
-  return { supply, rows, sizing: sizingOf(data) };
+  return { supply, rows, groups: normalizeGroups(data.groups, rows), sizing: sizingOf(data) };
 }
 
 function pick(list, value, fallback){
@@ -431,8 +433,7 @@ function leafWidth(row){
   }
   const slots = Math.max(loadTerminals(row).length, devicePoles(row).length);
   const box = Math.max(120, (loadTerminals(row).length + 1) * SLOT);
-  const longest = Math.max(0, ...String(row.description ?? "").split("\n").map((part) => part.trim().length));
-  const text = longest * 5.4 <= box + 40 ? box / 2 + longest * 2.7 : longest * 5.4;
+  const text = noteWidth(row.description, box);
   const terminals = loadTerminals(row).length;
   const cableLabel = Math.max(String(row.cable || `NYM-J ${terminals}x1,5mm2`).length, String(row.loadTag || "-W.XXXX").length + 3) * 4.6;
   const cable = LEAD - SLOT + terminals * SLOT + 14 + cableLabel - (LEAD - 4);
@@ -484,7 +485,7 @@ export function drawPower(power, nextId, paper = paperOf()){
   const tags = loadTags(power.rows);
   const label = (row, poles = row.poles) => withPoles(ratings.get(row.id), poles);
   const shapes = [];
-  const source = { power: true };
+  const source = { power: true, sheet: "NAPAJANJE" };
   let phaseTurn = 0;
   const terminalCount = new Map();
   const oneLine = (text) => String(text ?? "").split("\n").map((part) => part.trim()).filter(Boolean).join(" ");
@@ -502,6 +503,10 @@ export function drawPower(power, nextId, paper = paperOf()){
     return shape;
   };
   const wire = (from, to, medium = "wire") => pipe(from, to, medium);
+  const note = (description, device) => {
+    const shape = noteText(description, device.x, device.y + device.height + 8, noteWidth(description, device.width), nextId(), source);
+    if (shape) shapes.push(shape);
+  };
   const port = (shape, side, slot) => ({ id: shape.id, side, offset: (slot + 1) * SLOT });
   const tap = (rail, x) => ({ pipe: rail.id, x, y: rail.from.y });
   const neutralIn = (rails, device, slot, side) => {
@@ -692,8 +697,9 @@ export function drawPower(power, nextId, paper = paperOf()){
     const conductors = terminals.map((_, index) => String(index + 1));
     const cableType = row.cable || `NYM-J ${terminals.length}x1,5mm2`;
     const cable = element("cable", ex, Y.cable, loadTag ? `-W.${loadTag.replace(/^-/, "")}` : `-W.${row.tag.replace(/^-/, "")}`, { conductors, cableType });
-    const device2 = element("fieldDevice", ex, Y.load, loadTag, { terminals, model: row.loadData, description: row.description, symbol: load.symbol });
+    const device2 = element("fieldDevice", ex, Y.load, loadTag, { terminals, model: row.loadData, description: "", symbol: load.symbol });
     device2.source = { ...source, row: row.id };
+    note(row.description, device2);
     roles.forEach((role, index) => {
       const medium = conductorMedium(role);
       wire(sourceOf(role, index), port(strip, "top", index), medium);
@@ -774,7 +780,7 @@ export function drawPower(power, nextId, paper = paperOf()){
     if (offset <= 0) continue;
     const here = (x) => pageIndex(x, paper) === entry.index;
     for (const shape of shapes) {
-      if (shape.kind === "equipment") {
+      if (shape.kind === "equipment" || shape.kind === "text") {
         if (here(shape.x + 1)) shape.x += offset;
         continue;
       }
