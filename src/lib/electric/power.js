@@ -101,7 +101,7 @@ const GRID = 20;
 const LEAD = 60;
 const TAIL = 20;
 const SUPPLY_TAIL = 120;
-const SPILL = 60;
+const MAX_EXTRA = 120;
 
 function withPoles(rating, poles){
   const text = String(rating ?? "").trim();
@@ -433,11 +433,10 @@ function leafWidth(row){
   }
   const slots = Math.max(loadTerminals(row).length, devicePoles(row).length);
   const box = Math.max(120, (loadTerminals(row).length + 1) * SLOT);
-  const text = noteWidth(row.description, box);
   const terminals = loadTerminals(row).length;
   const cableLabel = Math.max(String(row.cable || `NYM-J ${terminals}x1,5mm2`).length, String(row.loadTag || "-W.XXXX").length + 3) * 4.6;
   const cable = LEAD - SLOT + terminals * SLOT + 14 + cableLabel - (LEAD - 4);
-  return snapUp(Math.max(LEAD + (slots + 1) * SLOT + TAIL, LEAD - SLOT + box + SLOT - (LEAD - SLOT), cable, LEAD - SLOT + text + 12 - SPILL));
+  return snapUp(Math.max(LEAD + (slots + 1) * SLOT + TAIL, LEAD - SLOT + box + 20, cable));
 }
 
 export function powerTree(power){
@@ -478,6 +477,20 @@ export function shiftShapes(shapes, dx){
 }
 
 export function drawPower(power, nextId, paper = paperOf()){
+  let probe = 0;
+  const { stats } = layoutPower(power, () => ++probe, paper, null);
+  const spread = stats.map((entry) => {
+    if (!entry.calls) return null;
+    const room = entry.span - entry.headers;
+    const even = Math.min(entry.widest + MAX_EXTRA, Math.floor(room / entry.calls / GRID) * GRID);
+    if (even >= entry.widest) return { width: even };
+    return { extra: Math.max(0, Math.min(MAX_EXTRA, Math.floor(entry.free / entry.calls / GRID) * GRID)) };
+  });
+  const { shapes, pages } = layoutPower(power, nextId, paper, spread);
+  return { shapes, pages };
+}
+
+function layoutPower(power, nextId, paper, spread){
   const { supply } = power;
   const lines = supply.phases === 1 ? ["L1"] : PHASES;
   const { main, units } = powerTree(power);
@@ -503,8 +516,8 @@ export function drawPower(power, nextId, paper = paperOf()){
     return shape;
   };
   const wire = (from, to, medium = "wire") => pipe(from, to, medium);
-  const note = (description, device) => {
-    const shape = noteText(description, device.x, device.y + device.height + 8, noteWidth(description, device.width), nextId(), source);
+  const note = (description, device, width = noteWidth(description, device.width)) => {
+    const shape = noteText(description, device.x, device.y + device.height + 8, width, nextId(), source);
     if (shape) shapes.push(shape);
   };
   const port = (shape, side, slot) => ({ id: shape.id, side, offset: (slot + 1) * SLOT });
@@ -556,22 +569,34 @@ export function drawPower(power, nextId, paper = paperOf()){
     rails.N = pipe({ x: from, y: Y.neutral }, { x: to, y: Y.neutral }, "neutral");
     rails.PE = pipe({ x: from, y: Y.pe }, { x: to, y: Y.pe }, "earth");
     Object.values(rails).forEach((rail) => anchor(rail, "from", "to"));
-    const created = { index, rails, from, to, cursor: firstColumn(index), limit: to - 10 };
+    const created = { index, rails, from, to, cursor: firstColumn(index), limit: to - 10, calls: 0, headers: 0, widest: 0 };
     pages.push(created);
     for (const kind of Object.keys(extras)) if (extras[kind]) addExtra(created, kind);
     return created;
   };
   let page = openPage();
-  const place = (width) => {
-    if (page.cursor + width > page.limit && page.cursor > firstColumn(page.index)) page = openPage();
+  const stretch = (index, width, trim = 0) => {
+    const rule = spread?.[index];
+    if (!rule) return width;
+    return rule.width ? Math.max(width - trim, rule.width) : width + rule.extra;
+  };
+  const inset = (row, index) => spread?.[index]?.width ? 0 : leafOffset(row);
+  const place = (width, ahead = 0, fixed = false, trim = 0) => {
+    const own = (index) => ahead || fixed ? width : stretch(index, width, trim);
+    if (page.cursor + own(page.index) + (ahead ? stretch(page.index, ahead) : 0) > page.limit && page.cursor > firstColumn(page.index)) page = openPage();
     const x = page.cursor;
-    page.cursor += width;
+    page.cursor += own(page.index);
+    if (ahead || fixed) page.headers += width;
+    else {
+      page.calls += 1;
+      page.widest = Math.max(page.widest, width - trim);
+    }
     return x;
   };
   const slotX = (x0, slot) => x0 + LEAD + slot * SLOT;
 
   const supplyTerminals = [...lines, "N", "PE"];
-  const supplyX = place(snapUp(LEAD + (supplyTerminals.length + 1) * SLOT + SUPPLY_TAIL));
+  const supplyX = place(snapUp(LEAD + (supplyTerminals.length + 1) * SLOT + SUPPLY_TAIL), 0, true);
   const rails = page.rails;
   let mainDevice = null;
   if (main) {
@@ -699,7 +724,8 @@ export function drawPower(power, nextId, paper = paperOf()){
     const cable = element("cable", ex, Y.cable, loadTag ? `-W.${loadTag.replace(/^-/, "")}` : `-W.${row.tag.replace(/^-/, "")}`, { conductors, cableType });
     const device2 = element("fieldDevice", ex, Y.load, loadTag, { terminals, model: row.loadData, description: "", symbol: load.symbol });
     device2.source = { ...source, row: row.id };
-    note(row.description, device2);
+    const column = x0 - inset(row, target.index) + stretch(target.index, leafWidth(row), leafOffset(row));
+    note(row.description, device2, Math.max(device2.width, column - device2.x - 12));
     roles.forEach((role, index) => {
       const medium = conductorMedium(role);
       wire(sourceOf(role, index), port(strip, "top", index), medium);
@@ -710,7 +736,7 @@ export function drawPower(power, nextId, paper = paperOf()){
 
   for (const unit of units) {
     if (!unit.children.length) {
-      const x0 = place(leafWidth(unit.row)) + leafOffset(unit.row);
+      const x0 = place(leafWidth(unit.row), 0, false, leafOffset(unit.row)) + inset(unit.row, page.index);
       drawLeaf(unit.row, x0, railSource(unit.row, page.rails), page, Y.group);
       continue;
     }
@@ -718,8 +744,7 @@ export function drawPower(power, nextId, paper = paperOf()){
     const group = unit.row;
     const pole = poleOf(group.poles);
     const own = snapUp(LEAD + devicePoles(group).length * SLOT);
-    const x0 = place(own + widths[0]);
-    page.cursor -= widths[0];
+    const x0 = place(own, widths[0]);
     const groupPhase = pole.lines === 1 ? balance(group) : null;
     const ex = x0 + LEAD - SLOT;
     const device = element("protection", ex, Y.group, group.tag, { kind: group.protection, poles: devicePoles(group), rating: label(group), note: oneLine(group.description), labels: "right" });
@@ -732,13 +757,13 @@ export function drawPower(power, nextId, paper = paperOf()){
     segments[0].taps.forEach((list, index) => list.push(slotX(x0, index)));
     unit.children.forEach((child, position) => {
       const before = page;
-      const cursor = place(widths[position]);
+      const cursor = place(widths[position], 0, false, leafOffset(child));
       if (page !== before) segments.push(segment(false));
       const current = segments[segments.length - 1];
       const childPole = poleOf(child.poles);
       const childPhase = childPole.lines === 1 && pole.lines === 3 ? (lines.includes(child.phase) ? child.phase : lines[phaseTurn++ % lines.length]) : null;
       const busLine = (index) => pole.lines === 1 ? 0 : childPhase ? lines.indexOf(childPhase) : Math.min(index, pole.lines - 1);
-      const at = cursor + leafOffset(child);
+      const at = cursor + inset(child, page.index);
       for (let index = 0; index < childPole.lines; index += 1) current.taps[busLine(index)].push(slotX(at, index));
       const childRoles = loadRoles(child);
       if (child.protection === "none") childRoles.forEach((role, index) => { if (role === "Lp") current.taps[busLine(0)].push(slotX(at, index)); });
@@ -792,5 +817,5 @@ export function drawPower(power, nextId, paper = paperOf()){
       shape.points = (shape.points ?? []).map((point) => here(point.x) ? { ...point, x: point.x + offset } : point);
     }
   }
-  return { shapes, pages: pages.length };
+  return { shapes, pages: pages.length, stats: pages.map((entry) => ({ free: entry.limit - entry.cursor, span: entry.limit - firstColumn(entry.index), calls: entry.calls, headers: entry.headers, widest: entry.widest })) };
 }

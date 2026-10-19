@@ -1,19 +1,27 @@
 <script module>
-  const shared = { power: null, control: null };
+  const shared = { power: null, control: null, comms: null };
 </script>
 
 <script>
   import { PROTECTION_KINDS } from "$lib/electric/symbols.js";
   import { expand, moveRows, moveBy, addToGroup, ungroup, dissolve, copyRows, pasteRows } from "$lib/electric/rowGroups.js";
   import { POLES, LOADS, PHASES, COLUMNS, SYSTEMS, CABLE_TYPES, LOAD_LIBRARY, newPowerRow, libraryRow, parsePowerTable, powerTable, powerTree, powerSizing, loadTags, loadOf, formatNumber } from "$lib/electric/power.js";
-  import { CONTROLLER_MODELS, CONTROL_TYPES, controlTypeOf, modelTerminals, newController, newControlRow, terminalUse, contactUse, isRelayType, sharesOutput, CUSTOM_CONNECTIONS, CUSTOM_SYMBOLS, newTemplate, customTypes, contactPairs } from "$lib/electric/control.js";
+  import { CONTROLLER_MODELS, CONTROL_TYPES, controlTypeOf, modelTerminals, newController, newControlRow, terminalUse, contactUse, isRelayType, sharesOutput, CUSTOM_CONNECTIONS, CUSTOM_SYMBOLS, newTemplate, customTypes, contactPairs, commPorts, portOf, linkDefaults, newLink, PROTOCOLS, LINK_TARGETS, isGateway } from "$lib/electric/control.js";
   import { portal } from "$lib/actions/portal.js";
+  import Modal from "./Modal.svelte";
   import { loadLibrary, saveToLibrary, removeFromLibrary, templateFromLibrary, exportLibrary, importLibrary } from "$lib/electric/deviceLibrary.js";
 
   let { power = $bindable(), control = $bindable(), ondraw, onnotice } = $props();
 
   let part = $state("power");
-  let owner = $derived(part === "power" ? power : control);
+  let libraryOpen = $state(false);
+  const linkOwner = {
+    get rows(){ return control.links ?? []; },
+    set rows(value){ control.links = value; },
+    get groups(){ return control.linkGroups ?? []; },
+    set groups(value){ control.linkGroups = value; }
+  };
+  let owner = $derived(part === "power" ? power : part === "comms" ? linkOwner : control);
   let selected = $state([]);
   let selectedSet = $derived(new Set(selected));
   let anchorId = null;
@@ -85,6 +93,7 @@
 
   function makeRow(rows, source){
     const { id, tag, ...rest } = source;
+    if (part === "comms") return newLink({ ...control, links: rows }, rest);
     if (part === "power") return newPowerRow(rows, { ...rest, from: rest.from === "supply" ? "" : rest.from });
     const row = newControlRow({ ...control, rows }, rest);
     if (source.type === "aux") row.tag = tag;
@@ -92,6 +101,7 @@
   }
 
   function remap(row, ids){
+    if (part === "comms") return;
     if (part === "power") {
       if (ids.has(row.from)) row.from = ids.get(row.from);
       return;
@@ -125,7 +135,7 @@
   function removeSelected(){
     const ids = [...selected];
     selected = [];
-    for (const id of ids) part === "power" ? removeRow(id) : removeControl(id);
+    for (const id of ids) part === "power" ? removeRow(id) : part === "comms" ? removeLink(id) : removeControl(id);
   }
 
   function groupSelected(groupId = null){
@@ -229,6 +239,49 @@
     if (count("gnd") && !count("U")) return "GND of the analog input needs an analog input U";
     if (count("common") && !count("ID")) return "Digital input common needs a digital input ID";
     return "";
+  }
+
+  function addLink(){
+    control.links = [...(control.links ?? []), newLink(control)];
+  }
+
+  function removeLink(id){
+    control.links = control.links.filter((link) => link.id !== id);
+  }
+
+  function linkModel(id){
+    return control.controllers.find((entry) => entry.id === id)?.model ?? "large";
+  }
+
+  function setLinkController(link, id){
+    link.controller = id;
+    if (!portOf(linkModel(id), link.port)) setLinkPort(link, commPorts(linkModel(id))[0]?.id ?? "");
+  }
+
+  function setLinkPort(link, id){
+    const before = linkDefaults(linkModel(link.controller), link.port);
+    link.port = id;
+    const after = linkDefaults(linkModel(link.controller), id);
+    if (!link.protocol || link.protocol === before.protocol) link.protocol = after.protocol;
+    if (!link.cable || link.cable === before.cable) link.cable = after.cable;
+  }
+
+  function setLinkTarget(link, target){
+    link.target = target;
+    if (target === "controller" && !link.targetController) {
+      const other = control.controllers.find((entry) => entry.id !== link.controller);
+      if (other) {
+        link.targetController = other.id;
+        link.targetPort = commPorts(other.model).find((entry) => entry.kind === "serial")?.id ?? "";
+      }
+    }
+    if (target === "display" && link.protocol === "Modbus RTU") link.protocol = "";
+  }
+
+  function portTaken(link, controller, id){
+    const other = (control.links ?? []).find((entry) => entry !== link && portOf(linkModel(controller), id)?.kind === "eth"
+      && ((entry.controller === controller && entry.port === id) || (entry.target === "controller" && entry.targetController === controller && entry.targetPort === id)));
+    return other?.tag || "";
   }
 
   function addController(){
@@ -691,6 +744,61 @@
     width: 112px;
   }
 
+  .signal span {
+    flex: none;
+    width: 52px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .far-end {
+    display: flex;
+    gap: 6px;
+  }
+
+  .far-end select {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .add-row {
+    display: block;
+    width: 100%;
+    height: 34px;
+    margin-top: 8px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #475569;
+    font: inherit;
+    font-weight: 600;
+    text-align: center;
+    text-align-last: center;
+    appearance: none;
+    cursor: pointer;
+  }
+
+  .add-row:hover {
+    border-color: #94a3b8;
+    background: #f8fafc;
+  }
+
+  .library-dialog {
+    font-size: 12px;
+    color: #334155;
+  }
+
+  .library-dialog section + section {
+    margin-top: 18px;
+  }
+
+  .library-dialog h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   .inline-field {
     display: inline-flex;
     white-space: nowrap;
@@ -834,25 +942,8 @@
     margin-top: 8px;
   }
 
-  .library-box {
-    margin: 0 0 10px;
-    padding: 6px 10px;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    background: #ffffff;
-  }
 
-  .library-box summary {
-    cursor: pointer;
-    font-weight: 600;
-    color: #475569;
-  }
 
-  .library-actions {
-    display: flex;
-    gap: 8px;
-    margin: 8px 0;
-  }
 
   .file-button {
     display: inline-flex;
@@ -1170,6 +1261,18 @@
   {/if}
 {/snippet}
 
+<datalist id="protocols">
+  {#each PROTOCOLS as protocol (protocol)}
+    <option value={protocol}></option>
+  {/each}
+</datalist>
+
+<datalist id="link-cables">
+  {#each ["UTP", "UTP Kat5", "FTP Kat6", "J-H(St)H 2x2x0,8mm2", "LiYCY 2x2x0,5mm2"] as type (type)}
+    <option value={type}></option>
+  {/each}
+</datalist>
+
 <datalist id="cable-types">
   {#each CABLE_TYPES as type (type)}
     <option value={type}></option>
@@ -1182,33 +1285,19 @@
     <div class="tabs" role="tablist" aria-label="Wiring list part">
       <button type="button" role="tab" class:active={part === "power"} aria-selected={part === "power"} onclick={() => switchPart("power")}>Power</button>
       <button type="button" role="tab" class:active={part === "control"} aria-selected={part === "control"} onclick={() => switchPart("control")}>Control</button>
-      <button type="button" role="tab" aria-selected="false" disabled title="Comes next">Communication</button>
+      <button type="button" role="tab" class:active={part === "comms"} aria-selected={part === "comms"} onclick={() => switchPart("comms")}>Communication</button>
     </div>
-    <span class="count">{part === "power" ? rows.length : control.rows.length} device{(part === "power" ? rows.length : control.rows.length) === 1 ? "" : "s"}</span>
+    {#if part === "comms"}
+      <span class="count">{control.links?.length ?? 0} link{control.links?.length === 1 ? "" : "s"}</span>
+    {:else}
+      <span class="count">{part === "power" ? rows.length : control.rows.length} device{(part === "power" ? rows.length : control.rows.length) === 1 ? "" : "s"}</span>
+    {/if}
     <span class="spacer"></span>
     {#if part === "control"}
       <button type="button" onclick={addController} title="Another controller or extension module">+ Controller</button>
-      <select class="library" aria-label="Add a control device" value=""
-              onchange={(event) => { addControl(event.currentTarget.value); event.currentTarget.value = ""; }}>
-        <option value="">+ Add device…</option>
-        {#each CONTROL_TYPES as type (type.id)}
-          <option value={type.id}>{type.label}</option>
-        {/each}
-        {#if customList.length}
-          <optgroup label="Custom devices">
-            {#each customList as type (type.id)}
-              <option value={type.id}>{type.label}</option>
-            {/each}
-          </optgroup>
-        {/if}
-        {#if libraryOnly.length}
-          <optgroup label="From the library">
-            {#each libraryOnly as entry (entry.id)}
-              <option value={`lib:${entry.id}`}>{entry.name || "Custom device"}</option>
-            {/each}
-          </optgroup>
-        {/if}
-      </select>
+      <button type="button" onclick={() => libraryOpen = true} title="The device library and the custom devices of this project">Device library…</button>
+    {:else if part === "comms"}
+      <button type="button" onclick={addLink} title="A cable from a controller port to the CNS, another controller or a display">+ Link</button>
     {:else}
     <button type="button" onclick={() => addRow({ protection: "switch", poles: power.supply.phases === 1 ? "1p+N" : "3p+N", load: "none", from: mains.length ? "" : "supply", description: "Glavno stikalo" })}
             disabled={mains.length > 0} title="The main switch or breaker between the incoming supply and the rails">+ Main switch</button>
@@ -1249,9 +1338,14 @@
               <td><input type="text" bind:value={entry.tag} aria-label="Controller tag" spellcheck="false"></td>
               <td>
                 <select aria-label="Controller model" bind:value={entry.model}>
-                  {#each CONTROLLER_MODELS as model (model.id)}
+                  {#each CONTROLLER_MODELS.filter((model) => !model.gateway) as model (model.id)}
                     <option value={model.id}>{model.label}{model.part ? ` · ${model.part}` : ""}</option>
                   {/each}
+                  <optgroup label="Gateways and switches · communication only">
+                    {#each CONTROLLER_MODELS.filter((model) => model.gateway) as model (model.id)}
+                      <option value={model.id}>{model.label}</option>
+                    {/each}
+                  </optgroup>
                 </select>
               </td>
               <td><input type="text" bind:value={entry.description} aria-label="Controller description"></td>
@@ -1263,118 +1357,12 @@
       <label class="inline-field">Control terminals <input type="text" bind:value={control.strip} placeholder="-X2" spellcheck="false"></label>
     </section>
 
-    <section>
-      <h3>Custom devices <span class="count">{control.templates?.length ?? 0}</span>
-        <button type="button" onclick={addTemplate} title="A device of your own · set its terminals and where each one connects">+ Custom device</button>
-        <select class="library" aria-label="Use a device from the library" value="" disabled={!libraryOnly.length}
-                onchange={(event) => { const value = event.currentTarget.value; event.currentTarget.value = ""; if (value) useLibrary(value); }}>
-          <option value="">+ From library…</option>
-          {#each libraryOnly as entry (entry.id)}
-            <option value={entry.id}>{entry.name || "Custom device"}</option>
-          {/each}
-        </select>
-      </h3>
-      <details class="library-box">
-        <summary>Device library · {library.length} device{library.length === 1 ? "" : "s"} · shared by all projects in this browser</summary>
-        <div class="library-actions">
-          <button type="button" onclick={downloadLibrary} disabled={!library.length} title="Save the library as a file, to back it up or give it to a colleague">Export library</button>
-          <label class="file-button" title="Add devices from a library file · devices already in the library are updated">Import library
-            <input type="file" accept=".json,application/json" onchange={loadLibraryFile}>
-          </label>
-        </div>
-        {#if library.length}
-          <ul class="library-list">
-            {#each library as entry (entry.id)}
-              <li>
-                <span class="library-name">{entry.name || "Custom device"}</span>
-                <span class="count">{entry.prefix || "no prefix"} · {entry.terminals.length} terminal{entry.terminals.length === 1 ? "" : "s"}</span>
-                <button type="button" class="icon remove" aria-label="Remove from the library" title="Remove from the library · projects that use it keep their copy"
-                        onclick={() => forgetLibrary(entry.id)}>✕</button>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <p class="help">Empty · press Save to library on a custom device to keep it for other projects.</p>
-        {/if}
-      </details>
-      {#if !control.templates?.length}
-        <div class="empty">Make a device of your own: give it a name, add its terminals and pick where each one connects. It then appears under + Add device.</div>
-      {:else}
-        <div class="templates">
-          {#each control.templates as template (template.id)}
-            {@const used = control.rows.filter((row) => row.type === `custom:${template.id}`).length}
-            {@const warning = templateWarning(template)}
-            {@const pairs = contactPairs(template)}
-            <div class="template">
-              <div class="template-head">
-                <label>Name <input type="text" bind:value={template.name} aria-label="Custom device name"></label>
-                <label class="short">Tag prefix <input type="text" bind:value={template.prefix} spellcheck="false" placeholder="-E"></label>
-                <label>Cable <input type="text" list="cable-types" bind:value={template.cable} spellcheck="false"></label>
-                <label class="short">Symbol
-                  <select bind:value={template.symbol}>
-                    {#each CUSTOM_SYMBOLS as symbol (symbol.id)}
-                      <option value={symbol.id}>{symbol.label}</option>
-                    {/each}
-                  </select>
-                </label>
-                <span class="spacer"></span>
-                <span class="count">{used ? `${used} in the list` : "not used yet"}</span>
-                <button type="button" onclick={() => storeTemplate(template)}
-                        title="Keep this device for other projects · a device taken from the library updates its library copy">{template.libraryId && library.some((entry) => entry.id === template.libraryId) ? "Update library" : "Save to library"}</button>
-                <button type="button" onclick={() => addControl(`custom:${template.id}`)}>+ Add to list</button>
-                <button type="button" class="icon remove" aria-label="Remove custom device" disabled={used > 0}
-                        title={used ? "Remove its devices from the list first" : "Remove"} onclick={() => removeTemplate(template.id)}>✕</button>
-              </div>
-              <table class="compact terminal-table">
-                <colgroup>
-                  <col style="width: 40px">
-                  <col style="width: 150px">
-                  <col style="width: 260px">
-                  <col>
-                  <col style="width: 30px">
-                </colgroup>
-                <thead>
-                  <tr><th>#</th><th>Terminal label</th><th>Connects to</th><th></th><th></th></tr>
-                </thead>
-                <tbody>
-                  {#each template.terminals as terminal, index (index)}
-                    {@const pair = pairs.findIndex((entry) => entry.includes(index))}
-                    <tr>
-                      <td class="current">{index + 1}</td>
-                      <td><input type="text" bind:value={terminal.label} aria-label="Terminal label" spellcheck="false"></td>
-                      <td>
-                        <select bind:value={terminal.connect} aria-label="Connects to">
-                          {#each CUSTOM_CONNECTIONS as connection (connection.id)}
-                            <option value={connection.id}>{connection.label}</option>
-                          {/each}
-                        </select>
-                      </td>
-                      <td class="current">
-                        {#if terminal.connect === "U" || terminal.connect === "ID" || terminal.connect === "Y"}picked per device under Connection
-                        {:else if pair >= 0}contact {pair + 1} · relay or controller output picked per device
-                        {:else if terminal.connect === "none"}shown on the device, no wire{/if}
-                      </td>
-                      <td><button type="button" class="icon remove" aria-label="Remove terminal" disabled={template.terminals.length <= 1}
-                                  onclick={() => template.terminals.splice(index, 1)}>✕</button></td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-              <div class="template-foot">
-                <button type="button" onclick={() => addTerminal(template)}>+ Terminal</button>
-                {#if warning}<span class="warn">{warning}</span>{/if}
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </section>
 
     <section>
       <h3>Control devices <span class="count">{control.rows.length}</span></h3>
       {@render rowActions()}
       {#if !control.rows.length}
-        <div class="empty">No control devices yet · add sensors, valves, relays and pumps with + Add device</div>
+        <div class="empty">No control devices yet · add sensors, valves, relays and pumps with + Add device below</div>
       {:else}
         <div class="table-frame">
         <div class="table-scroll">
@@ -1437,7 +1425,7 @@
                 </td>
                 <td>
                   <select aria-label="Controller" bind:value={row.controller}>
-                    {#each control.controllers as entry (entry.id)}
+                    {#each control.controllers.filter((entry) => !isGateway(entry.model) || entry.id === row.controller) as entry (entry.id)}
                       <option value={entry.id}>{entry.tag || "?"}</option>
                     {/each}
                   </select>
@@ -1497,9 +1485,150 @@
         </table>
         </div>
         </div>
+      {/if}
+      <select class="add-row" aria-label="Add a control device" value=""
+              onchange={(event) => { addControl(event.currentTarget.value); event.currentTarget.value = ""; }}>
+        <option value="">+ Add device</option>
+        {#each CONTROL_TYPES as type (type.id)}
+          <option value={type.id}>{type.label}</option>
+        {/each}
+        {#if customList.length}
+          <optgroup label="Custom devices">
+            {#each customList as type (type.id)}
+              <option value={type.id}>{type.label}</option>
+            {/each}
+          </optgroup>
+        {/if}
+        {#if libraryOnly.length}
+          <optgroup label="From the library">
+            {#each libraryOnly as entry (entry.id)}
+              <option value={`lib:${entry.id}`}>{entry.name || "Custom device"}</option>
+            {/each}
+          </optgroup>
+        {/if}
+      </select>
+      {#if control.rows.length}
         <p class="help">Relays and contactors take a controller output; their contacts are used by devices that pick them under Connection, and by power feeders whose Switched by is the relay's tag. Several relays may share one output. A device can also take a controller output directly, which switches live 24 VAC from SP; its return goes to SN.
           Digital inputs are fed from SP on c.pCO Large and Extralarge, and from the input's GND on c.pCO mini and c.pCOe.</p>
       {/if}
+    </section>
+    {:else if part === "comms"}
+    <section>
+      <h3>Communication links <span class="count">{control.links?.length ?? 0}</span></h3>
+      {@render rowActions()}
+      {#if !control.links?.length}
+        <div class="empty">No links yet · connect a controller port to the CNS, another controller or a pGDx display with + Add link below</div>
+      {:else}
+        <div class="table-frame">
+        <div class="table-scroll">
+        <table class="control">
+          <colgroup>
+            <col style="width: 30px">
+            <col style="width: 90px">
+            <col style="width: 200px">
+            <col style="width: 90px">
+            <col style="width: 120px">
+            <col style="width: 210px">
+            <col style="width: 250px">
+            <col style="width: 130px">
+            <col style="width: 170px">
+            <col style="width: 70px">
+            <col style="width: 30px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th></th>
+              <th title="Tag of the cable, e.g. -W.TPCNS">Cable</th>
+              <th title="Printed under the link on the drawing">Description</th>
+              <th>Controller</th>
+              <th title="Communication port of the controller">Port</th>
+              <th>Connects to</th>
+              <th title="Text at the far end, the other controller and its port, or the tag of the display">Far end</th>
+              <th>Protocol</th>
+              <th>Cable type</th>
+              <th title="Terminal strip a serial line to outside the panel lands on · empty uses the control terminals">Terminals</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each control.links as link, index (link.id)}
+              {@const model = linkModel(link.controller)}
+              {#if link.group && control.links[index - 1]?.group !== link.group}
+                {@render groupHead(link, 10)}
+              {/if}
+              <tr class:dragging={dragIds.includes(link.id)} class:selected={selectedSet.has(link.id)} class:in-group={link.group} style:--row-group={groupOf(link.group)?.color}
+                  class:drop-before={dropAt?.id === link.id && !dropAt.after}
+                  class:drop-after={dropAt?.id === link.id && dropAt.after}
+                  ondragover={(event) => dragOver(event, link)} ondrop={dropRow} onclick={(event) => pickRow(event, link)}>
+                <td>{@render rowHandle(link)}</td>
+                <td><input type="text" bind:value={link.tag} aria-label="Cable tag" spellcheck="false"></td>
+                <td><textarea class="multi" rows="1" bind:value={link.description} aria-label="Description"></textarea></td>
+                <td>
+                  <select aria-label="Controller" value={link.controller} onchange={(event) => setLinkController(link, event.currentTarget.value)}>
+                    {#each control.controllers as entry (entry.id)}
+                      <option value={entry.id}>{entry.tag || "?"}</option>
+                    {/each}
+                  </select>
+                </td>
+                <td>
+                  <select aria-label="Port" value={link.port} class:bad={!portOf(model, link.port)} onchange={(event) => setLinkPort(link, event.currentTarget.value)}>
+                    {#if !portOf(model, link.port)}<option value={link.port}>—</option>{/if}
+                    {#each commPorts(model) as entry (entry.id)}
+                      {@const taken = portTaken(link, link.controller, entry.id)}
+                      <option value={entry.id} disabled={Boolean(taken) && link.port !== entry.id}>{entry.label}{taken ? ` · ${taken}` : ""}</option>
+                    {/each}
+                  </select>
+                </td>
+                <td>
+                  <select aria-label="Connects to" value={link.target} onchange={(event) => setLinkTarget(link, event.currentTarget.value)}>
+                    {#each LINK_TARGETS as entry (entry.id)}
+                      <option value={entry.id} disabled={entry.id === "controller" && control.controllers.length < 2}>{entry.label}</option>
+                    {/each}
+                  </select>
+                </td>
+                <td>
+                  {#if link.target === "controller"}
+                    {@const other = control.controllers.find((entry) => entry.id === link.targetController)}
+                    <div class="far-end">
+                      <select aria-label="Other controller" bind:value={link.targetController} class:bad={!other || other.id === link.controller}>
+                        <option value="">—</option>
+                        {#each control.controllers.filter((entry) => entry.id !== link.controller) as entry (entry.id)}
+                          <option value={entry.id}>{entry.tag || "?"}</option>
+                        {/each}
+                      </select>
+                      <select aria-label="Port of the other controller" bind:value={link.targetPort} class:bad={!other || !portOf(other.model, link.targetPort)}>
+                        <option value="">—</option>
+                        {#each other ? commPorts(other.model) : [] as entry (entry.id)}
+                          <option value={entry.id}>{entry.label}</option>
+                        {/each}
+                      </select>
+                    </div>
+                  {:else if link.target === "display"}
+                    <input type="text" bind:value={link.display} aria-label="Display tag" spellcheck="false" placeholder="-TD1">
+                  {:else}
+                    <input type="text" bind:value={link.text} aria-label="Far end" placeholder="POVEZAVA NA CNS">
+                  {/if}
+                </td>
+                <td>
+                  <input type="text" list="protocols" bind:value={link.protocol} aria-label="Protocol" spellcheck="false">
+                </td>
+                <td><input type="text" list="link-cables" bind:value={link.cable} aria-label="Cable type" spellcheck="false"></td>
+                <td><input type="text" bind:value={link.strip} aria-label="Terminal strip" spellcheck="false" placeholder={control.strip || "-X2"}
+                           disabled={!(link.target === "external" && portOf(model, link.port)?.kind === "serial")}></td>
+                <td><button type="button" class="icon remove" aria-label="Remove" onclick={() => removeLink(link.id)}>✕</button></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        </div>
+        </div>
+      {/if}
+      <button type="button" class="add-row" onclick={addLink}>+ Add link</button>
+      <p class="help">Each link is one cable from a controller port. Ethernet goes to the CNS or another network device, serial ports (FBus, BMS, pLAN) are drawn as a shielded pair with − + GND.
+        A link to another controller is drawn on both controllers' pages. A pGDx display gets a data cable from the port and a supply cable from SP/SN through the control terminals. A serial port going outside the panel is drawn through its terminals and cable to a Modbus line mark with the far end written next to it.
+        A MOXA MGate gateway or EDS switch is added under Controllers on the Control tab; its ports then appear here. A gateway's page gets its own 24 V DC supply.
+        A switch is drawn with all its ports, and the controllers linked to it are drawn next to it with a UTP cable to their port.
+        The links are drawn on KOMUNIKACIJA pages after the control pages. Controllers are set up on the Control tab.</p>
     </section>
     {:else}
     <section>
@@ -1547,7 +1676,7 @@
       <h3>Protection and loads <span class="count">{rows.length}</span></h3>
       {@render rowActions()}
       {#if !rows.length}
-        <div class="empty">No devices yet · add a main switch, RCD groups and feeders with the buttons above, or paste rows from Excel</div>
+        <div class="empty">No devices yet · add a main switch, RCD groups and feeders with the buttons above or below, or paste rows from Excel</div>
       {:else}
         <div class="table-frame">
         <div class="table-scroll" bind:this={tableScroll} onscroll={measure}>
@@ -1684,6 +1813,9 @@
           <button type="button" class="pan right" aria-label="Scroll the table right" title="More columns on the right · scroll sideways or use Shift + mouse wheel" onclick={() => nudge(1)}>›</button>
         {/if}
         </div>
+      {/if}
+      <button type="button" class="add-row" onclick={() => addRow()} title="One breaker feeding one load">+ Add feeder</button>
+      {#if rows.length}
         <p class="help">Feeders with Fed from empty hang on the main rails. To group breakers under an RCD, add an RCD group and pick it as Fed from. Load "None" is a device that only feeds others.
           Several loads on one breaker: give that breaker Load "None", set the loads' Fed from to it and their Protection to "None"; each can still have its own Switched by contact.
           An empty Rating is sized automatically: feeders from their kW, RCD groups and the main switch from everything below them. Check the result against the cable and the installation rules.</p>
@@ -1707,4 +1839,114 @@
       </div>
     </form>
   </div>
+{/if}
+
+{#if libraryOpen}
+  <Modal title="Device library" subtitle="Saved devices and the custom devices of this project" width={1040} onclose={() => libraryOpen = false}>
+    <div class="library-dialog">
+    <section>
+      <h3>Library <span class="count">{library.length}</span> <span class="count">shared by all projects in this browser</span>
+        <span class="spacer"></span>
+        <button type="button" onclick={downloadLibrary} disabled={!library.length} title="Save the library as a file, to back it up or give it to a colleague">Export library</button>
+        <label class="file-button" title="Add devices from a library file · devices already in the library are updated">Import library
+          <input type="file" accept=".json,application/json" onchange={loadLibraryFile}>
+        </label>
+      </h3>
+      {#if library.length}
+        <ul class="library-list">
+          {#each library as entry (entry.id)}
+            {@const inProject = (control.templates ?? []).some((template) => template.libraryId === entry.id)}
+            <li>
+              <span class="library-name">{entry.name || "Custom device"}</span>
+              <span class="count">{entry.prefix || "no prefix"} · {entry.terminals.length} terminal{entry.terminals.length === 1 ? "" : "s"}{inProject ? " · in this project" : ""}</span>
+              <span class="spacer"></span>
+              <button type="button" onclick={() => addControl(`lib:${entry.id}`)} title="Add one to the control devices">+ Add to list</button>
+              <button type="button" class="icon remove" aria-label="Remove from the library" title="Remove from the library · projects that use it keep their copy"
+                      onclick={() => forgetLibrary(entry.id)}>✕</button>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="help">Empty · press Save to library on a custom device to keep it for other projects.</p>
+      {/if}
+    </section>
+
+    <section>
+      <h3>Custom devices in this project <span class="count">{control.templates?.length ?? 0}</span>
+        <button type="button" onclick={addTemplate} title="A device of your own · set its terminals and where each one connects">+ Custom device</button>
+      </h3>
+      {#if !control.templates?.length}
+        <div class="empty">Make a device of your own: give it a name, add its terminals and pick where each one connects. It then appears under + Add device at the end of the list.</div>
+      {:else}
+        <div class="templates">
+          {#each control.templates as template (template.id)}
+            {@const used = control.rows.filter((row) => row.type === `custom:${template.id}`).length}
+            {@const warning = templateWarning(template)}
+            {@const pairs = contactPairs(template)}
+            <div class="template">
+              <div class="template-head">
+                <label>Name <input type="text" bind:value={template.name} aria-label="Custom device name"></label>
+                <label class="short">Tag prefix <input type="text" bind:value={template.prefix} spellcheck="false" placeholder="-E"></label>
+                <label>Cable <input type="text" list="cable-types" bind:value={template.cable} spellcheck="false"></label>
+                <label class="short">Symbol
+                  <select bind:value={template.symbol}>
+                    {#each CUSTOM_SYMBOLS as symbol (symbol.id)}
+                      <option value={symbol.id}>{symbol.label}</option>
+                    {/each}
+                  </select>
+                </label>
+                <span class="spacer"></span>
+                <span class="count">{used ? `${used} in the list` : "not used yet"}</span>
+                <button type="button" onclick={() => storeTemplate(template)}
+                        title="Keep this device for other projects · a device taken from the library updates its library copy">{template.libraryId && library.some((entry) => entry.id === template.libraryId) ? "Update library" : "Save to library"}</button>
+                <button type="button" onclick={() => addControl(`custom:${template.id}`)}>+ Add to list</button>
+                <button type="button" class="icon remove" aria-label="Remove custom device" disabled={used > 0}
+                        title={used ? "Remove its devices from the list first" : "Remove"} onclick={() => removeTemplate(template.id)}>✕</button>
+              </div>
+              <table class="compact terminal-table">
+                <colgroup>
+                  <col style="width: 40px">
+                  <col style="width: 150px">
+                  <col style="width: 260px">
+                  <col>
+                  <col style="width: 30px">
+                </colgroup>
+                <thead>
+                  <tr><th>#</th><th>Terminal label</th><th>Connects to</th><th></th><th></th></tr>
+                </thead>
+                <tbody>
+                  {#each template.terminals as terminal, index (index)}
+                    {@const pair = pairs.findIndex((entry) => entry.includes(index))}
+                    <tr>
+                      <td class="current">{index + 1}</td>
+                      <td><input type="text" bind:value={terminal.label} aria-label="Terminal label" spellcheck="false"></td>
+                      <td>
+                        <select bind:value={terminal.connect} aria-label="Connects to">
+                          {#each CUSTOM_CONNECTIONS as connection (connection.id)}
+                            <option value={connection.id}>{connection.label}</option>
+                          {/each}
+                        </select>
+                      </td>
+                      <td class="current">
+                        {#if terminal.connect === "U" || terminal.connect === "ID" || terminal.connect === "Y"}picked per device under Connection
+                        {:else if pair >= 0}contact {pair + 1} · relay or controller output picked per device
+                        {:else if terminal.connect === "none"}shown on the device, no wire{/if}
+                      </td>
+                      <td><button type="button" class="icon remove" aria-label="Remove terminal" disabled={template.terminals.length <= 1}
+                                  onclick={() => template.terminals.splice(index, 1)}>✕</button></td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+              <div class="template-foot">
+                <button type="button" onclick={() => addTerminal(template)}>+ Terminal</button>
+                {#if warning}<span class="warn">{warning}</span>{/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+    </div>
+  </Modal>
 {/if}

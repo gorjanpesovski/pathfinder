@@ -15,7 +15,8 @@ export const ELECTRIC_DEFAULTS = {
   fieldDevice: { name: "-B1", params: { terminals: ["1", "2"], model: "", description: "", symbol: "" } },
   protection: { name: "-F1", params: { kind: "mcb", poles: ["L"], rating: "C10", note: "" } },
   psu: { name: "-T1", params: { kind: "dc", terminals: ["L", "N", "PE"], rating: "230VAC/24VDC" } },
-  supply: { name: "", params: { terminals: ["L1", "L2", "L3", "N", "PE"], description: "DOVOD" } }
+  supply: { name: "", params: { terminals: ["L1", "L2", "L3", "N", "PE"], description: "DOVOD" } },
+  busLine: { name: "", params: { wires: ["1", "2"], cableType: "2x2x0,8", label: "Modbus linija 1" } }
 };
 
 export const PROTECTION_KINDS = [
@@ -42,7 +43,8 @@ const SLOTTED = {
   fieldDevice: { key: "terminals", sides: ["top"] },
   protection: { key: "poles", sides: ["top", "bottom"] },
   psu: { key: "terminals", sides: ["left"] },
-  supply: { key: "terminals", sides: ["top"] }
+  supply: { key: "terminals", sides: ["top"] },
+  busLine: { key: "wires", sides: ["top"] }
 };
 
 export function slotsOf(element){
@@ -74,6 +76,7 @@ export function electricSize(type, params = {}){
   if (type === "relayCoil") return { width: 40, height: 60 };
   if (type === "changeover") return { width: 60, height: 60 };
   if (type === "relayContact") return { width: 60, height: 40 };
+  if (type === "busLine") return { width: span + 120, height: 70 };
   return { width: 40, height: 40 };
 }
 
@@ -272,8 +275,15 @@ function cable(element){
     parts.push(line(cx - 4, y + 25, cx + 4, y + 15, 1));
     parts.push(text(cx + 3, y + 13, label, { size: 7 }));
   });
-  parts.push(text(x + last + 14, y + 17, element.name, { size: 11, bold: true }));
-  parts.push(text(x + last + 14, y + 32, element.params?.cableType, { size: 8 }));
+  if (element.params?.shield && slots.length) {
+    const middle = x + (slots.length + 1) * SLOT / 2;
+    parts.push(`<ellipse cx="${middle}" cy="${y + 20}" rx="${(slots.length - 1) * SLOT / 2 + 12}" ry="8" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="3 2"/>`);
+  }
+  const left = element.params?.labelLeft;
+  const at = left ? x + SLOT - 14 : x + last + 14;
+  const anchor = left ? "end" : "start";
+  parts.push(text(at, y + 17, element.name, { size: 11, bold: true, anchor }));
+  parts.push(text(at, y + 32, element.params?.cableType, { size: 8, anchor }));
   return parts.join("");
 }
 
@@ -478,7 +488,20 @@ function relayContact(element, refs){
   return parts.join("");
 }
 
-const DRAW = { controller, terminalStrip, cable, fieldDevice, relayCoil, relayContact, protection, psu, supply, changeover };
+function busLine(element){
+  const { x, y } = element;
+  const count = Math.max(1, slotsOf(element).length);
+  const cx = x + (count + 1) * SLOT / 2;
+  const parts = [`<polygon points="${x + SLOT - 8},${y} ${x + count * SLOT + 8},${y} ${cx},${y + 30}" fill="none" stroke="${INK}" stroke-width="1.2"/>`];
+  parts.push(line(cx, y + 30, cx, y + 70, 1.5));
+  parts.push(line(cx - 4, y + 55, cx + 4, y + 45, 1));
+  parts.push(text(cx + 10, y + 50, element.params?.cableType, { size: 8 }));
+  parts.push(text(cx + 10, y + 63, element.params?.label, { size: 9 }));
+  if (element.name) parts.push(text(cx + 10, y + 37, element.name, { size: 11, bold: true }));
+  return parts.join("");
+}
+
+const DRAW = { controller, terminalStrip, cable, fieldDevice, relayCoil, relayContact, protection, psu, supply, changeover, busLine };
 
 export function electricSvg(element, refs = null){
   return DRAW[element.type]?.(element, refs) ?? "";

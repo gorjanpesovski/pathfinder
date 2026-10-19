@@ -20,8 +20,7 @@ const LARGE_BASE = [
   { id: "J15", terminals: ["NO8", "C8", "NC8"] },
   { id: "J16", terminals: ["C9", "NO9", "NO10", "NO11", "C9"] },
   { id: "J17", terminals: ["NO12", "C12", "NC12"] },
-  { id: "J18", terminals: ["NO13", "C13", "NC13"] },
-  { id: "ETH", terminals: ["ETH"] }
+  { id: "J18", terminals: ["NO13", "C13", "NC13"] }
 ];
 
 const MINI_BASE = [
@@ -34,7 +33,7 @@ const MINI_BASE = [
 ];
 
 export const CONTROLLER_MODELS = [
-  { id: "mini", label: "c.pCO mini", inputCommon: "GND", connectors: [...MINI_BASE, { id: "ETH", terminals: ["ETH"] }] },
+  { id: "mini", label: "c.pCO mini", inputCommon: "GND", connectors: MINI_BASE },
   { id: "large", label: "c.pCO Large", part: "P+500SEA00EL0", inputCommon: "SP", connectors: [
     ...LARGE_BASE,
     { id: "J19", terminals: ["ID15H", "ID15", "IDC15", "ID16", "ID16H"] },
@@ -49,7 +48,13 @@ export const CONTROLLER_MODELS = [
     { id: "J21", terminals: ["C14", ...range("NO", 14, 16), "C14"] },
     { id: "J22", terminals: ["C17", ...range("NO", 17, 20), "C17"] }
   ] },
-  { id: "pcoe", label: "c.pCOe extension", inputCommon: "GND", connectors: MINI_BASE }
+  { id: "pcoe", label: "c.pCOe extension", inputCommon: "GND", connectors: MINI_BASE },
+  { id: "mgate3180", label: "MOXA MGate MB3180", gateway: true, inputCommon: "GND", connectors: [] },
+  { id: "mgate3280", label: "MOXA MGate MB3280", gateway: true, inputCommon: "GND", connectors: [] },
+  { id: "mgate3480", label: "MOXA MGate MB3480", gateway: true, inputCommon: "GND", connectors: [] },
+  { id: "eds205", label: "MOXA EDS-205", gateway: true, switch: true, inputCommon: "GND", connectors: [] },
+  { id: "eds208", label: "MOXA EDS-208", gateway: true, switch: true, inputCommon: "GND", connectors: [] },
+  { id: "eds208a", label: "MOXA EDS-208A", gateway: true, switch: true, inputCommon: "GND", connectors: [] }
 ];
 
 export const CONTROL_TYPES = [
@@ -66,17 +71,88 @@ export const CONTROL_TYPES = [
   { id: "heatPumpStv", label: "Heat pump: alarm, on/off, heat/cool, STV", prefix: "-TČ", signals: [{ key: "alarm", label: "Alarm", kind: "ID" }, { key: "onoff", label: "On/off", kind: "relay" }, { key: "mode", label: "Heat/cool", kind: "relay" }, { key: "stv", label: "STV", kind: "relay" }], cable: "J-H(St)H 6x2x0,8mm2" },
   { id: "safetyThermostat", label: "Safety thermostat (1 SP, 2 DI, 3 spare, PE)", prefix: "-ST", contact: "NC", signals: [{ key: "in", label: "Input", kind: "ID" }], cable: "J-H(St)H 2x2x0,8mm2" },
   { id: "contact", label: "Contact input (thermostat, flow switch …)", prefix: "-S", signals: [{ key: "in", label: "Input", kind: "ID" }], cable: "J-H(St)H 2x2x0,8mm2" },
-  { id: "aux", label: "Breaker auxiliary contact (tag = breaker)", prefix: "", signals: [{ key: "in", label: "Input", kind: "ID" }], contact: "NC" },
-  { id: "ethernet", label: "Ethernet (Modbus TCP/IP)", prefix: "", signals: [{ key: "port", label: "Port", kind: "ETH" }], cable: "UTP" }
+  { id: "aux", label: "Breaker auxiliary contact (tag = breaker)", prefix: "", signals: [{ key: "in", label: "Input", kind: "ID" }], contact: "NC" }
 ];
 
 export const SIGNAL_KINDS = {
   U: /^U\d+$/,
   ID: /^ID\d+$/,
   NO: /^NO\d+$/,
-  Y: /^Y\d+$/,
-  ETH: /^ETH$/
+  Y: /^Y\d+$/
 };
+
+const ETHERNET = { id: "ETH", label: "ETH", kind: "eth", terminals: ["ETH"] };
+const serial = (id, name, label = `${id} ${name}`) => ({ id, label, kind: "serial", terminals: ["-", "+", "GND"] });
+const LARGE_PORTS = [ETHERNET, serial("J11", "pLAN"), serial("J23", "FBus2"), serial("J25", "BMS2"), serial("J26", "FBus2"), serial("BMS", "card", "BMS card"), serial("FBUS", "card", "FBus card")];
+
+const gatewayPorts = (count) => [...Array.from({ length: count }, (_, index) => ({ id: `P${index + 1}`, label: `Port ${index + 1}`, kind: "serial", terminals: ["-", "+"] })), ETHERNET];
+
+const switchPorts = (count) => Array.from({ length: count }, (_, index) => ({ id: `P${index + 1}`, label: `Port ${index + 1}`, kind: "eth", terminals: [String(index + 1)] }));
+
+export const COMM_PORTS = {
+  mini: [ETHERNET, serial("J4", "FBus"), serial("J3", "BMS")],
+  large: LARGE_PORTS,
+  xlarge: LARGE_PORTS,
+  pcoe: [serial("J6", "BMS")],
+  mgate3180: gatewayPorts(1),
+  mgate3280: gatewayPorts(2),
+  mgate3480: gatewayPorts(4),
+  eds205: switchPorts(5),
+  eds208: switchPorts(8),
+  eds208a: switchPorts(8)
+};
+
+export const PROTOCOLS = ["Modbus TCP/IP", "Modbus RTU", "BACnet/IP", "BACnet MS/TP", "FBus", "pLAN"];
+
+export const LINK_TARGETS = [
+  { id: "external", label: "Outside the panel (CNS, BMS …)" },
+  { id: "controller", label: "Another controller" },
+  { id: "display", label: "pGDx touch display" }
+];
+
+export function isGateway(model){
+  return Boolean(modelOf(model).gateway);
+}
+
+export function isSwitch(model){
+  return Boolean(modelOf(model).switch);
+}
+
+export function commPorts(model){
+  return COMM_PORTS[modelOf(model).id] ?? [];
+}
+
+export function portOf(model, id){
+  return commPorts(model).find((entry) => entry.id === id) ?? null;
+}
+
+export function linkDefaults(model, port){
+  return portOf(model, port)?.kind === "eth" ? { protocol: "Modbus TCP/IP", cable: "UTP" } : { protocol: "Modbus RTU", cable: "J-H(St)H 2x2x0,8mm2" };
+}
+
+export function newLink(control, values = {}){
+  const controller = values.controller ?? control.controllers[0]?.id ?? "";
+  const model = control.controllers.find((entry) => entry.id === controller)?.model ?? "large";
+  const busy = new Set((control.links ?? []).filter((link) => link.controller === controller).map((link) => link.port));
+  const port = values.port ?? (commPorts(model).find((entry) => !busy.has(entry.id)) ?? commPorts(model)[0])?.id ?? "";
+  const link = {
+    id: uid(),
+    tag: nextTag(control.links ?? [], "-W.K"),
+    description: "",
+    controller,
+    port,
+    target: "external",
+    text: "POVEZAVA NA CNS",
+    targetController: "",
+    targetPort: "",
+    display: "-TD1",
+    strip: "",
+    group: "",
+    ...linkDefaults(model, port)
+  };
+  for (const [key, value] of Object.entries(values)) if (value !== undefined) link[key] = value;
+  return link;
+}
 
 export function modelOf(id){
   return CONTROLLER_MODELS.find((entry) => entry.id === id) ?? CONTROLLER_MODELS[1];
@@ -226,7 +302,7 @@ function nextTag(list, prefix){
 }
 
 export function emptyControl(){
-  return { strip: "-X2", controllers: [{ id: uid(), tag: "-N1", model: "large", description: "" }], rows: [], groups: [], templates: [] };
+  return { strip: "-X2", controllers: [{ id: uid(), tag: "-N1", model: "large", description: "" }], rows: [], groups: [], templates: [], links: [], linkGroups: [] };
 }
 
 export function newController(list, values = {}){
@@ -257,9 +333,17 @@ export function normalizeControl(data){
   const controllers = Array.isArray(data.controllers) && data.controllers.length
     ? data.controllers.filter((entry) => entry && typeof entry === "object").map((entry) => ({ id: entry.id || uid(), tag: entry.tag ?? "", model: modelOf(entry.model).id, description: entry.description ?? "" }))
     : base.controllers;
-  const control = { strip: typeof data.strip === "string" ? data.strip : base.strip, controllers, rows: [], groups: [], templates: normalizeTemplates(data.templates) };
-  control.rows = Array.isArray(data.rows) ? data.rows.filter((row) => row && typeof row === "object").map((row) => newControlRow(control, { ...row, signals: { ...(row.signals ?? {}) }, id: row.id || uid() })) : [];
+  const control = { strip: typeof data.strip === "string" ? data.strip : base.strip, controllers, rows: [], groups: [], templates: normalizeTemplates(data.templates), links: [] };
+  const rows = Array.isArray(data.rows) ? data.rows.filter((row) => row && typeof row === "object") : [];
+  for (const link of Array.isArray(data.links) ? data.links : []) {
+    if (link && typeof link === "object") control.links.push(newLink(control, { ...link, id: link.id || uid() }));
+  }
+  for (const row of rows.filter((entry) => entry.type === "ethernet")) {
+    control.links.push(newLink(control, { controller: row.controller, port: "ETH", tag: row.tag ? `-W.${String(row.tag).replace(/^-/, "")}` : undefined, text: row.description || "POVEZAVA NA CNS", cable: row.cable || "UTP", protocol: "Modbus TCP/IP" }));
+  }
+  control.rows = rows.filter((row) => row.type !== "ethernet").map((row) => newControlRow(control, { ...row, signals: { ...(row.signals ?? {}) }, id: row.id || uid() }));
   control.groups = normalizeGroups(data.groups, control.rows);
+  control.linkGroups = normalizeGroups(data.linkGroups, control.links);
   return control;
 }
 
@@ -338,7 +422,6 @@ function layoutOf(type, control = null){
   if (type === "heatPumpStv") return { device: ["ALARM", "ALARM", "", "ON/OFF", "ON/OFF", "", "HL/GR", "HL/GR", "", "STV", "STV"], slots: 11 };
   if (type === "contact") return { device: ["1", "2"], slots: 2 };
   if (type === "safetyThermostat") return { device: ["1", "2", "3", "PE"], spare: [2], slots: 4 };
-  if (type === "ethernet") return { device: ["ETH"], slots: 1 };
   if (type === "relay" || type === "contactor") return { device: [], slots: 1, width: 160 };
   return { device: [], slots: 2 };
 }
@@ -347,9 +430,10 @@ function columnWidth(row, control){
   const layout = layoutOf(row.type, control);
   if (layout.width) return layout.width;
   const box = Math.max(120, (layout.device.length + 1) * SLOT);
-  const text = noteWidth(row.description, box);
-  return snapUp(Math.max(LEAD + (layout.slots + 1) * SLOT + TAIL, LEAD - SLOT + box + SLOT - (LEAD - SLOT), LEAD - SLOT + text + 12 - 60, LEAD + layout.slots * SLOT + 110 - 56));
+  return snapUp(Math.max(LEAD + (layout.slots + 1) * SLOT + TAIL, LEAD - SLOT + box + 20, LEAD + layout.slots * SLOT + 54));
 }
+
+const MAX_EXTRA = 120;
 
 export function drawControl(control, power, nextId, paper = paperOf(), firstPage = 0){
   const shapes = [];
@@ -387,18 +471,18 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
 
   const pages = [];
   let page = null;
-  const openPage = (ctrl, sheet) => {
+  const openPage = (ctrl, sheet, rails = media) => {
     const index = firstPage + pages.length;
     const left = pageLeft(index, paper);
     const from = left + paper.frame.left + 20;
     const to = left + paper.frame.right - 20;
-    const plus = pipe({ x: from, y: Y.rail }, { x: to, y: Y.rail }, media.plus);
-    const minus = pipe({ x: from, y: Y.neutral }, { x: to, y: Y.neutral }, media.minus);
+    const plus = pipe({ x: from, y: Y.rail }, { x: to, y: Y.rail }, rails.plus);
+    const minus = pipe({ x: from, y: Y.neutral }, { x: to, y: Y.neutral }, rails.minus);
     const start = snapUp(from + 20);
     [plus, minus].forEach((rail) => anchor(rail, "from", "to"));
     const model = modelOf(ctrl.model);
-    const box = element("controller", start + 20, Y.controller, ctrl.tag || "-N1", { model: [`Controller ${model.label}`, model.part ? `(${model.part})` : ""].filter(Boolean).join(" "), terminals: [], marks: [] }, sheet);
-    const created = { index, from, to, start, plus, minus, bus: null, busEnd: start, ctrl, model, box, terms: new Map(), grounds: new Map(), coils: new Map(), cursor: start, limit: to - 10, sheet };
+    const box = element("controller", start + 20, Y.controller, ctrl.tag || "-N1", { model: [model.gateway ? model.label : `Controller ${model.label}`, model.part ? `(${model.part})` : ""].filter(Boolean).join(" "), terminals: [], marks: [] }, sheet);
+    const created = { index, from, to, start, plus, minus, rails, bus: null, busEnd: start, ctrl, model, box, terms: new Map(), grounds: new Map(), coils: new Map(), cursor: start, limit: to - 10, sheet };
     pages.push(created);
     page = created;
     return created;
@@ -409,16 +493,17 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
   };
   const busAt = (target, x) => {
     if (!target.bus) {
-      target.bus = pipe({ x: target.start, y: Y.spBus }, { x: target.start, y: Y.spBus }, media.plus);
+      target.bus = pipe({ x: target.start, y: Y.spBus }, { x: target.start, y: Y.spBus }, target.rails.plus);
       target.bus.railEnds = [];
-      wire(tap(target.plus, target.start), tap(target.bus, target.start));
+      anchor(target.bus, "from");
+      anchor(wire(tap(target.plus, target.start), tap(target.bus, target.start)), "from", "to");
     }
     target.busEnd = Math.max(target.busEnd, x);
     return tap(target.bus, x);
   };
   const closePage = (target) => {
     if (target.bus) target.bus.to = { ...target.bus.to, x: target.busEnd };
-    const columns = Math.max(1, Math.round((target.cursor - target.box.x) / SLOT) - 1);
+    const columns = Math.max(1, Math.round(((target.boxEnd ?? target.cursor) - target.box.x) / SLOT) - 1);
     const terminals = Array(columns).fill("");
     const marks = Array(columns).fill("");
     for (const [x, entry] of target.terms) {
@@ -499,7 +584,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
     const symbol = row.type === "ntc" || row.type === "pt1000" || row.type === "pressure" ? "sensor" : row.type === "pumpSsm" ? "motor" : type.custom?.symbol ?? "";
     const device = element("fieldDevice", ex, Y.load, tag, { terminals: layout.device, model: row.model, description: "", symbol });
     device.source = { ...device.source, controlRow: row.id };
-    const caption = noteText(row.description, device.x, device.y + device.height + 8, noteWidth(row.description, device.width), nextId(), device.source);
+    const caption = noteText(row.description, device.x, device.y + device.height + 8, Math.max(device.width, x0 + widthOf(row) - device.x - 12), nextId(), device.source);
     if (caption) shapes.push(caption);
     layout.device.forEach((label, index) => {
       if (!wired(label, index)) return;
@@ -540,7 +625,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
   const drawRow = (row, target) => {
     const type = controlTypeOf(row.type, control);
     const signal = (key) => row.signals?.[key] ?? "";
-    const x0 = place(columnWidth(row, control));
+    const x0 = place(widthOf(row));
     const t = page;
     const slot = (index) => x0 + LEAD + index * SLOT;
     if (row.type === "ntc" || row.type === "pt1000") {
@@ -632,11 +717,6 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
         });
         contactPairs(template).forEach(([a, b], position) => switched(signal(`k${position}`), x0, a, b, top, position % 2 ? Y.contactLow : Y.contact, b > a ? "B" : "BL"));
       });
-    } else if (row.type === "ethernet") {
-      fieldColumn(row, x0, ({ top }) => {
-        const portName = signal("port");
-        if (portName) wire(term(t, portName, slot(0)), top(0));
-      }, true);
     } else if (row.type === "aux") {
       const input = signal("in");
       const contact = element("protection", slot(0) - SLOT, Y.contact, row.tag || "-F", { kind: "contact", poles: ["L"], rating: "", note: "" });
@@ -647,7 +727,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
     } else if (isRelayType(row.type)) {
       const coil = element("relayCoil", slot(0) - SLOT, Y.coil, row.tag || "-K", { note: "", contacts: [] });
       coil.source = { ...coil.source, controlRow: row.id };
-      const caption = noteText(row.description, coil.x, Y.load, Math.min(noteWidth(row.description, 100), layoutOf(row.type, control).width - 20), nextId(), coil.source);
+      const caption = noteText(row.description, coil.x, Y.load, Math.max(80, widthOf(row) - 20), nextId(), coil.source);
       if (caption) shapes.push(caption);
       wire({ id: coil.id, side: "bottom", offset: 20 }, tap(t.minus, slot(0)));
       const output = signal("coil");
@@ -675,9 +755,36 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
     }
     return list;
   };
+  const planned = new Map();
+  const widthOf = (row) => planned.get(row.id) ?? columnWidth(row, control);
+  const span = (paper.frame.right - 30) - snapUp(paper.frame.left + 40);
+  const planRows = (rows) => {
+    let current = [];
+    let used = 0;
+    const flush = () => {
+      if (!current.length) return;
+      const widest = Math.max(...current.map(([, width]) => width));
+      const even = Math.min(widest + MAX_EXTRA, Math.floor(span / current.length / GRID) * GRID);
+      const extra = Math.max(0, Math.min(MAX_EXTRA, Math.floor((span - used) / current.length / GRID) * GRID));
+      for (const [row, width] of current) planned.set(row.id, even >= widest ? even : width + extra);
+      current = [];
+      used = 0;
+    };
+    for (const batch of batches(rows)) {
+      const together = batch.reduce((sum, row) => sum + columnWidth(row, control), 0);
+      if (batch.length > 1 && used > 0 && used + together > span && together <= span) flush();
+      for (const row of batch) {
+        const width = columnWidth(row, control);
+        if (used > 0 && used + width > span) flush();
+        current.push([row, width]);
+        used += width;
+      }
+    }
+    flush();
+  };
   const keepTogether = (rows) => {
     if (rows.length < 2) return;
-    const width = rows.reduce((sum, row) => sum + columnWidth(row, control), 0);
+    const width = rows.reduce((sum, row) => sum + widthOf(row), 0);
     if (page.cursor + width > page.limit && page.cursor > page.box.x && width <= page.limit - page.start) {
       const ctrl = page.ctrl;
       closePage(page);
@@ -685,8 +792,12 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
     }
   };
 
+  const controllerOf = (id) => control.controllers.find((entry) => entry.id === id);
+  const links = (control.links ?? []).filter((link) => portOf(controllerOf(link.controller)?.model, link.port));
+  const linked = (ctrl) => links.some((link) => link.controller === ctrl.id || (link.target === "controller" && link.targetController === ctrl.id));
   const active = control.controllers.filter((ctrl) => control.rows.some((row) => row.controller === ctrl.id));
   for (const ctrl of active) {
+    planRows(control.rows.filter((entry) => entry.controller === ctrl.id));
     openPage(ctrl, "KRMILJE");
     for (const batch of batches(control.rows.filter((entry) => entry.controller === ctrl.id))) {
       keepTogether(batch);
@@ -694,7 +805,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
     }
     closePage(page);
   }
-  for (const ctrl of active) {
+  for (const ctrl of control.controllers.filter((entry) => !modelOf(entry.model).gateway && (active.includes(entry) || linked(entry)))) {
     const supply = openPage(ctrl, "NAPAJANJE KRMILNIKA");
     supplyTerminals(ctrl.model).forEach(([name, rail], index) => {
       const x = supply.cursor + LEAD + index * SLOT;
@@ -706,10 +817,160 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
     closePage(supply);
   }
 
+  const linkWidth = (count) => snapUp(LEAD + count * SLOT + 150);
+  const portTerms = (target, iface, x) => iface.terminals.map((name, index) => term(target, name, x + index * SLOT, index ? "" : iface.label));
+  const caption = (lines, x, y, width, source) => {
+    const note = noteText(lines.filter(Boolean).join("\n"), x, y, width, nextId(), source);
+    if (note) shapes.push(note);
+  };
+  const SHEET = "KOMUNIKACIJA";
+  const drawLink = (link) => {
+    const ctrl = controllerOf(link.controller);
+    const iface = portOf(ctrl.model, link.port);
+    const display = link.target === "display";
+    const indent = display ? 120 : 0;
+    const x0 = place(display ? snapUp(indent + LEAD + 5 * SLOT + 160) : linkWidth(iface.terminals.length));
+    const t = page;
+    const slot = (index) => x0 + indent + LEAD + index * SLOT;
+    const ex = x0 + indent + LEAD - SLOT;
+    const source = { power: true, control: true, controlLink: link.id };
+    const tops = portTerms(t, iface, slot(0));
+    if (link.target === "external" && iface.kind === "serial") {
+      const stripName = link.strip || control.strip || "-X2";
+      const strip = element("terminalStrip", ex, Y.strip, stripName, { terminals: iface.terminals.map(() => nextTerminal(stripName)) }, SHEET);
+      const cable = element("cable", ex, Y.cable, link.tag || "-W.K", { conductors: iface.terminals.map((_, index) => String(index + 1)), cableType: link.cable, shield: true }, SHEET);
+      const line = element("busLine", ex, Y.load, "", { wires: iface.terminals.map((_, index) => String(index + 1)), cableType: link.cable, label: link.text }, SHEET);
+      tops.forEach((endpoint, index) => {
+        wire(endpoint, port(strip, "top", index));
+        wire(port(strip, "bottom", index), port(cable, "top", index));
+        wire(port(cable, "bottom", index), port(line, "top", index));
+      });
+      caption([link.protocol, link.description], slot(0) - 30, Y.load + 84, 200, source);
+      return;
+    }
+    if (display) {
+      const stripName = control.strip || "-X2";
+      const strip = element("terminalStrip", ex, Y.strip, stripName, { terminals: [0, 1, 2, 3, 4].map(() => nextTerminal(stripName)) }, SHEET);
+      const data = element("cable", ex, Y.cable, link.tag || "-W.TD2", { conductors: ["1", "2", "3"], cableType: link.cable, shield: iface.kind === "serial", labelLeft: true }, SHEET);
+      const feed = element("cable", ex + 3 * SLOT, Y.cable, `${link.tag || "-W.TD2"}N`, { conductors: ["1", "2"], cableType: "FLAME-JZ-H FRNC 3x1,0 mm2" }, SHEET);
+      const device = element("fieldDevice", ex, Y.load, link.display || "-TD1", { terminals: ["-", "+", "GND", "+24", "-24"], model: "PGDX", description: "", symbol: "" }, SHEET);
+      tops.slice(0, 3).forEach((endpoint, index) => {
+        wire(endpoint, port(strip, "top", index));
+        wire(port(strip, "bottom", index), port(data, "top", index));
+        wire(port(data, "bottom", index), port(device, "top", index));
+      });
+      wire(busAt(t, slot(3)), port(strip, "top", 3));
+      wire(tap(t.minus, slot(4)), port(strip, "top", 4));
+      [3, 4].forEach((index) => {
+        wire(port(strip, "bottom", index), port(feed, "top", index - 3));
+        wire(port(feed, "bottom", index - 3), port(device, "top", index));
+      });
+      const text = link.description || "ZASLON NA DOTIK";
+      caption([text, link.protocol], device.x, device.y + device.height + 8, noteWidth(text, device.width), source);
+      return;
+    }
+    const cable = element("cable", ex, Y.cable, link.tag || "-W.K", { conductors: iface.terminals.map((_, index) => String(index + 1)), cableType: link.cable, shield: iface.kind === "serial" }, SHEET);
+    tops.forEach((endpoint, index) => {
+      wire(endpoint, port(cable, "top", index));
+      wire(port(cable, "bottom", index), { x: slot(index), y: Y.load + 10 });
+    });
+    const other = link.target === "controller" ? controllerOf(link.targetController) : null;
+    const otherPort = other ? portOf(other.model, link.targetPort) : null;
+    const to = other ? `POVEZAVA NA ${other.tag || "?"}${otherPort ? ` ${otherPort.label}` : ""}` : link.text;
+    caption([to, link.protocol, link.description], slot(0) - 30, Y.load + 26, 200, source);
+  };
+  const drawIncoming = (link) => {
+    const ctrl = controllerOf(link.targetController);
+    const iface = portOf(ctrl.model, link.targetPort);
+    if (!iface) return;
+    const x0 = place(linkWidth(iface.terminals.length));
+    const t = page;
+    const slot = (index) => x0 + LEAD + index * SLOT;
+    portTerms(t, iface, slot(0)).forEach((endpoint, index) => wire(endpoint, { x: slot(index), y: Y.cable + 20 }));
+    const from = controllerOf(link.controller);
+    caption([`POVEZAVA NA ${from?.tag || "?"} ${portOf(from?.model, link.port)?.label ?? ""}`.trim(), link.tag, link.protocol], slot(0) - 30, Y.cable + 36, 200, { power: true, control: true, controlLink: link.id });
+  };
+  const switchOf = (id) => Boolean(modelOf(controllerOf(id)?.model).switch);
+  const toController = (link) => link.target === "controller" && controllerOf(link.targetController);
+  const onSwitch = (link) => toController(link) && (switchOf(link.controller) || switchOf(link.targetController));
+  const boxModel = (model) => [model.gateway ? model.label : `Controller ${model.label}`, model.part ? `(${model.part})` : ""].filter(Boolean).join(" ");
+  const drawSwitch = (ctrl) => {
+    const ports = commPorts(ctrl.model);
+    const x0 = place(snapUp(LEAD + (ports.length + 3) * SLOT));
+    const t = page;
+    const slot = (index) => x0 + LEAD + index * SLOT;
+    wire(term(t, "+", slot(0)), busAt(t, slot(0)));
+    wire(term(t, "-", slot(1)), tap(t.minus, slot(1)));
+    const portX = new Map(ports.map((entry, index) => [entry.id, slot(index + 2)]));
+    for (const entry of ports) term(t, entry.terminals[0], portX.get(entry.id));
+    t.boxEnd = t.cursor;
+    const own = links.filter((link) => link.controller === ctrl.id || (link.target === "controller" && link.targetController === ctrl.id));
+    let outside = 0;
+    for (const link of own.filter((entry) => entry.controller === ctrl.id && !toController(entry))) {
+      const x = portX.get(link.port);
+      if (x === undefined) continue;
+      const y = Y.cable - outside * 60;
+      const cable = element("cable", x - SLOT, y, link.tag || "-W.K", { conductors: ["1"], cableType: link.cable }, SHEET);
+      wire({ id: t.box.id, side: "bottom", offset: x - t.box.x }, port(cable, "top", 0));
+      wire(port(cable, "bottom", 0), { x, y: Y.load + 10 });
+      caption([link.text, link.protocol, link.description], x - 30, Y.load + 26 + outside * 40, 200, { power: true, control: true, controlLink: link.id });
+      outside += 1;
+    }
+    const peers = new Map();
+    let lane = 0;
+    for (const link of own.filter(toController)) {
+      const mine = link.controller === ctrl.id;
+      const peer = controllerOf(mine ? link.targetController : link.controller);
+      const peerPort = portOf(peer?.model, mine ? link.targetPort : link.port);
+      const x = portX.get(mine ? link.port : link.targetPort);
+      if (!peer || !peerPort || x === undefined || peer.id === ctrl.id) continue;
+      if (!peers.has(peer.id)) {
+        const left = place(snapUp(240));
+        const box = element("controller", left, Y.controller, peer.tag || "-N", { model: boxModel(modelOf(peer.model)), terminals: [peerPort.terminals[0]], marks: [peerPort.label] }, SHEET);
+        peers.set(peer.id, box);
+      }
+      const box = peers.get(peer.id);
+      const px = box.x + SLOT;
+      const y = Y.spBus + 50 + lane * 20;
+      lane += 1;
+      const cable = element("cable", px - SLOT, y - 54, link.tag || "-W.K", { conductors: ["1"], cableType: link.cable }, SHEET);
+      wire({ id: t.box.id, side: "bottom", offset: x - t.box.x }, port(cable, "bottom", 0), [{ x, y }, { x: px, y }]);
+      wire(port(cable, "top", 0), { id: box.id, side: "bottom", offset: SLOT });
+    }
+  };
+  for (const ctrl of control.controllers) {
+    const switchPage = Boolean(modelOf(ctrl.model).switch);
+    const outgoing = links.filter((link) => link.controller === ctrl.id && !onSwitch(link));
+    const incoming = links.filter((link) => link.target === "controller" && link.targetController === ctrl.id && link.controller !== ctrl.id && !onSwitch(link));
+    if (switchPage) {
+      if (!links.some((link) => link.controller === ctrl.id || (link.target === "controller" && link.targetController === ctrl.id))) continue;
+      openPage(ctrl, SHEET);
+      drawSwitch(ctrl);
+      closePage(page);
+      continue;
+    }
+    if (!outgoing.length && !incoming.length) continue;
+    const gatewayPage = Boolean(modelOf(ctrl.model).gateway);
+    openPage(ctrl, SHEET, gatewayPage ? { plus: "dcPlus", minus: "dcMinus" } : media);
+    if (gatewayPage) {
+      const x0 = place(snapUp(LEAD + 3 * SLOT));
+      wire(term(page, "+", x0 + LEAD, "24 VDC"), busAt(page, x0 + LEAD));
+      wire(term(page, "-", x0 + LEAD + SLOT), tap(page.minus, x0 + LEAD + SLOT));
+    }
+    outgoing.forEach(drawLink);
+    incoming.forEach(drawIncoming);
+    closePage(page);
+  }
+
   for (const entry of pages) {
     const content = entry.cursor - entry.box.x + SLOT;
     const offset = Math.floor((entry.from + entry.to - (entry.box.x - SLOT) - entry.cursor) / 2 / GRID) * GRID;
-    if (offset <= 0 || content <= 0) continue;
+    const left = entry.box.x;
+    const fullWidth = entry.boxEnd === undefined;
+    if (offset <= 0 || content <= 0) {
+      if (fullWidth) widen(entry, left, 0);
+      continue;
+    }
     const here = (x) => pageIndex(x, paper) === entry.index;
     for (const shape of shapes) {
       if (shape.kind === "equipment" || shape.kind === "text") {
@@ -723,8 +984,24 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
       }
       shape.points = (shape.points ?? []).map((point) => here(point.x) ? { ...point, x: point.x + offset } : point);
     }
+    if (fullWidth) widen(entry, left, offset);
   }
   return { shapes, pages: pages.length };
+
+  function widen(entry, left, offset){
+    const box = entry.box;
+    const right = Math.floor((entry.to - 20 - left) / SLOT) * SLOT + left;
+    const lead = Array(offset / SLOT).fill("");
+    const count = (right - left) / SLOT - 1;
+    const fit = (list) => [...lead, ...list].concat(Array(count).fill("")).slice(0, count);
+    box.params = { ...box.params, terminals: fit(box.params.terminals ?? []), marks: fit(box.params.marks ?? []) };
+    Object.assign(box, electricSize("controller", box.params));
+    box.x = left;
+    for (const shape of shapes) {
+      if (shape.kind !== "pipe") continue;
+      for (const end of ["from", "to"]) if (shape[end]?.id === box.id) shape[end] = { ...shape[end], offset: shape[end].offset + offset };
+    }
+  }
 }
 
 export function crossReference(shapes, paper = paperOf()){

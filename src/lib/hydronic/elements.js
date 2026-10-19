@@ -53,13 +53,14 @@ export const HYDRONIC_ELEMENTS = {
   fieldDevice: { label: "Field device", ...electricSize("fieldDevice"), electric: true, ownLabel: true },
   protection: { label: "Protection device", ...electricSize("protection"), electric: true, ownLabel: true },
   psu: { label: "Power supply", ...electricSize("psu"), electric: true, ownLabel: true },
-  supply: { label: "Incoming supply", ...electricSize("supply"), electric: true, ownLabel: true }
+  supply: { label: "Incoming supply", ...electricSize("supply"), electric: true, ownLabel: true },
+  busLine: { label: "Bus line", ...electricSize("busLine"), electric: true, ownLabel: true }
 };
 
 export const ELECTRIC_GROUPS = [
   { id: "power", label: "Power", items: ["supply", "protection", "psu"] },
   { id: "control", label: "Control", items: ["controller", "relayCoil", "relayContact", "changeover"] },
-  { id: "wiring", label: "Wiring", items: ["terminalStrip", "cable", "fieldDevice"] }
+  { id: "wiring", label: "Wiring", items: ["terminalStrip", "cable", "fieldDevice", "busLine"] }
 ];
 
 export function isElectricType(type){
