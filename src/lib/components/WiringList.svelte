@@ -5,11 +5,12 @@
 <script>
   import { PROTECTION_KINDS } from "$lib/electric/symbols.js";
   import { expand, moveRows, moveBy, addToGroup, ungroup, dissolve, copyRows, pasteRows } from "$lib/electric/rowGroups.js";
-  import { POLES, LOADS, PHASES, COLUMNS, SYSTEMS, CABLE_TYPES, LOAD_LIBRARY, newPowerRow, libraryRow, parsePowerTable, powerTable, powerTree, powerSizing, loadTags, loadOf, formatNumber } from "$lib/electric/power.js";
+  import { POLES, LOADS, PHASES, SYSTEMS, CABLE_TYPES, LOAD_LIBRARY, newPowerRow, libraryRow, productRow, powerTable, poleOf, powerTree, powerSizing, loadTags, loadOf, formatNumber } from "$lib/electric/power.js";
   import { CONTROLLER_MODELS, CONTROL_TYPES, controlTypeOf, modelTerminals, newController, newControlRow, terminalUse, contactUse, isRelayType, sharesOutput, CUSTOM_CONNECTIONS, CUSTOM_SYMBOLS, newTemplate, customTypes, contactPairs, commPorts, portOf, linkDefaults, newLink, PROTOCOLS, LINK_TARGETS, isGateway } from "$lib/electric/control.js";
   import { portal } from "$lib/actions/portal.js";
   import Modal from "./Modal.svelte";
   import Combo from "./Combo.svelte";
+  import { allProducts, productOf, productLabel, productRcd, saveProduct, removeProduct, isBuiltIn, builtInOf } from "$lib/electric/loadProducts.js";
   import { loadLibrary, saveToLibrary, removeFromLibrary, templateFromLibrary, exportLibrary, importLibrary } from "$lib/electric/deviceLibrary.js";
 
   let { power = $bindable(), control = $bindable(), ondraw, onnotice } = $props();
@@ -156,7 +157,7 @@
   function listKeydown(event){
     const target = event.target;
     const typing = (target instanceof HTMLInputElement && target.type !== "checkbox") || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
-    if (typing || pasting) return;
+    if (typing || loadLibraryOpen) return;
     const ctrl = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
     if (ctrl && key === "a") selected = owner.rows.map((row) => row.id);
@@ -241,6 +242,36 @@
     if (count("gnd") && !count("U")) return "GND of the analog input needs an analog input U";
     if (count("common") && !count("ID")) return "Digital input common needs a digital input ID";
     return "";
+  }
+
+  let deviceTab = $state("library");
+  let deviceSearch = $state("");
+  let deviceOpen = $state(null);
+  let openTemplate = $derived(deviceOpen?.kind === "project" ? (control.templates ?? []).find((template) => template.id === deviceOpen.id) ?? null : deviceOpen?.draft ?? null);
+
+  function openDevice(kind, id){
+    if (kind === "project") {
+      deviceOpen = { kind, id };
+      return;
+    }
+    const entry = library.find((item) => item.id === id);
+    if (entry) deviceOpen = { kind, id, draft: { ...JSON.parse(JSON.stringify(entry)), libraryId: entry.id } };
+  }
+
+  function newDevice(){
+    addTemplate();
+    deviceTab = "project";
+    deviceOpen = { kind: "project", id: control.templates[control.templates.length - 1].id };
+  }
+
+  function saveLibraryDevice(){
+    if (deviceOpen?.draft) storeTemplate(deviceOpen.draft);
+    deviceOpen = null;
+  }
+
+  function deviceSummary(template){
+    const count = template.terminals?.length ?? 0;
+    return [template.prefix || "no prefix", `${count} terminal${count === 1 ? "" : "s"}`, template.cable].filter(Boolean).join(" · ");
   }
 
   function addLink(){
@@ -341,12 +372,14 @@
     return controlTypeOf(row.type, control).signals.some((signal) => signal.kind === "ID");
   }
 
-  let pasting = $state(null);
-  let pasteArea = $state(null);
-
   let rows = $derived(power.rows);
   let tree = $derived(powerTree(power));
-  let sizing = $derived(powerSizing(power));
+  let products = $state(allProducts());
+  let loadLibraryOpen = $state(false);
+  let draft = $state(null);
+  let libraryTab = $state("products");
+  let librarySearch = $state("");
+  let sizing = $derived((products, powerSizing(power)));
   const GROUP_TINTS = [
     { fill: "#eff6ff", line: "#3b82f6" },
     { fill: "#f0fdf4", line: "#22c55e" },
@@ -375,7 +408,26 @@
     power.rows.push(newPowerRow(power.rows, values));
   }
 
+  let productModels = $derived(products.map((product) => product.model));
+
+  function setLoadData(row, value){
+    const product = productOf(value);
+    if (!product) return;
+    row.loadData = product.model;
+    row.load = product.load;
+    if (!row.power && product.power?.max) row.power = formatNumber(product.power.max, 3);
+    if (!row.cable) row.cable = product.cable ?? "";
+    if (!row.description) row.description = product.description ?? "";
+  }
+
+  let checkList = $derived(power.rows.filter((row) => sizing.checks?.get(row.id)?.length).map((row) => ({ row, notes: sizing.checks.get(row.id) })));
+
   function addFromLibrary(id){
+    if (id.startsWith("product:")) {
+      const product = products.find((item) => item.article === id.slice(8));
+      if (product) power.rows.push(productRow(power.rows, product));
+      return;
+    }
     const entry = LOAD_LIBRARY.find((item) => item.id === id);
     if (!entry) return;
     const poles = power.supply.phases === 1 && entry.poles.startsWith("3") ? "1p" : entry.poles;
@@ -467,30 +519,103 @@
     if (loadOf(id).cabinet && row.poles.startsWith("3")) row.poles = "1p";
   }
 
-  function startPaste(){
-    pasting = { text: "" };
-    setTimeout(() => pasteArea?.focus(), 0);
+  const LIBRARY_LOADS = LOADS.filter((entry) => entry.id !== "none" && !entry.cabinet);
+  const RCD_TYPES = [{ id: "", label: "Not stated" }, { id: "AC", label: "AC" }, { id: "A", label: "A" }, { id: "F", label: "F" }, { id: "B", label: "B" }];
+
+  function text(value){
+    return value === undefined || value === null || value === 0 ? "" : String(value).replace(".", ",");
   }
 
-  function finishPaste(event){
-    event.preventDefault();
-    const added = parsePowerTable(pasting.text, power.rows);
-    pasting = null;
-    if (!added.length) {
-      onnotice?.("No rows found in the pasted text");
-      return;
-    }
-    power.rows.push(...added);
-    onnotice?.(`Added ${added.length} row${added.length === 1 ? "" : "s"}`);
+  function num(value){
+    const number = Number(String(value ?? "").trim().replace(",", "."));
+    return Number.isFinite(number) && number > 0 ? number : 0;
   }
 
-  async function copyTable(){
-    try {
-      await navigator.clipboard.writeText(powerTable(power.rows));
-      onnotice?.("Copied the power list · paste it into Excel");
-    } catch {
-      onnotice?.("The browser did not allow copying");
-    }
+  function newDraft(product = null){
+    draft = {
+      previous: product?.article ?? "",
+      article: product?.article ?? "",
+      manufacturer: product?.manufacturer ?? "",
+      model: product?.model ?? "",
+      description: product?.description ?? "",
+      load: product?.load ?? "motor",
+      poles: product?.poles ?? "1p",
+      protection: product?.protection ?? "mcb",
+      cable: product?.cable ?? "",
+      power: text(product?.power?.max),
+      current: text(product?.current?.max),
+      inrush: text(product?.inrush),
+      leakage: text(product?.leakage),
+      rcd: productRcd(product),
+      contact: text(product?.contact?.current),
+      terminalMin: text(product?.terminals?.min),
+      terminalMax: text(product?.terminals?.max),
+      motorProtection: product?.motorProtection ?? false,
+      link: product?.link ?? ""
+    };
+  }
+
+  let draftError = $derived.by(() => {
+    if (!draft) return "";
+    if (!draft.article.trim()) return "Enter the article number";
+    if (!draft.model.trim()) return "Enter the model";
+    if (!num(draft.current) && !num(draft.power)) return "Enter the max current or the power";
+    if (draft.article.trim() !== draft.previous && products.some((product) => product.article === draft.article.trim())) return "That article number is already in the library";
+    if (draft.model.trim() !== products.find((product) => product.article === draft.previous)?.model && products.some((product) => product.model === draft.model.trim())) return "That model is already in the library";
+    return "";
+  });
+
+  function storeDraft(){
+    if (!draft || draftError) return;
+    const lines = draft.poles.startsWith("3") ? 3 : 1;
+    const old = products.find((entry) => entry.article === draft.previous);
+    const product = {
+      ...(old ?? {}),
+      article: draft.article.trim(),
+      manufacturer: draft.manufacturer.trim(),
+      model: draft.model.trim(),
+      description: draft.description.trim(),
+      load: draft.load,
+      poles: draft.poles,
+      protection: draft.protection,
+      cable: draft.cable.trim(),
+      supply: { ...(old?.supply ?? {}), voltage: lines === 3 ? 400 : 230, phases: lines },
+      power: { ...(old?.power ?? {}), max: num(draft.power) },
+      current: { ...(old?.current ?? {}), max: num(draft.current) },
+      inrush: num(draft.inrush),
+      leakage: num(draft.leakage),
+      rcd: draft.rcd,
+      contact: num(draft.contact) ? { current: num(draft.contact), voltage: 250 } : null,
+      terminals: num(draft.terminalMin) || num(draft.terminalMax) ? { min: num(draft.terminalMin), max: num(draft.terminalMax) || 999 } : null,
+      motorProtection: draft.motorProtection,
+      link: draft.link.trim()
+    };
+    if (!saveProduct(product, draft.previous || product.article)) onnotice?.("The browser did not allow saving the library");
+    if (old && old.model !== product.model) for (const row of power.rows) if (row.loadData === old.model) row.loadData = product.model;
+    products = allProducts();
+    draft = null;
+  }
+
+  function matches(query, ...fields){
+    const words = String(query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+    const haystack = fields.join(" ").toLowerCase();
+    return words.every((word) => haystack.includes(word));
+  }
+
+  function forgetProduct(article){
+    removeProduct(article);
+    products = allProducts();
+  }
+
+  function productSummary(product){
+    return [
+      product.article,
+      poleOf(product.poles).lines === 3 ? "3~ 400 V" : "1~ 230 V",
+      product.current?.max ? `${text(product.current.max)} A` : "",
+      product.power?.max ? `${text(product.power.max)} kW` : "",
+      product.inrush ? `peak ${text(product.inrush)} A` : "",
+      productRcd(product) ? `RCD ${productRcd(product)}` : ""
+    ].filter(Boolean).join(" · ");
   }
 
   function draw(){
@@ -786,21 +911,6 @@
     background: #f8fafc;
   }
 
-  .library-dialog {
-    font-size: 12px;
-    color: #334155;
-  }
-
-  .library-dialog section + section {
-    margin-top: 18px;
-  }
-
-  .library-dialog h3 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
   .inline-field {
     display: inline-flex;
     white-space: nowrap;
@@ -891,62 +1001,6 @@
     cursor: pointer;
   }
 
-  h3 button {
-    margin-left: 8px;
-  }
-
-  .templates {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .template {
-    padding: 10px 12px;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    background: #ffffff;
-  }
-
-  .template-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 8px 12px;
-    margin-bottom: 8px;
-  }
-
-  .template-head label {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    width: 200px;
-    font-weight: 600;
-    color: #475569;
-  }
-
-  .template-head label.short {
-    width: 120px;
-  }
-
-  .template table.terminal-table {
-    max-width: 760px;
-  }
-
-  .template table.terminal-table td {
-    padding: 4px 6px;
-  }
-
-  .template-foot {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 8px;
-  }
-
-
-
-
   .file-button {
     display: inline-flex;
     align-items: center;
@@ -968,37 +1022,27 @@
     display: none;
   }
 
-  .library-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    max-width: 560px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .library-list li {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 3px 4px;
-    border-radius: 4px;
-  }
-
-  .library-list li:hover {
-    background: #f8fafc;
-  }
-
-  .library-name {
-    flex: 1;
-    font-weight: 600;
-    color: #0f172a;
-  }
-
   .warn {
     color: #b45309;
     font-weight: 600;
+  }
+
+  .checks {
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 12px;
+    color: #475569;
+  }
+
+  .checks li {
+    padding: 2px 0;
+  }
+
+  .checks b {
+    display: inline-block;
+    min-width: 64px;
+    color: #0f172a;
   }
 
   .row-actions {
@@ -1119,13 +1163,6 @@
     color: #dc2626;
   }
 
-  .library {
-    width: auto;
-    height: 28px;
-    font-weight: 600;
-    color: #475569;
-  }
-
   td.current {
     color: #64748b;
     white-space: nowrap;
@@ -1149,52 +1186,222 @@
     color: #64748b;
   }
 
-  .paste-dialog {
-    position: fixed;
-    inset: 0;
-    z-index: 70;
+  .load-library {
+    font-size: 14px;
+    color: #334155;
+  }
+
+  .library-bar {
     display: flex;
     align-items: center;
-    justify-content: center;
-    background: rgba(15, 23, 42, 0.35);
+    gap: 10px;
+    margin-bottom: 12px;
   }
 
-  .paste-dialog form {
+  .library-tabs button {
+    height: 32px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+
+  .load-library button {
+    font-size: 13px;
+  }
+
+  .load-library .library-bar button.primary,
+  .load-library .entries li > button:not(.entry) {
+    flex: none;
+    width: 130px;
+    height: 32px;
+    padding: 0 12px;
+  }
+
+  .library-search {
+    flex: 1;
+    max-width: 420px;
+    height: 34px;
+    padding: 6px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+
+  .library-search:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  }
+
+  .device-terminals {
+    max-width: 900px;
+    font-size: 14px;
+  }
+
+  .device-terminals th {
+    font-size: 13px;
+  }
+
+  .device-terminals td {
+    padding: 4px 6px;
+  }
+
+  .device-terminals input,
+  .device-terminals select {
+    height: 34px;
+    font-size: 14px;
+  }
+
+  .add-terminal {
+    height: 32px;
+    margin-top: 10px;
+    padding: 0 12px;
+  }
+
+  .load-library .file-button {
+    height: 32px;
+    font-size: 13px;
+  }
+
+  .entries li.no-match {
+    padding: 16px 10px;
+    color: #94a3b8;
+  }
+
+  .entries {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .entries li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 0;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .entry {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    height: auto;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .entry.static {
+    cursor: default;
+  }
+
+  button.entry:hover {
+    background: #f1f5f9;
+  }
+
+  .entry-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .entry-meta {
+    font-size: 13px;
+    font-weight: 400;
+    color: #64748b;
+  }
+
+  .back {
+    height: 30px;
+    margin-bottom: 8px;
+    border: none;
+    background: none;
+    color: #1d4ed8;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .product-form h4 {
+    margin: 18px 0 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .product-form h4:first-child {
+    margin-top: 4px;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px 18px;
+  }
+
+  .form-grid label {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    width: min(720px, calc(100vw - 32px));
-    padding: 16px;
-    border-radius: 10px;
-    background: #ffffff;
-    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
-    font-size: 12px;
-  }
-
-  .paste-dialog p {
-    margin: 0;
+    gap: 5px;
+    font-size: 13px;
+    font-weight: 600;
     color: #475569;
   }
 
-  .paste-dialog code {
-    font-family: 'IBM Plex Mono', Consolas, monospace;
-    font-size: 11px;
+  .form-grid label.span2 {
+    grid-column: span 2;
   }
 
-  .paste-dialog textarea {
-    height: 240px;
-    padding: 8px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font-family: 'IBM Plex Mono', Consolas, monospace;
-    font-size: 11px;
-    resize: vertical;
+  .form-grid label.span4 {
+    grid-column: 1 / -1;
   }
 
-  .paste-dialog .actions {
+  .link-field {
     display: flex;
-    justify-content: flex-end;
-    gap: 8px;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .link-field input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .link-field a {
+    flex: none;
+    color: #1d4ed8;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .link-field a:hover {
+    text-decoration: underline;
+  }
+
+  .form-grid label.check {
+    flex-direction: row;
+    align-items: center;
+    align-self: end;
+    height: 36px;
+    font-weight: 400;
+    color: #334155;
+  }
+
+  .form-grid input[type="text"],
+  .form-grid select,
+  .form-grid :global(.combo input) {
+    height: 36px;
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+
+  .form-grid :global(.combo .toggle) {
+    width: 28px;
   }
 </style>
 
@@ -1269,7 +1476,6 @@
   {/each}
 </datalist>
 
-
 <div class="wiring-view">
   <div class="bar">
     <h2>Wiring list</h2>
@@ -1286,7 +1492,7 @@
     <span class="spacer"></span>
     {#if part === "control"}
       <button type="button" onclick={addController} title="Another controller or extension module">+ Controller</button>
-      <button type="button" onclick={() => libraryOpen = true} title="The device library and the custom devices of this project">Device library…</button>
+      <button type="button" onclick={() => libraryOpen = true} title="The device library and the custom devices of this project">Library…</button>
     {:else if part === "comms"}
       <button type="button" onclick={addLink} title="A cable from a controller port to the CNS, another controller or a display">+ Link</button>
     {:else}
@@ -1295,15 +1501,7 @@
     <button type="button" onclick={() => addRow({ protection: "rcd", poles: power.supply.phases === 1 ? "1p+N" : "3p+N", load: "none" })}
             title="An RCD that protects several feeders · set their Fed from to this RCD">+ RCD group</button>
     <button type="button" onclick={() => addRow()} title="One breaker feeding one load">+ Feeder</button>
-    <select class="library" aria-label="Add a feeder from the load library" value=""
-            onchange={(event) => { addFromLibrary(event.currentTarget.value); event.currentTarget.value = ""; }}>
-      <option value="">+ From load library…</option>
-      {#each LOAD_LIBRARY as entry (entry.id)}
-        <option value={entry.id}>{entry.label}{entry.power ? ` · ${entry.power} kW` : ""}</option>
-      {/each}
-    </select>
-    <button type="button" onclick={startPaste} title="Rows copied from Excel, in the column order of this table">Paste from Excel</button>
-    <button type="button" disabled={!rows.length} onclick={copyTable} title="The list as a table, to paste into Excel">Copy table</button>
+    <button type="button" onclick={() => loadLibraryOpen = true} title="Products and generic loads · add them to the list or add new products">Library…</button>
     {/if}
     <button type="button" class="primary" onclick={draw}
             title="Draw the power and control pages at the start of the wiring diagram · pages drawn before are replaced">Draw pages</button>
@@ -1347,7 +1545,6 @@
       </table>
       <label class="inline-field">Control terminals <input type="text" bind:value={control.strip} placeholder="-X2" spellcheck="false"></label>
     </section>
-
 
     <section>
       <h3>Control devices <span class="count">{control.rows.length}</span></h3>
@@ -1782,7 +1979,7 @@
                 <td><input type="text" bind:value={row.power} aria-label="Power in kW" disabled={load.id === "none"} inputmode="decimal" spellcheck="false"></td>
                 <td><input type="text" bind:value={row.maxCurrent} aria-label="Maximum current in A" disabled={load.id === "none"} inputmode="decimal" spellcheck="false"></td>
                 <td class="current">{amps(row)}</td>
-                <td><input type="text" bind:value={row.loadData} aria-label="Load data" disabled={load.id === "none"}></td>
+                <td><Combo bind:value={row.loadData} options={productModels} label="Load data" disabled={load.id === "none"} onchange={(value) => setLoadData(row, value)}/></td>
                 <td><Combo bind:value={row.cable} options={CABLE_TYPES} label="Cable" disabled={load.id === "none" || load.cabinet}
                            placeholder={load.id === "none" || load.cabinet ? "" : "NHXMH-J"}/></td>
                 <td><input type="text" bind:value={row.strip} aria-label="Terminal strip" disabled={load.id === "none" || load.cabinet}
@@ -1806,6 +2003,15 @@
         </div>
       {/if}
       <button type="button" class="add-row" onclick={() => addRow()} title="One breaker feeding one load">+ Add feeder</button>
+      {#if checkList.length}
+        <ul class="checks">
+          {#each checkList as entry (entry.row.id)}
+            {#each entry.notes as note, index (index)}
+              <li class:warn={note.level === "warn"}><b>{entry.row.tag || entry.row.loadTag || "—"}</b> {note.text}</li>
+            {/each}
+          {/each}
+        </ul>
+      {/if}
       {#if rows.length}
         <p class="help">Feeders with Fed from empty hang on the main rails. To group breakers under an RCD, add an RCD group and pick it as Fed from. Load "None" is a device that only feeds others.
           Several loads on one breaker: give that breaker Load "None", set the loads' Fed from to it and their Protection to "None"; each can still have its own Switched by contact.
@@ -1816,128 +2022,279 @@
   </div>
 </div>
 
-{#if pasting}
-  <div class="paste-dialog" use:portal role="presentation" onpointerdown={(event) => event.target === event.currentTarget && (pasting = null)}>
-    <form onsubmit={finishPaste}>
-      <p>Copy rows in Excel and paste them here. Columns in this order, a header row is skipped:</p>
-      <p><code>{COLUMNS.join(" · ")}</code></p>
-      <p>Protection: MCB, RCBO, RCD, Fuse, Motor protection or Switch. Poles: 1p, 1p+N, 3p or 3p+N. Fed from: a tag in the list, "supply" for the main switch, or empty for the main rails.</p>
-      <textarea bind:this={pasteArea} bind:value={pasting.text} spellcheck="false"
-                placeholder={"-F1\tKONVEKTOR\tMCB\t\t1p\t\t\tMotor / pump\t-M1\t0,1\t\tFLAME-JZ-H FRNC 3x1,5 mm2\t-X1"}></textarea>
-      <div class="actions">
-        <button type="button" onclick={() => pasting = null}>Cancel</button>
-        <button type="submit" class="primary" disabled={!pasting.text.trim()}>Add rows</button>
-      </div>
-    </form>
-  </div>
-{/if}
+{#snippet productFooter()}
+  {#if draft.previous && !isBuiltIn(draft.previous)}
+    {#if builtInOf(draft.previous)}
+      <button type="button" onclick={() => { forgetProduct(draft.previous); draft = null; }} title="Undo the changes made to this built-in product">Reset to built-in</button>
+    {:else}
+      <button type="button" class="danger" onclick={() => { forgetProduct(draft.previous); draft = null; }} title="Rows that use it keep their values">Remove from library</button>
+    {/if}
+  {/if}
+  <span class="spacer"></span>
+  {#if draftError}<span class="warn">{draftError}</span>{/if}
+  <button type="button" onclick={() => draft = null}>Cancel</button>
+  <button type="button" class="primary" disabled={Boolean(draftError)} onclick={storeDraft}>{draft.previous ? "Save changes" : "Add to library"}</button>
+{/snippet}
 
-{#if libraryOpen}
-  <Modal title="Device library" subtitle="Saved devices and the custom devices of this project" width={1040} onclose={() => libraryOpen = false}>
-    <div class="library-dialog">
-    <section>
-      <h3>Library <span class="count">{library.length}</span> <span class="count">shared by all projects in this browser</span>
+{#if loadLibraryOpen}
+  <Modal title={draft ? (draft.previous ? productLabel(products.find((product) => product.article === draft.previous) ?? draft) : "New product") : "Load library"}
+         subtitle={draft ? "Electrical data from the data sheet and the installation manual" : "Products with their electrical data, and generic loads"}
+         width={1240} height={820} footer={draft ? productFooter : null} onclose={() => { loadLibraryOpen = false; draft = null; }}>
+    <div class="load-library">
+    {#if draft}
+      <button type="button" class="back" onclick={() => draft = null}>← Back to the library</button>
+      <div class="product-form">
+        <h4>Product</h4>
+        <div class="form-grid">
+          <label>Article no. <input type="text" bind:value={draft.article} spellcheck="false" placeholder="2164580"></label>
+          <label>Manufacturer <input type="text" bind:value={draft.manufacturer} placeholder="Wilo"></label>
+          <label class="span2">Model <input type="text" bind:value={draft.model} spellcheck="false" placeholder="Stratos MAXO 32/0,5-12 PN6/10"></label>
+          <label class="span2">Description in the drawing <input type="text" bind:value={draft.description} placeholder="OBTOČNA ČRPALKA"></label>
+          <label class="span4">Website
+            <span class="link-field">
+              <input type="text" inputmode="url" bind:value={draft.link} spellcheck="false" placeholder="https://… product page with the technical data">
+              {#if /^https?:\/\//i.test(draft.link.trim())}
+                <a href={draft.link.trim()} target="_blank" rel="noopener noreferrer">Open ↗</a>
+              {/if}
+            </span>
+          </label>
+          <label>Load
+            <select bind:value={draft.load}>
+              {#each LIBRARY_LOADS as entry (entry.id)}
+                <option value={entry.id}>{entry.label}</option>
+              {/each}
+            </select>
+          </label>
+          <label>Poles
+            <select bind:value={draft.poles}>
+              {#each POLES as pole (pole.id)}
+                <option value={pole.id}>{pole.id}</option>
+              {/each}
+            </select>
+          </label>
+        </div>
+
+        <h4>Supply and protection</h4>
+        <div class="form-grid">
+          <label title="Highest current from the data sheet, at rated voltage">Max current A <input type="text" bind:value={draft.current} inputmode="decimal" placeholder="1,42"></label>
+          <label title="Highest input power P1">Power P1 kW <input type="text" bind:value={draft.power} inputmode="decimal" placeholder="0,32"></label>
+          <label title="Current peak when the power is switched on · sets the smallest breaker that does not trip">Switch-on peak A <input type="text" bind:value={draft.inrush} inputmode="decimal" placeholder="10"></label>
+          <label>Protection
+            <select bind:value={draft.protection}>
+              {#each PROTECTION_KINDS.filter((kind) => kind.id !== "switch" && kind.id !== "rcd") as kind (kind.id)}
+                <option value={kind.id}>{kind.label}</option>
+              {/each}
+            </select>
+          </label>
+          <label title="Leakage current per unit · counted against the RCD above it">Leakage mA <input type="text" bind:value={draft.leakage} inputmode="decimal" placeholder="3,5"></label>
+          <label>RCD type
+            <select bind:value={draft.rcd}>
+              {#each RCD_TYPES as type (type.id)}
+                <option value={type.id}>{type.label}</option>
+              {/each}
+            </select>
+          </label>
+          <label title="Smallest rating of a relay or contactor that switches the mains">Switching contact at least A <input type="text" bind:value={draft.contact} inputmode="decimal" placeholder="10"></label>
+          <label class="check"><input type="checkbox" bind:checked={draft.motorProtection}> Integrated motor protection</label>
+        </div>
+
+        <h4>Connection</h4>
+        <div class="form-grid">
+          <label class="span2">Cable <Combo bind:value={draft.cable} options={CABLE_TYPES} label="Cable"/></label>
+          <label title="Smallest cross-section the mains terminals take">Terminals from mm² <input type="text" bind:value={draft.terminalMin} inputmode="decimal" placeholder="1,5"></label>
+          <label title="Largest cross-section the mains terminals take">Terminals to mm² <input type="text" bind:value={draft.terminalMax} inputmode="decimal" placeholder="2,5"></label>
+        </div>
+      </div>
+    {:else}
+      <div class="library-bar">
+        <div class="tabs library-tabs" role="tablist" aria-label="Library part">
+          <button type="button" role="tab" class:active={libraryTab === "products"} aria-selected={libraryTab === "products"} onclick={() => libraryTab = "products"}>Products</button>
+          <button type="button" role="tab" class:active={libraryTab === "loads"} aria-selected={libraryTab === "loads"} onclick={() => libraryTab = "loads"}>Generic loads</button>
+        </div>
+        <input type="search" class="library-search" bind:value={librarySearch} aria-label="Search the library"
+               placeholder={libraryTab === "products" ? "Search by model, manufacturer or article no." : "Search generic loads"} spellcheck="false">
         <span class="spacer"></span>
-        <button type="button" onclick={downloadLibrary} disabled={!library.length} title="Save the library as a file, to back it up or give it to a colleague">Export library</button>
-        <label class="file-button" title="Add devices from a library file · devices already in the library are updated">Import library
-          <input type="file" accept=".json,application/json" onchange={loadLibraryFile}>
-        </label>
-      </h3>
-      {#if library.length}
-        <ul class="library-list">
-          {#each library as entry (entry.id)}
-            {@const inProject = (control.templates ?? []).some((template) => template.libraryId === entry.id)}
+        {#if libraryTab === "products"}
+          <button type="button" class="primary" onclick={() => newDraft()} title="A product from its data sheet · saved in this browser for all projects">+ New product</button>
+        {/if}
+      </div>
+      {#if libraryTab === "products"}
+        <ul class="entries">
+          {#each products.filter((product) => matches(librarySearch, productLabel(product), productSummary(product), product.description)) as product (product.article)}
+            {@const used = power.rows.filter((row) => productOf(row.loadData)?.article === product.article).length}
             <li>
-              <span class="library-name">{entry.name || "Custom device"}</span>
-              <span class="count">{entry.prefix || "no prefix"} · {entry.terminals.length} terminal{entry.terminals.length === 1 ? "" : "s"}{inProject ? " · in this project" : ""}</span>
-              <span class="spacer"></span>
-              <button type="button" onclick={() => addControl(`lib:${entry.id}`)} title="Add one to the control devices">+ Add to list</button>
-              <button type="button" class="icon remove" aria-label="Remove from the library" title="Remove from the library · projects that use it keep their copy"
-                      onclick={() => forgetLibrary(entry.id)}>✕</button>
+              <button type="button" class="entry" onclick={() => newDraft(product)} title="Open the product">
+                <span class="entry-title">{productLabel(product)}</span>
+                <span class="entry-meta">{productSummary(product)}{isBuiltIn(product.article) ? " · built in" : builtInOf(product.article) ? " · built in, changed" : ""}{used ? ` · ${used} in the list` : ""}</span>
+              </button>
+              <button type="button" onclick={() => { addFromLibrary(`product:${product.article}`); onnotice?.(`Added ${product.model}`); }} title="Add one feeder for this product">+ Add to list</button>
             </li>
           {/each}
+          {#if librarySearch.trim() && !products.some((product) => matches(librarySearch, productLabel(product), productSummary(product), product.description))}
+            <li class="no-match">No product matches "{librarySearch.trim()}"</li>
+          {/if}
         </ul>
       {:else}
-        <p class="help">Empty · press Save to library on a custom device to keep it for other projects.</p>
-      {/if}
-    </section>
-
-    <section>
-      <h3>Custom devices in this project <span class="count">{control.templates?.length ?? 0}</span>
-        <button type="button" onclick={addTemplate} title="A device of your own · set its terminals and where each one connects">+ Custom device</button>
-      </h3>
-      {#if !control.templates?.length}
-        <div class="empty">Make a device of your own: give it a name, add its terminals and pick where each one connects. It then appears under + Add device at the end of the list.</div>
-      {:else}
-        <div class="templates">
-          {#each control.templates as template (template.id)}
-            {@const used = control.rows.filter((row) => row.type === `custom:${template.id}`).length}
-            {@const warning = templateWarning(template)}
-            {@const pairs = contactPairs(template)}
-            <div class="template">
-              <div class="template-head">
-                <label>Name <input type="text" bind:value={template.name} aria-label="Custom device name"></label>
-                <label class="short">Tag prefix <input type="text" bind:value={template.prefix} spellcheck="false" placeholder="-E"></label>
-                <label>Cable <Combo bind:value={template.cable} options={CABLE_TYPES} label="Cable"/></label>
-                <label class="short">Symbol
-                  <select bind:value={template.symbol}>
-                    {#each CUSTOM_SYMBOLS as symbol (symbol.id)}
-                      <option value={symbol.id}>{symbol.label}</option>
-                    {/each}
-                  </select>
-                </label>
-                <span class="spacer"></span>
-                <span class="count">{used ? `${used} in the list` : "not used yet"}</span>
-                <button type="button" onclick={() => storeTemplate(template)}
-                        title="Keep this device for other projects · a device taken from the library updates its library copy">{template.libraryId && library.some((entry) => entry.id === template.libraryId) ? "Update library" : "Save to library"}</button>
-                <button type="button" onclick={() => addControl(`custom:${template.id}`)}>+ Add to list</button>
-                <button type="button" class="icon remove" aria-label="Remove custom device" disabled={used > 0}
-                        title={used ? "Remove its devices from the list first" : "Remove"} onclick={() => removeTemplate(template.id)}>✕</button>
+        <ul class="entries">
+          {#each LOAD_LIBRARY.filter((entry) => matches(librarySearch, entry.label, entry.description, entry.cable)) as entry (entry.id)}
+            <li>
+              <div class="entry static">
+                <span class="entry-title">{entry.label}</span>
+                <span class="entry-meta">{[entry.poles, entry.power ? `${entry.power} kW` : "", entry.cable].filter(Boolean).join(" · ")}</span>
               </div>
-              <table class="compact terminal-table">
-                <colgroup>
-                  <col style="width: 40px">
-                  <col style="width: 150px">
-                  <col style="width: 260px">
-                  <col>
-                  <col style="width: 30px">
-                </colgroup>
-                <thead>
-                  <tr><th>#</th><th>Terminal label</th><th>Connects to</th><th></th><th></th></tr>
-                </thead>
-                <tbody>
-                  {#each template.terminals as terminal, index (index)}
-                    {@const pair = pairs.findIndex((entry) => entry.includes(index))}
-                    <tr>
-                      <td class="current">{index + 1}</td>
-                      <td><input type="text" bind:value={terminal.label} aria-label="Terminal label" spellcheck="false"></td>
-                      <td>
-                        <select bind:value={terminal.connect} aria-label="Connects to">
-                          {#each CUSTOM_CONNECTIONS as connection (connection.id)}
-                            <option value={connection.id}>{connection.label}</option>
-                          {/each}
-                        </select>
-                      </td>
-                      <td class="current">
-                        {#if terminal.connect === "U" || terminal.connect === "ID" || terminal.connect === "Y"}picked per device under Connection
-                        {:else if pair >= 0}contact {pair + 1} · relay or controller output picked per device
-                        {:else if terminal.connect === "none"}shown on the device, no wire{/if}
-                      </td>
-                      <td><button type="button" class="icon remove" aria-label="Remove terminal" disabled={template.terminals.length <= 1}
-                                  onclick={() => template.terminals.splice(index, 1)}>✕</button></td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-              <div class="template-foot">
-                <button type="button" onclick={() => addTerminal(template)}>+ Terminal</button>
-                {#if warning}<span class="warn">{warning}</span>{/if}
-              </div>
-            </div>
+              <button type="button" onclick={() => { addFromLibrary(entry.id); onnotice?.(`Added ${entry.label}`); }}>+ Add to list</button>
+            </li>
           {/each}
-        </div>
+          {#if librarySearch.trim() && !LOAD_LIBRARY.some((entry) => matches(librarySearch, entry.label, entry.description, entry.cable))}
+            <li class="no-match">No generic load matches "{librarySearch.trim()}"</li>
+          {/if}
+        </ul>
       {/if}
-    </section>
+    {/if}
+    </div>
+  </Modal>
+{/if}
+
+{#snippet deviceEditor(template)}
+  {@const pairs = contactPairs(template)}
+  <div class="product-form">
+    <h4>Device</h4>
+    <div class="form-grid">
+      <label class="span2">Name <input type="text" bind:value={template.name} aria-label="Custom device name" placeholder="Room sensor"></label>
+      <label>Tag prefix <input type="text" bind:value={template.prefix} spellcheck="false" placeholder="-E"></label>
+      <label>Symbol
+        <select bind:value={template.symbol}>
+          {#each CUSTOM_SYMBOLS as symbol (symbol.id)}
+            <option value={symbol.id}>{symbol.label}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="span2">Cable <Combo bind:value={template.cable} options={CABLE_TYPES} label="Cable"/></label>
+    </div>
+
+    <h4>Terminals</h4>
+    <table class="compact terminal-table device-terminals">
+      <colgroup>
+        <col style="width: 50px">
+        <col style="width: 180px">
+        <col style="width: 320px">
+        <col>
+        <col style="width: 40px">
+      </colgroup>
+      <thead>
+        <tr><th>#</th><th>Terminal label</th><th>Connects to</th><th></th><th></th></tr>
+      </thead>
+      <tbody>
+        {#each template.terminals as terminal, index (index)}
+          {@const pair = pairs.findIndex((entry) => entry.includes(index))}
+          <tr>
+            <td class="current">{index + 1}</td>
+            <td><input type="text" bind:value={terminal.label} aria-label="Terminal label" spellcheck="false"></td>
+            <td>
+              <select bind:value={terminal.connect} aria-label="Connects to">
+                {#each CUSTOM_CONNECTIONS as connection (connection.id)}
+                  <option value={connection.id}>{connection.label}</option>
+                {/each}
+              </select>
+            </td>
+            <td class="current">
+              {#if terminal.connect === "U" || terminal.connect === "ID" || terminal.connect === "Y"}picked per device under Connection
+              {:else if pair >= 0}contact {pair + 1} · relay or controller output picked per device
+              {:else if terminal.connect === "none"}shown on the device, no wire{/if}
+            </td>
+            <td><button type="button" class="icon remove" aria-label="Remove terminal" disabled={template.terminals.length <= 1}
+                        onclick={() => template.terminals.splice(index, 1)}>✕</button></td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+    <button type="button" class="add-terminal" onclick={() => addTerminal(template)}>+ Terminal</button>
+  </div>
+{/snippet}
+
+{#snippet deviceFooter()}
+  {@const warning = templateWarning(openTemplate)}
+  {#if deviceOpen.kind === "project"}
+    {@const used = control.rows.filter((row) => row.type === `custom:${openTemplate.id}`).length}
+    <button type="button" class="danger" disabled={used > 0} title={used ? "Remove its devices from the list first" : "Remove from this project"}
+            onclick={() => { removeTemplate(openTemplate.id); deviceOpen = null; }}>Remove device</button>
+    <span class="spacer"></span>
+    {#if warning}<span class="warn">{warning}</span>{/if}
+    <button type="button" onclick={() => storeTemplate(openTemplate)}
+            title="Keep this device for other projects · a device taken from the library updates its library copy">{openTemplate.libraryId && library.some((entry) => entry.id === openTemplate.libraryId) ? "Update library" : "Save to library"}</button>
+    <button type="button" onclick={() => { addControl(`custom:${openTemplate.id}`); onnotice?.(`Added ${openTemplate.name || "the device"}`); }}>+ Add to list</button>
+    <button type="button" class="primary" onclick={() => deviceOpen = null}>Done</button>
+  {:else}
+    <button type="button" class="danger" title="Remove from the library · projects that use it keep their copy"
+            onclick={() => { forgetLibrary(deviceOpen.id); deviceOpen = null; }}>Remove from library</button>
+    <span class="spacer"></span>
+    {#if warning}<span class="warn">{warning}</span>{/if}
+    <button type="button" onclick={() => deviceOpen = null}>Cancel</button>
+    <button type="button" class="primary" onclick={saveLibraryDevice}>Save changes</button>
+  {/if}
+{/snippet}
+
+{#if libraryOpen}
+  <Modal title={openTemplate ? openTemplate.name || "Custom device" : "Device library"}
+         subtitle={openTemplate ? (deviceOpen.kind === "project" ? "Custom device of this project" : "Saved in the library of this browser") : "Saved devices and the custom devices of this project"}
+         width={1240} height={820} footer={openTemplate ? deviceFooter : null} onclose={() => { libraryOpen = false; deviceOpen = null; }}>
+    <div class="load-library">
+    {#if openTemplate}
+      <button type="button" class="back" onclick={() => deviceOpen = null}>← Back to the library</button>
+      {@render deviceEditor(openTemplate)}
+    {:else}
+      <div class="library-bar">
+        <div class="tabs library-tabs" role="tablist" aria-label="Library part">
+          <button type="button" role="tab" class:active={deviceTab === "library"} aria-selected={deviceTab === "library"} onclick={() => deviceTab = "library"}>Library</button>
+          <button type="button" role="tab" class:active={deviceTab === "project"} aria-selected={deviceTab === "project"} onclick={() => deviceTab = "project"}>This project</button>
+        </div>
+        <input type="search" class="library-search" bind:value={deviceSearch} aria-label="Search the devices" placeholder="Search by name or tag prefix" spellcheck="false">
+        <span class="spacer"></span>
+        {#if deviceTab === "library"}
+          <button type="button" onclick={downloadLibrary} disabled={!library.length} title="Save the library as a file, to back it up or give it to a colleague">Export</button>
+          <label class="file-button" title="Add devices from a library file · devices already in the library are updated">Import
+            <input type="file" accept=".json,application/json" onchange={loadLibraryFile}>
+          </label>
+        {/if}
+        <button type="button" class="primary" onclick={newDevice} title="A device of your own · set its terminals and where each one connects">+ New device</button>
+      </div>
+      {#if deviceTab === "library"}
+        {@const shown = library.filter((entry) => matches(deviceSearch, entry.name, entry.prefix, entry.cable))}
+        <ul class="entries">
+          {#each shown as entry (entry.id)}
+            {@const inProject = (control.templates ?? []).some((template) => template.libraryId === entry.id)}
+            <li>
+              <button type="button" class="entry" onclick={() => openDevice("library", entry.id)} title="Open the device">
+                <span class="entry-title">{entry.name || "Custom device"}</span>
+                <span class="entry-meta">{deviceSummary(entry)}{inProject ? " · in this project" : ""}</span>
+              </button>
+              <button type="button" onclick={() => { addControl(`lib:${entry.id}`); onnotice?.(`Added ${entry.name || "the device"}`); }} title="Add one to the control devices">+ Add to list</button>
+            </li>
+          {/each}
+          {#if !shown.length}
+            <li class="no-match">{deviceSearch.trim() ? `No saved device matches "${deviceSearch.trim()}"` : "Empty · open a device under This project and press Save to library to keep it for other projects"}</li>
+          {/if}
+        </ul>
+      {:else}
+        {@const shown = (control.templates ?? []).filter((template) => matches(deviceSearch, template.name, template.prefix, template.cable))}
+        <ul class="entries">
+          {#each shown as template (template.id)}
+            {@const used = control.rows.filter((row) => row.type === `custom:${template.id}`).length}
+            {@const saved = template.libraryId && library.some((entry) => entry.id === template.libraryId)}
+            <li>
+              <button type="button" class="entry" onclick={() => openDevice("project", template.id)} title="Open the device">
+                <span class="entry-title">{template.name || "Custom device"}</span>
+                <span class="entry-meta">{deviceSummary(template)}{saved ? " · in the library" : ""} · {used ? `${used} in the list` : "not used yet"}{templateWarning(template) ? " · needs attention" : ""}</span>
+              </button>
+              <button type="button" onclick={() => { addControl(`custom:${template.id}`); onnotice?.(`Added ${template.name || "the device"}`); }}>+ Add to list</button>
+            </li>
+          {/each}
+          {#if !shown.length}
+            <li class="no-match">{deviceSearch.trim() ? `No custom device matches "${deviceSearch.trim()}"` : "No custom devices yet · press + New device to make one: give it a name, add its terminals and pick where each one connects"}</li>
+          {/if}
+        </ul>
+      {/if}
+    {/if}
     </div>
   </Modal>
 {/if}

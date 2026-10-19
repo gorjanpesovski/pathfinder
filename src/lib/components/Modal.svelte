@@ -1,7 +1,7 @@
 <script>
   import { portal } from "$lib/actions/portal.js";
 
-  let { title, subtitle = null, width = 640, flush = false, onclose, children, footer = null } = $props();
+  let { title, subtitle = null, width = 640, height = null, flush = false, onclose, children, footer = null } = $props();
 
   let panel = $state(null);
 
@@ -139,7 +139,7 @@
 
 <div class="backdrop" use:portal role="presentation" onpointerdown={(e) => e.target === e.currentTarget && onclose()}>
   <div class="panel" role="dialog" aria-modal="true" aria-label={title} tabindex="-1" bind:this={panel}
-       style="max-width: {width}px" onkeydown={keydown}>
+       style="max-width: {width}px" style:height={height ? `${height}px` : null} onkeydown={keydown}>
     <header>
       <div class="heading">
         <h2>{title}</h2>

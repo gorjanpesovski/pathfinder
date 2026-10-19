@@ -1,6 +1,7 @@
 import { SLOT, PROTECTION_KINDS, PSU_PORTS, electricSize } from "./symbols.js";
 import { paperOf, pageLeft, pageIndex, noteText, noteWidth } from "./sheet.js";
 import { normalizeGroups } from "./rowGroups.js";
+import { productOf, inrushFloor, productChecks } from "./loadProducts.js";
 
 export const POLES = [
   { id: "1p", lines: 1, neutral: false },
@@ -177,79 +178,28 @@ export function normalizePower(data){
   return { supply, rows, groups: normalizeGroups(data.groups, rows), sizing: sizingOf(data) };
 }
 
-function pick(list, value, fallback){
-  const needle = String(value ?? "").trim().toLowerCase();
-  if (!needle) return fallback;
-  return list.find((entry) => entry.id.toLowerCase() === needle || entry.label?.toLowerCase() === needle)?.id ?? fallback;
-}
-
-function tableCells(text){
-  const lines = [];
-  let cells = [];
-  let cell = "";
-  let quoted = false;
-  const source = String(text ?? "").replace(/\r\n?/g, "\n");
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
-    if (quoted) {
-      if (char === '"' && source[index + 1] === '"') { cell += '"'; index += 1; }
-      else if (char === '"') quoted = false;
-      else cell += char;
-    } else if (char === '"' && cell === "") quoted = true;
-    else if (char === "\t") { cells.push(cell); cell = ""; }
-    else if (char === "\n") { cells.push(cell); lines.push(cells); cells = []; cell = ""; }
-    else cell += char;
-  }
-  cells.push(cell);
-  lines.push(cells);
-  return lines.map((row) => row.map((value) => value.trim())).filter((row) => row.some(Boolean));
-}
-
 function tableCell(value){
   const text = String(value ?? "");
   return /[\t\n"]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-export function parsePowerTable(text, existing = []){
-  const rows = [];
-  const sources = [];
-  for (const cells of tableCells(text)) {
-    if (cells[0].toLowerCase() === "tag") continue;
-    const [tag, description, protection, rating, poles, phase, from, load, loadTag, power, loadData, cable, strip, switchedBy, lvProtection, maxCurrent] = cells;
-    const kind = pick(PROTECTION_KINDS, protection, "mcb");
-    const row = newPowerRow([...existing, ...rows], {
-      description: description ?? "",
-      protection: kind,
-      poles: pick(POLES, poles, "1p"),
-      phase: PHASES.includes(String(phase ?? "").toUpperCase()) ? phase.toUpperCase() : "",
-      load: pick(LOADS, load, "consumer"),
-      loadTag: loadTag ?? "",
-      power: power ?? "",
-      loadData: loadData ?? "",
-      cable: cable ?? "",
-      strip: strip ?? "",
-      switchedBy: switchedBy ?? "",
-      lvProtection: lvProtection ?? "",
-      maxCurrent: maxCurrent ?? ""
-    });
-    if (tag) row.tag = tag;
-    if (rating) row.rating = rating;
-    rows.push(row);
-    sources.push(from ?? "");
-  }
-  const all = [...existing, ...rows];
-  rows.forEach((row, index) => {
-    const source = sources[index];
-    if (/^(supply|dovod|napajanje)$/i.test(source)) row.from = "supply";
-    else row.from = all.find((other) => other !== row && other.tag === source)?.id ?? "";
-  });
-  return rows;
 }
 
 export function powerTable(rows){
   const tagOf = (id) => id === "supply" ? "supply" : rows.find((row) => row.id === id)?.tag ?? "";
   const body = rows.map((row) => [row.tag, row.description, row.protection, row.rating, row.poles, row.phase, tagOf(row.from), row.load, row.loadTag, row.power, row.loadData, row.cable, row.strip, row.switchedBy, row.lvProtection, row.maxCurrent].map(tableCell).join("\t"));
   return [COLUMNS.join("\t"), ...body].join("\n");
+}
+
+export function productRow(rows, product, values = {}){
+  return newPowerRow(rows, {
+    description: product.description ?? "",
+    protection: product.protection ?? "mcb",
+    poles: product.poles ?? "1p",
+    load: product.load ?? "motor",
+    power: formatNumber(product.power?.max ?? 0, 3),
+    loadData: product.model,
+    cable: product.cable ?? "",
+    ...values
+  });
 }
 
 export function libraryRow(rows, entry, values = {}){
@@ -277,6 +227,8 @@ export function formatNumber(value, digits = 1){
 export function loadCurrent(row, sizing = SIZING_DEFAULTS){
   const given = decimal(row.maxCurrent);
   if (given) return given;
+  const product = productOf(row.loadData);
+  if (product?.current?.max) return product.current.max;
   const kw = decimal(row.power);
   if (!kw) return 0;
   const cosphi = Number(sizing.cosphi?.[row.load]) || loadOf(row.load).cosphi || 1;
@@ -338,7 +290,8 @@ export function powerSizing(power){
   const together = Math.min(1, Math.max(0.1, (Number(sizing.simultaneity) || 100) / 100));
   const minimum = sizing.minimum;
   const rate = (row, amps, floor) => row.protection === "none" ? "" : row.rating || sizeFor(row.protection, row.protection === "mpcb" ? amps : amps / loading, floor, sizing);
-  const floorOf = (row) => {
+  const floorOf = (row) => Math.max(baseFloor(row), row.protection === "mcb" || row.protection === "rcbo" ? inrushFloor(productOf(row.loadData), sizing.characteristic) : 0);
+  const baseFloor = (row) => {
     const load = loadOf(row.load);
     if (load.kind === "socket") return Number(minimum.socket) || 0;
     if (load.id === "heatPump") return Number(minimum.heatPump) || 0;
@@ -370,7 +323,37 @@ export function powerSizing(power){
     currents.set(main.id, total);
     ratings.set(main.id, rate(main, Math.max(total, largest * loading), groupFloor));
   }
-  return { ratings, currents };
+  return { ratings, currents, checks: checksOf(power, ratings, sizing) };
+}
+
+function checksOf(power, ratings, sizing){
+  const checks = new Map();
+  const add = (id, note) => checks.set(id, [...(checks.get(id) ?? []), note]);
+  const curve = sizing.characteristic || "C";
+  const limit = 0.3 * (decimal(String(sizing.sensitivity).replace(/ma/i, "")) || 30);
+  const leakage = new Map();
+  for (const row of power.rows) {
+    const product = productOf(row.loadData);
+    if (!product) continue;
+    const protector = row.protection === "none" ? power.rows.find((other) => other.id === row.from) : row;
+    const rcd = [row, ...ancestors(power.rows, row)].find((entry) => entry.protection === "rcd" || entry.protection === "rcbo");
+    for (const note of productChecks(row, product, protector?.protection === "mcb" || protector?.protection === "rcbo" ? ratings.get(protector.id) : "", curve, Boolean(rcd))) add(row.id, note);
+    if (rcd && product.leakage) leakage.set(rcd.id, (leakage.get(rcd.id) ?? 0) + product.leakage);
+  }
+  for (const [id, total] of leakage) {
+    if (total > limit) add(id, { level: "warn", text: `Leakage ${formatNumber(total)} mA is over 30 % of ${sizing.sensitivity || "30mA"} · split the loads over more RCDs` });
+  }
+  return checks;
+}
+
+function ancestors(rows, row){
+  const chain = [];
+  let current = rows.find((other) => other.id === row.from);
+  while (current && !chain.includes(current)) {
+    chain.push(current);
+    current = rows.find((other) => other.id === current.from);
+  }
+  return chain;
 }
 
 export function loadTags(rows){
