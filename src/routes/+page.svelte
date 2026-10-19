@@ -75,12 +75,13 @@
   import WiringActions from "$lib/components/WiringActions.svelte";
   import WiringList from "$lib/components/WiringList.svelte";
   import { drawControl, emptyControl, normalizeControl, crossReference } from "$lib/electric/control.js";
-  import { drawPower, emptyPower, normalizePower, powerPageCount, shiftShapes, isPowerShape, LOADS as POWER_LOADS, SIZING_DEFAULTS } from "$lib/electric/power.js";
+  import { drawPower, emptyPower, normalizePower, powerPageCount, shiftShapes, isPowerShape, LOADS as POWER_LOADS, POLES as POWER_POLES, SIZING_DEFAULTS } from "$lib/electric/power.js";
   import { PAPERS, DEFAULT_PAPER, paperOf, pageLeft, boardSize, sheetsSvg, sheetDate } from "$lib/electric/sheet.js";
   import { wiringFromIo } from "$lib/electric/generate.js";
   import { printSheets } from "$lib/electric/print.js";
   import { downloadDxf } from "$lib/electric/dxf.js";
-  import { electricSize, electricDefaults, nextElectricName } from "$lib/electric/symbols.js";
+  import { stamp, collectEdits, applyEdits, editOf, ownerOf, resetShape } from "$lib/electric/edits.js";
+  import { electricSize, electricDefaults, nextElectricName, PROTECTION_KINDS } from "$lib/electric/symbols.js";
   import { summarizeSelection } from "$lib/tools/selectionSummary.js";
   import { junctionMedium } from "$lib/hydronic/inherit.js";
   import { alignToAnchor } from "$lib/hydronic/alignEnd.js";
@@ -2631,23 +2632,108 @@
   });
   let sheetMeta = $derived({ project: documentName ?? "", date: sheetDate(), pages: sheetTitles, notes: sheetTitles.map((title) => title === "NAPAJANJE" ? supplyNote : "") });
 
-  function drawPowerPages(){
+  function drawPowerPages(quiet = false){
     const before = powerPageCount(shapes, paper);
     const current = $state.snapshot(shapes);
+    const edits = collectEdits(current.filter(isPowerShape));
+    const keys = quiet ? selectedShapes.map((shape) => shape?.source?.key).filter(Boolean) : [];
     const removed = new Set(current.filter(isPowerShape).map((shape) => shape.id));
     const touches = (end) => removed.has(end?.id) || removed.has(end?.pipe);
     const kept = current.filter((shape) => !removed.has(shape.id) && !(shape.kind === "pipe" && (touches(shape.from) || touches(shape.to))));
     const result = drawPower($state.snapshot(powerList), () => nextId++, paper);
     const control = drawControl($state.snapshot(controlList), $state.snapshot(powerList), () => nextId++, paper, result.pages);
-    const generated = crossReference([...result.shapes, ...control.shapes], paper);
+    const generated = stamp(crossReference([...result.shapes, ...control.shapes], paper));
+    const restored = applyEdits(generated, edits);
     shiftShapes(kept, (result.pages + control.pages - before) * (paper.width + paper.gap));
     shapes = [...generated, ...kept];
+    if (quiet) {
+      const picked = generated.filter((shape) => keys.includes(shape.source?.key)).map((shape) => shape.id);
+      selectedIds = picked;
+      selectedId = picked[0] ?? null;
+      return;
+    }
     sheet = 0;
     setTimeout(fitContent, 0);
     selectedId = null;
     selectedIds = [];
     ioOpen = false;
-    showFileNotice(`Drew ${result.pages} power and ${control.pages} control page${control.pages === 1 ? "" : "s"}`);
+    showFileNotice(`Drew ${result.pages} power and ${control.pages} control page${control.pages === 1 ? "" : "s"}${restored ? ` · kept ${restored} change${restored === 1 ? "" : "s"} made on the drawing` : ""}`);
+  }
+
+  function listFields(shape){
+    const owner = ownerOf(shape);
+    if (!owner) return [];
+    const type = shape.kind === "text" ? "text" : shape.type;
+    const text = (key, label, value, placeholder = "") => ({ key, label, value: value ?? "", placeholder });
+    const tag = (key, value) => ({ key, label: "Tag", value: value ?? "", tag: true });
+    if (owner.part === "supply") {
+      const supply = powerList.supply;
+      if (type === "terminalStrip") return [text("incoming", "Incoming terminals", supply.incoming, "-X0")];
+      if (type === "cable") return [tag("tag", supply.tag), text("cable", "Cable type", supply.cable)];
+      if (type === "supply") return [text("description", "Description", supply.description)];
+      return [];
+    }
+    if (owner.part === "power") {
+      const row = powerList.rows.find((entry) => entry.id === owner.id);
+      if (!row) return [];
+      if (type === "protection" && shape.params?.kind === "contact") return [text("switchedBy", "Switched by", row.switchedBy)];
+      if (type === "protection") return [
+        tag("tag", row.tag),
+        { key: "protection", label: "Protection", value: row.protection, options: [...PROTECTION_KINDS.map((kind) => ({ value: kind.id, label: kind.label })), { value: "none", label: "None" }] },
+        text("rating", "Rating", row.rating, String(shape.params?.rating ?? "").split("/")[0] || "auto"),
+        { key: "poles", label: "Poles", value: row.poles, options: POWER_POLES.map((pole) => ({ value: pole.id, label: pole.id })) }
+      ];
+      if (type === "fieldDevice" || type === "psu") return [tag("loadTag", row.loadTag), text("loadData", "Load data", row.loadData)];
+      if (type === "cable") return [text("cable", "Cable type", row.cable, shape.params?.cableType ?? "")];
+      if (type === "terminalStrip") return [text("strip", "Terminals", row.strip, shape.name ?? "")];
+      if (type === "text") return [text("description", "Description", row.description)];
+      return [];
+    }
+    if (owner.part === "control") {
+      const row = controlList.rows.find((entry) => entry.id === owner.id);
+      if (!row) return [];
+      if (type === "fieldDevice" || type === "relayCoil") return [tag("tag", row.tag), ...(type === "fieldDevice" ? [text("model", "Model", row.model)] : [])];
+      if (type === "cable") return [text("cable", "Cable type", row.cable, shape.params?.cableType ?? "")];
+      if (type === "terminalStrip") return [text("strip", "Terminals", row.strip, shape.name ?? "")];
+      if (type === "text") return [text("description", "Description", row.description)];
+      return [];
+    }
+    const link = controlList.links?.find((entry) => entry.id === owner.id);
+    if (!link) return [];
+    if (type === "cable") return [tag("tag", link.tag), text("cable", "Cable type", link.cable)];
+    if (type === "busLine") return [text("text", "Far end", link.text)];
+    if (type === "fieldDevice") return [tag("display", link.display)];
+    if (type === "terminalStrip") return [text("strip", "Terminals", link.strip, shape.name ?? "")];
+    if (type === "text") return [text("description", "Description", link.description)];
+    return [];
+  }
+
+  let listEdit = $derived.by(() => {
+    if (app !== "electrical" || selectedShapes.length !== 1) return null;
+    const shape = selectedShapes[0];
+    if (!shape?.source?.power) return null;
+    const fields = listFields(shape);
+    const edited = Boolean(shape.source.original && editOf($state.snapshot(shape)));
+    if (!fields.length && !edited) return null;
+    return { fields, edited, generated: Boolean(shape.source.original) };
+  });
+
+  function editFromDrawing(key, value){
+    const shape = selectedShapes[0];
+    const owner = shape ? ownerOf(shape) : null;
+    if (!owner) return;
+    const target = owner.part === "supply" ? powerList.supply
+      : owner.part === "power" ? powerList.rows.find((entry) => entry.id === owner.id)
+      : owner.part === "control" ? controlList.rows.find((entry) => entry.id === owner.id)
+      : controlList.links?.find((entry) => entry.id === owner.id);
+    if (!target || target[key] === value) return;
+    target[key] = value;
+    if (owner.part === "power" && key === "protection") target.rating = "";
+    drawPowerPages(true);
+  }
+
+  function resetFromDrawing(){
+    for (const shape of selectedShapes) if (shape?.source?.original) resetShape(shape);
   }
 
   function generateWiring(options){
@@ -5867,7 +5953,7 @@
                    onfittingflip={flipFitting} onfittingturn={turnFitting} onvariables={linkTarget ? () => linksOpen = true : null} ondelete={deleteSelected} registers={registerInfo} onregisters={() => registersOpen = true}
                    onfittingscale={setFittingScale} onreverse={reversePipes} onpipelayer={pipeLayer}
                    onresetsize={resetElementSize}
-                   onfittingreadout={setFittingReadout} onmeterreadout={setMeterReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName} ondeviceparam={setDeviceParam}
+                   onfittingreadout={setFittingReadout} onmeterreadout={setMeterReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName} ondeviceparam={setDeviceParam} listedit={listEdit ? { ...listEdit, onchange: editFromDrawing, onreset: resetFromDrawing } : null}
                    network={networkSelection} onconnect={connectSelected} onadddevices={addDevices}
                    onelementrotate={rotateElements} onelementsize={setElementSize} ontankprobe={toggleTankProbe}
                    groups={selectionGroups} onnamesize={setNameSize} onfittingnamesize={setFittingNameSize} onreadoutscale={setReadoutScale} onfittingname={setFittingName}

@@ -436,6 +436,7 @@ function columnWidth(row, control){
 const MAX_EXTRA = 120;
 
 export function drawControl(control, power, nextId, paper = paperOf(), firstPage = 0){
+  let owner = null;
   const shapes = [];
   const ac = !(power?.rows ?? []).some((row) => row.load === "psu") || (power?.rows ?? []).some((row) => row.load === "transformer");
   const media = ac ? { plus: "sp", minus: "sn" } : { plus: "dcPlus", minus: "dcMinus" };
@@ -456,7 +457,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
   const anchor = (shape, ...ends) => anchored.set(shape.id, new Set([...(anchored.get(shape.id) ?? []), ...ends]));
 
   const element = (type, x, y, name, params, sheet = "KRMILJE") => {
-    const shape = { id: nextId(), kind: "equipment", type, x, y, ...electricSize(type, params), name, params, source: { power: true, control: true, sheet } };
+    const shape = { id: nextId(), kind: "equipment", type, x, y, ...electricSize(type, params), name, params, source: { power: true, control: true, sheet, ...owner } };
     shapes.push(shape);
     return shape;
   };
@@ -472,6 +473,8 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
   const pages = [];
   let page = null;
   const openPage = (ctrl, sheet, rails = media) => {
+    const outer = owner;
+    owner = null;
     const index = firstPage + pages.length;
     const left = pageLeft(index, paper);
     const from = left + paper.frame.left + 20;
@@ -485,6 +488,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
     const created = { index, from, to, start, plus, minus, rails, bus: null, busEnd: start, ctrl, model, box, terms: new Map(), grounds: new Map(), coils: new Map(), cursor: start, limit: to - 10, sheet };
     pages.push(created);
     page = created;
+    owner = outer;
     return created;
   };
   const term = (target, name, x, mark = "") => {
@@ -623,6 +627,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
   };
 
   const drawRow = (row, target) => {
+    owner = { controlRow: row.id };
     const type = controlTypeOf(row.type, control);
     const signal = (key) => row.signals?.[key] ?? "";
     const x0 = place(widthOf(row));
@@ -825,6 +830,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
   };
   const SHEET = "KOMUNIKACIJA";
   const drawLink = (link) => {
+    owner = { controlLink: link.id };
     const ctrl = controllerOf(link.controller);
     const iface = portOf(ctrl.model, link.port);
     const display = link.target === "display";
@@ -880,6 +886,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
     caption([to, link.protocol, link.description], slot(0) - 30, Y.load + 26, 200, source);
   };
   const drawIncoming = (link) => {
+    owner = { controlLink: link.id };
     const ctrl = controllerOf(link.targetController);
     const iface = portOf(ctrl.model, link.targetPort);
     if (!iface) return;
@@ -907,6 +914,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
     const own = links.filter((link) => link.controller === ctrl.id || (link.target === "controller" && link.targetController === ctrl.id));
     let outside = 0;
     for (const link of own.filter((entry) => entry.controller === ctrl.id && !toController(entry))) {
+      owner = { controlLink: link.id };
       const x = portX.get(link.port);
       if (x === undefined) continue;
       const y = Y.cable - outside * 60;
@@ -919,6 +927,7 @@ export function drawControl(control, power, nextId, paper = paperOf(), firstPage
     const peers = new Map();
     let lane = 0;
     for (const link of own.filter(toController)) {
+      owner = { controlLink: link.id };
       const mine = link.controller === ctrl.id;
       const peer = controllerOf(mine ? link.targetController : link.controller);
       const peerPort = portOf(peer?.model, mine ? link.targetPort : link.port);
@@ -1016,12 +1025,12 @@ export function crossReference(shapes, paper = paperOf()){
       if (!coil) continue;
       shape.params = { ...shape.params, ref: where(coil) };
       const numbers = changeoverNumbers(shape.params.index);
-      coil.params.contacts.push({ ref: where(shape), numbers: `${numbers.common}-${numbers.no}/${numbers.nc}` });
+      coil.params.contacts.push({ ref: where(shape), numbers: `${numbers.common}-${numbers.no}/${numbers.nc}`, ...numbers });
     } else if (shape.type === "protection" && shape.params?.kind === "contact") {
       const coil = coilByName.get(shape.name);
       if (coil) {
         shape.params = { ...shape.params, rating: where(coil) };
-        coil.params.contacts.push({ ref: where(shape), numbers: "1-2" });
+        coil.params.contacts.push({ ref: where(shape), numbers: "1-2", common: "1", no: "2", nc: "" });
         continue;
       }
       const breaker = shapes.find((other) => other.kind === "equipment" && other.type === "protection" && other.params?.kind !== "contact" && other.name === shape.name);

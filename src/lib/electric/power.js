@@ -24,24 +24,24 @@ export const LOADS = [
 ];
 
 export const LOAD_LIBRARY = [
-  { id: "pump1", label: "Circulation pump 230 V", description: "OBTOČNA ČRPALKA", load: "motor", poles: "1p", power: "0,1", protection: "mcb", cable: "NYM-J 3x1,5mm2" },
-  { id: "pump3", label: "Circulation pump 400 V", description: "OBTOČNA ČRPALKA", load: "motor", poles: "3p", power: "0,75", protection: "mpcb", cable: "NYM-J 4x1,5mm2" },
+  { id: "pump1", label: "Circulation pump 230 V", description: "OBTOČNA ČRPALKA", load: "motor", poles: "1p", power: "0,1", protection: "mcb", cable: "NHXMH-J 3x1,5mm2" },
+  { id: "pump3", label: "Circulation pump 400 V", description: "OBTOČNA ČRPALKA", load: "motor", poles: "3p", power: "0,75", protection: "mpcb", cable: "NHXMH-J 4x1,5mm2" },
   { id: "convector", label: "Convector / fan coil 230 V", description: "KONVEKTOR", load: "motor", poles: "1p", power: "0,1", protection: "mcb", cable: "FLAME-JZ-H FRNC 3x1,5 mm2" },
-  { id: "fan3", label: "AHU fan 400 V with VFD", description: "VENTILATOR", load: "motor", poles: "3p", power: "2,2", protection: "mcb", cable: "NYCY 4x2,5mm2" },
+  { id: "fan3", label: "AHU fan 400 V with VFD", description: "VENTILATOR", load: "motor", poles: "3p", power: "2,2", protection: "mcb", cable: "NHXCHX 4x2,5/2,5mm2" },
   { id: "blind", label: "Blind motor 230 V", description: "ŽALUZIJA", load: "motor", poles: "1p", power: "0,15", protection: "mcb", cable: "FLAME-JZ-H FRNC 4x1,5 mm2" },
-  { id: "heater1", label: "Electric heater 2 kW 230 V", description: "ELEKTRIČNI GRELNIK", load: "heater", poles: "1p", power: "2", protection: "mcb", cable: "NYM-J 3x2,5mm2" },
-  { id: "heater3", label: "Electric heater 6 kW 400 V", description: "ELEKTRIČNI GRELNIK", load: "heater", poles: "3p", power: "6", protection: "mcb", cable: "NYM-J 4x2,5mm2" },
-  { id: "dhw", label: "DHW electric heater 3 kW", description: "ELEKTRIČNI GRELEC STV", load: "heater", poles: "1p+N", power: "3", protection: "rcbo", cable: "NYM-J 3x2,5mm2" },
-  { id: "hp1", label: "Heat pump 230 V, 4 kW", description: "TOPLOTNA ČRPALKA", load: "heatPump", poles: "1p", power: "4", protection: "mcb", cable: "NYM-J 3x4mm2" },
-  { id: "hp3", label: "Heat pump 400 V, 8 kW", description: "TOPLOTNA ČRPALKA", load: "heatPump", poles: "3p+N", power: "8", protection: "mcb", cable: "NYY-J 5x4mm2" },
+  { id: "heater1", label: "Electric heater 2 kW 230 V", description: "ELEKTRIČNI GRELNIK", load: "heater", poles: "1p", power: "2", protection: "mcb", cable: "NHXMH-J 3x2,5mm2" },
+  { id: "heater3", label: "Electric heater 6 kW 400 V", description: "ELEKTRIČNI GRELNIK", load: "heater", poles: "3p", power: "6", protection: "mcb", cable: "NHXMH-J 4x2,5mm2" },
+  { id: "dhw", label: "DHW electric heater 3 kW", description: "ELEKTRIČNI GRELEC STV", load: "heater", poles: "1p+N", power: "3", protection: "rcbo", cable: "NHXMH-J 3x2,5mm2" },
+  { id: "hp1", label: "Heat pump 230 V, 4 kW", description: "TOPLOTNA ČRPALKA", load: "heatPump", poles: "1p", power: "4", protection: "mcb", cable: "NHXMH-J 3x4mm2" },
+  { id: "hp3", label: "Heat pump 400 V, 8 kW", description: "TOPLOTNA ČRPALKA", load: "heatPump", poles: "3p+N", power: "8", protection: "mcb", cable: "N2XH-J 5x4mm2" },
   { id: "socket", label: "Socket on DIN rail 230 V 16 A", description: "Vtičnica\nna DIN letvi", load: "socket", poles: "1p", power: "", protection: "mcb" },
-  { id: "wallSocket", label: "Wall socket 230 V 16 A", description: "VTIČNICA", load: "wallSocket", poles: "1p+N", power: "3,5", protection: "rcbo", cable: "NYM-J 3x2,5mm2" },
-  { id: "valve3", label: "Zone valve 230 V 3-wire (on a shared breaker)", description: "ZAPORNI VENTIL", load: "valve3", poles: "1p", power: "0,01", protection: "none", cable: "NYM-J 3x1,5mm2" },
-  { id: "light", label: "Lighting circuit", description: "RAZSVETLJAVA", load: "light", poles: "1p", power: "0,5", protection: "mcb", cable: "NYM-J 3x1,5mm2" },
+  { id: "wallSocket", label: "Wall socket 230 V 16 A", description: "VTIČNICA", load: "wallSocket", poles: "1p+N", power: "3,5", protection: "rcbo", cable: "NHXMH-J 3x2,5mm2" },
+  { id: "valve3", label: "Zone valve 230 V 3-wire (on a shared breaker)", description: "ZAPORNI VENTIL", load: "valve3", poles: "1p", power: "0,01", protection: "none", cable: "NHXMH-J 3x1,5mm2" },
+  { id: "light", label: "Lighting circuit", description: "RAZSVETLJAVA", load: "light", poles: "1p", power: "0,5", protection: "mcb", cable: "NHXMH-J 3x1,5mm2" },
   { id: "psu25", label: "PSU 230 V AC / 24 V DC 2,5 A", description: "NAPAJALNIK 24 V DC", load: "psu", poles: "1p", power: "0,07", protection: "mcb", loadData: "230VAC/24VDC 2,5A" },
   { id: "psu5", label: "PSU 230 V AC / 24 V DC 5 A", description: "NAPAJALNIK 24 V DC", load: "psu", poles: "1p", power: "0,14", protection: "mcb", loadData: "230VAC/24VDC 5A" },
   { id: "trafo", label: "Transformer 230 / 24 V AC 100 VA", description: "TRANSFORMATOR 24 V AC", load: "transformer", poles: "1p", power: "0,1", protection: "mcb", loadData: "230VAC/24VAC 100VA" },
-  { id: "panel3", label: "Sub-panel 400 V, 10 kW", description: "RAZDELILNIK", load: "consumer", poles: "3p+N", power: "10", protection: "mcb", cable: "NYY-J 5x6mm2" }
+  { id: "panel3", label: "Sub-panel 400 V, 10 kW", description: "RAZDELILNIK", load: "consumer", poles: "3p+N", power: "10", protection: "mcb", cable: "N2XH-J 5x6mm2" }
 ];
 
 export const SYSTEMS = [
@@ -53,11 +53,11 @@ export const SYSTEMS = [
 ];
 
 export const CABLE_TYPES = [
-  "NYM-J 3x1,5mm2", "NYM-J 3x2,5mm2", "NYM-J 3x4mm2", "NYM-J 4x1,5mm2", "NYM-J 4x2,5mm2", "NYM-J 5x1,5mm2", "NYM-J 5x2,5mm2", "NYM-J 5x4mm2", "NYM-J 5x6mm2",
-  "NYY-J 3x2,5mm2", "NYY-J 5x2,5mm2", "NYY-J 5x4mm2", "NYY-J 5x6mm2", "NYY-J 5x10mm2", "NYY-J 5x16mm2",
-  "NHXMH-J 3x1,5mm2", "NHXMH-J 3x2,5mm2", "NHXMH-J 5x2,5mm2", "NHXMH-J 5x4mm2", "NHXMH-J 5x6mm2", "NHXMH-J 5x10mm2",
+  "NHXMH-J 3x1,5mm2", "NHXMH-J 3x2,5mm2", "NHXMH-J 3x4mm2", "NHXMH-J 4x1,5mm2", "NHXMH-J 4x2,5mm2", "NHXMH-J 5x1,5mm2", "NHXMH-J 5x2,5mm2", "NHXMH-J 5x4mm2", "NHXMH-J 5x6mm2", "NHXMH-J 5x10mm2",
+  "N2XH-J 3x2,5mm2", "N2XH-J 5x2,5mm2", "N2XH-J 5x4mm2", "N2XH-J 5x6mm2", "N2XH-J 5x10mm2", "N2XH-J 5x16mm2",
   "FLAME-JZ-H FRNC 3x1,0 mm2", "FLAME-JZ-H FRNC 3x1,5 mm2", "FLAME-JZ-H FRNC 4x1,5 mm2", "FLAME-JZ-H FRNC 5x1,5 mm2",
-  "NYCY 4x1,5mm2", "NYCY 4x2,5mm2", "J-H(St)H 2x2x0,8mm2"
+  "NHXCHX 4x1,5/1,5mm2", "NHXCHX 4x2,5/2,5mm2",
+  "J-H(St)H 2x2x0,8mm2", "J-H(St)H 3x2x0,8mm2", "J-H(St)H 4x2x0,8mm2", "J-H(St)H 6x2x0,8mm2"
 ];
 
 export const SIZING_DEFAULTS = {
@@ -434,7 +434,7 @@ function leafWidth(row){
   const slots = Math.max(loadTerminals(row).length, devicePoles(row).length);
   const box = Math.max(120, (loadTerminals(row).length + 1) * SLOT);
   const terminals = loadTerminals(row).length;
-  const cableLabel = Math.max(String(row.cable || `NYM-J ${terminals}x1,5mm2`).length, String(row.loadTag || "-W.XXXX").length + 3) * 4.6;
+  const cableLabel = Math.max(String(row.cable || `NHXMH-J ${terminals}x1,5mm2`).length, String(row.loadTag || "-W.XXXX").length + 3) * 4.6;
   const cable = LEAD - SLOT + terminals * SLOT + 14 + cableLabel - (LEAD - 4);
   return snapUp(Math.max(LEAD + (slots + 1) * SLOT + TAIL, LEAD - SLOT + box + 20, cable));
 }
@@ -499,6 +499,7 @@ function layoutPower(power, nextId, paper, spread){
   const label = (row, poles = row.poles) => withPoles(ratings.get(row.id), poles);
   const shapes = [];
   const source = { power: true, sheet: "NAPAJANJE" };
+  let owner = null;
   let phaseTurn = 0;
   const terminalCount = new Map();
   const oneLine = (text) => String(text ?? "").split("\n").map((part) => part.trim()).filter(Boolean).join(" ");
@@ -506,7 +507,7 @@ function layoutPower(power, nextId, paper, spread){
   const conductorMedium = (label) => label === "N" ? "neutral" : label === "PE" ? "earth" : "wire";
 
   const element = (type, x, y, name, params) => {
-    const shape = { id: nextId(), kind: "equipment", type, x, y, ...electricSize(type, params), name, params, source };
+    const shape = { id: nextId(), kind: "equipment", type, x, y, ...electricSize(type, params), name, params, source: owner ? { ...source, row: owner } : source };
     shapes.push(shape);
     return shape;
   };
@@ -517,7 +518,7 @@ function layoutPower(power, nextId, paper, spread){
   };
   const wire = (from, to, medium = "wire") => pipe(from, to, medium);
   const note = (description, device, width = noteWidth(description, device.width)) => {
-    const shape = noteText(description, device.x, device.y + device.height + 8, width, nextId(), source);
+    const shape = noteText(description, device.x, device.y + device.height + 8, width, nextId(), owner ? { ...source, row: owner } : source);
     if (shape) shapes.push(shape);
   };
   const port = (shape, side, slot) => ({ id: shape.id, side, offset: (slot + 1) * SLOT });
@@ -600,10 +601,12 @@ function layoutPower(power, nextId, paper, spread){
   const rails = page.rails;
   let mainDevice = null;
   if (main) {
+    owner = main.id;
     mainDevice = element("protection", supplyX + LEAD - SLOT, Y.group, main.tag, { kind: main.protection, poles: devicePoles(main, lines.length), rating: label(main, `${lines.length}p${poleOf(main.poles).neutral ? "+N" : ""}`), note: oneLine(main.description) });
     lines.forEach((phase, index) => wire(tap(rails[phase], slotX(supplyX, index)), port(mainDevice, "top", index)));
     if (poleOf(main.poles).neutral) neutralIn(rails, mainDevice, lines.length, slotX(supplyX, lines.length) + SLOT);
   }
+  owner = "supply";
   const incoming = element("terminalStrip", supplyX + LEAD - SLOT, Y.strip, supply.incoming || "-X0", { terminals: supplyTerminals });
   const supplyCable = element("cable", supplyX + LEAD - SLOT, Y.cable, supply.tag, { conductors: supplyTerminals.map((_, index) => String(index + 1)), cableType: supply.cable });
   const supplyShape = element("supply", supplyX + LEAD - SLOT, Y.load, "", { terminals: supplyTerminals, description: supply.description });
@@ -619,6 +622,8 @@ function layoutPower(power, nextId, paper, spread){
     wire(port(supplyCable, "bottom", index), port(supplyShape, "top", index), medium);
   });
 
+  owner = null;
+
   const railSource = (row, rails) => {
     const pole = poleOf(row.poles);
     const phase = pole.lines === 1 ? balance(row) : null;
@@ -630,6 +635,7 @@ function layoutPower(power, nextId, paper, spread){
   };
 
   const drawLeaf = (row, x0, from, target, top) => {
+    owner = row.id;
     const rails = target.rails;
     const nested = top !== Y.group;
     const pole = poleOf(row.poles);
@@ -720,7 +726,7 @@ function layoutPower(power, nextId, paper, spread){
     });
     const strip = element("terminalStrip", ex, Y.strip, stripName, { terminals: numbers });
     const conductors = terminals.map((_, index) => String(index + 1));
-    const cableType = row.cable || `NYM-J ${terminals.length}x1,5mm2`;
+    const cableType = row.cable || `NHXMH-J ${terminals.length}x1,5mm2`;
     const cable = element("cable", ex, Y.cable, loadTag ? `-W.${loadTag.replace(/^-/, "")}` : `-W.${row.tag.replace(/^-/, "")}`, { conductors, cableType });
     const device2 = element("fieldDevice", ex, Y.load, loadTag, { terminals, model: row.loadData, description: "", symbol: load.symbol });
     device2.source = { ...source, row: row.id };
@@ -747,6 +753,7 @@ function layoutPower(power, nextId, paper, spread){
     const x0 = place(own, widths[0]);
     const groupPhase = pole.lines === 1 ? balance(group) : null;
     const ex = x0 + LEAD - SLOT;
+    owner = group.id;
     const device = element("protection", ex, Y.group, group.tag, { kind: group.protection, poles: devicePoles(group), rating: label(group), note: oneLine(group.description), labels: "right" });
     for (let index = 0; index < pole.lines; index += 1) wire(tap(page.rails[groupPhase ?? lines[index] ?? lines[0]], slotX(x0, index)), port(device, "top", index));
     if (pole.neutral) neutralIn(page.rails, device, pole.lines, slotX(x0, 0) - SLOT);

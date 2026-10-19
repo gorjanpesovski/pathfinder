@@ -38,7 +38,8 @@
     ontextstyle,
     ondelete,
     registers = null,
-    onregisters = null
+    onregisters = null,
+    listedit = null
   } = $props();
 
   const GROUP_GAP = 12;
@@ -74,14 +75,16 @@
     return { value: mode === "value" || mode === "both" ? "on" : "off", setpoint: mode === "setpoint" || mode === "both" ? "on" : "off" };
   });
 
+  let tagField = $derived(listedit?.fields?.find((field) => field.tag) ?? null);
   let applies = $derived({
     identity: elementName !== null || elementNameSize !== undefined || !!fittings,
     geometry: !!plainElements || !!fittings || !!pipes || !!texts,
     display: !!(plainElements?.tanks || (plainElements?.bars && !pipes) || pipes || fittings?.measured || fittings?.meters || fittings?.sized || texts || plainElements?.branch),
-    data: !!(elements?.device || elements?.wiring || onvariables || registers),
+    list: !!(listedit && (listedit.fields.some((field) => !field.tag) || listedit.edited)),
+    data: !!(elements?.device || (elements?.wiring && !listedit?.fields?.length) || onvariables || registers),
     actions: !!(fittings?.flippable || fittings?.turnable || (fittings?.sized && fittings?.moved) || plainElements || pipes || texts?.alone || network)
   });
-  let order = $derived(["identity", "geometry", "display", "data", "actions"].filter((id) => applies[id]));
+  let order = $derived(["identity", "list", "geometry", "display", "data", "actions"].filter((id) => applies[id]));
 
   let barWidth = $state(0);
   let typeWidth = $state(0);
@@ -210,7 +213,8 @@
   }
 
   input[type="number"],
-  input[type="text"] {
+  input[type="text"],
+  select {
     height: 26px;
     padding: 2px 6px;
     border: 1px solid #cbd5e1;
@@ -446,6 +450,15 @@
     width: 16px;
     height: 16px;
   }
+
+  .edited {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 11px;
+    font-weight: 600;
+  }
 </style>
 
 {#snippet percentControl(label, value, shown, min, max, step, apply)}
@@ -476,7 +489,7 @@
 
 {#snippet identityGroup()}
   {#if elementName !== null}
-    {@render nameField(elementName, onbranchname)}
+    {@render nameField(elementName, tagField ? (value) => listedit.onchange(tagField.key, value.trim()) : onbranchname)}
   {/if}
   {#if fittings?.count === 1}
     {@render nameField(fittings.name ?? "", onfittingname)}
@@ -615,7 +628,7 @@
   {#if registers && onregisters}
     <button type="button" onclick={onregisters}>Registers…<span class="badge">{registers.count ?? "mixed"}</span></button>
   {/if}
-  {#if elements?.wiring}
+  {#if elements?.wiring && !listedit?.fields?.length}
     {@const part = elements.wiring}
     {#if part.type === "controller" || part.type === "fieldDevice"}
       <label>
@@ -711,8 +724,31 @@
   {/if}
 {/snippet}
 
+{#snippet listGroup()}
+  {#each listedit.fields.filter((field) => !field.tag) as field (field.key)}
+    <label title="Changes the wiring list · the drawing is redrawn">
+      {field.label}
+      {#if field.options}
+        <select value={field.value} onchange={(e) => listedit.onchange(field.key, e.currentTarget.value)}>
+          {#each field.options as option (option.value)}
+            <option value={option.value}>{option.label}</option>
+          {/each}
+        </select>
+      {:else}
+        <input type="text" class={field.key === "description" ? "wide" : "name"} value={field.value} placeholder={field.placeholder}
+               onchange={(e) => listedit.onchange(field.key, e.currentTarget.value.trim())} onkeydown={blurOnEnter}>
+      {/if}
+    </label>
+  {/each}
+  {#if listedit.edited}
+    <span class="edited" title="Changed by hand on the drawing · kept when the pages are drawn again">Edited</span>
+    <button type="button" onclick={listedit.onreset} title="Undo the changes made on the drawing">Reset to generated</button>
+  {/if}
+{/snippet}
+
 {#snippet groupContent(id)}
   {#if id === "identity"}{@render identityGroup()}
+  {:else if id === "list"}{@render listGroup()}
   {:else if id === "geometry"}{@render geometryGroup()}
   {:else if id === "display"}{@render displayGroup()}
   {:else if id === "data"}{@render dataGroup()}

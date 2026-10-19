@@ -267,7 +267,10 @@ function cable(element){
   const parts = [];
   const slots = slotsOf(element);
   const last = (slots.length) * SLOT;
-  parts.push(line(x + 8, y + 20, x + last + 8, y + 20, 1));
+  const left = element.params?.labelLeft;
+  const at = left ? x + SLOT - 14 : x + last + 14;
+  const reach = Math.max(String(element.name ?? "").length * 6.6, String(element.params?.cableType ?? "").length * 4.4) + 4;
+  parts.push(left ? line(at - reach, y + 20, x + last + 8, y + 20, 1) : line(x + 8, y + 20, at + reach, y + 20, 1));
   slots.forEach((label, index) => {
     if (!label) return;
     const cx = x + (index + 1) * SLOT;
@@ -279,8 +282,6 @@ function cable(element){
     const middle = x + (slots.length + 1) * SLOT / 2;
     parts.push(`<ellipse cx="${middle}" cy="${y + 20}" rx="${(slots.length - 1) * SLOT / 2 + 12}" ry="8" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="3 2"/>`);
   }
-  const left = element.params?.labelLeft;
-  const at = left ? x + SLOT - 14 : x + last + 14;
   const anchor = left ? "end" : "start";
   parts.push(text(at, y + 17, element.name, { size: 11, bold: true, anchor }));
   parts.push(text(at, y + 32, element.params?.cableType, { size: 8, anchor }));
@@ -329,35 +330,83 @@ function deviceGlyph(element){
   return draw ? draw(element.x + element.width - 30, element.y + 48, element) : "";
 }
 
+const OPERATORS = {
+  rcbo: ["residual"],
+  rcd: ["residual"],
+  switch: ["manual"]
+};
+
+const QUALIFIED = new Set(["mcb", "mpcb", "rcbo"]);
+
+function qualifiers(cx, y){
+  const blade = (at) => cx - 11 * (44 - at) / 23;
+  return [
+    `<polyline points="${cx - 30},${y + 31} ${cx - 25},${y + 31} ${cx - 25},${y + 26} ${cx - 19},${y + 26} ${cx - 19},${y + 28} ${blade(28)},${y + 28}" fill="none" stroke="${INK}" stroke-width="1.2"/>`,
+    line(blade(38), y + 38, cx - 18, y + 38, 1.2),
+    `<polygon points="${cx - 25},${y + 38} ${cx - 17},${y + 34.5} ${cx - 17},${y + 41.5}" fill="${INK}" stroke="${INK}" stroke-width="0.6"/>`
+  ].join("");
+}
+
+function operator(kind, bx, y){
+  if (kind === "manual") return line(bx, y + 25, bx, y + 39, 1.2);
+  const parts = [box(bx, y + 25, 16, 14, 1)];
+  if (kind === "thermal") parts.push(`<polyline points="${bx + 3},${y + 35} ${bx + 8},${y + 35} ${bx + 8},${y + 29} ${bx + 13},${y + 29}" fill="none" stroke="${INK}" stroke-width="1"/>`);
+  if (kind === "magnetic") parts.push(text(bx + 8, y + 35.5, "I>", { size: 8, anchor: "middle" }));
+  if (kind === "residual") parts.push(text(bx + 8, y + 35.5, "IΔ", { size: 8, anchor: "middle" }));
+  return parts.join("");
+}
+
+function operatorStart(kind, neutral){
+  return (neutral ? 32 : 0) + ((OPERATORS[kind] ?? [])[0] === "manual" ? 14 : 12);
+}
+
+function operatorWidth(kind, neutral){
+  const list = OPERATORS[kind] ?? [];
+  if (!list.length) return 0;
+  return operatorStart(kind, neutral) + (list[0] === "manual" ? 0 : list.length * 20);
+}
+
 function protection(element){
   const { x, y } = element;
   const kind = element.params?.kind ?? "mcb";
   const parts = [];
   const poles = slotsOf(element).map((label, index) => label ? x + (index + 1) * SLOT : null).filter((value) => value !== null);
+  const neutralPoles = new Set(slotsOf(element).map((label, index) => label === "N" ? x + (index + 1) * SLOT : null).filter((value) => value !== null));
+  const breaker = kind === "rcd";
   for (const cx of poles) {
     if (kind === "fuse") {
-      parts.push(line(cx, y, cx, y + 14), box(cx - 5, y + 14, 10, 32, 1.2), line(cx, y + 14, cx, y + 46), line(cx, y + 46, cx, y + 60));
+      parts.push(line(cx, y, cx, y + 3.5), line(cx, y + 8.5, cx, y + 16), box(cx - 5, y + 16, 10, 28, 1.2), line(cx, y + 16, cx, y + 44), line(cx, y + 44, cx, y + 51.5), line(cx, y + 56.5, cx, y + 60));
+      parts.push(`<circle cx="${cx}" cy="${y + 6}" r="2.5" fill="#FFFFFF" stroke="${INK}" stroke-width="1.2"/>`, `<circle cx="${cx}" cy="${y + 54}" r="2.5" fill="#FFFFFF" stroke="${INK}" stroke-width="1.2"/>`);
+      continue;
+    }
+    if (QUALIFIED.has(kind)) {
+      const number = poles.indexOf(cx) * 2 + 1;
+      parts.push(line(cx, y, cx, y + 18), line(cx - 6, y + 18, cx + 6, y + 18), line(cx - 3.5, y + 10, cx + 3.5, y + 16), line(cx - 3.5, y + 16, cx + 3.5, y + 10));
+      parts.push(line(cx, y + 41.5, cx - 10, y + 21), `<circle cx="${cx}" cy="${y + 44}" r="2.5" fill="#FFFFFF" stroke="${INK}" stroke-width="1.2"/>`, line(cx, y + 46.5, cx, y + 60));
+      const neutralPole = neutralPoles.has(cx);
+      parts.push(text(cx + 4, y + 8, neutralPole ? "N" : String(number), { size: 7 }), text(cx + 4, y + 58, neutralPole ? "N" : String(number + 1), { size: 7 }));
+      if (cx === poles[0] && !neutralPoles.has(cx)) parts.push(qualifiers(cx, y));
       continue;
     }
     parts.push(line(cx, y, cx, y + 18), line(cx, y + 44, cx - 11, y + 21), line(cx, y + 44, cx, y + 60));
-    if (kind === "switch") parts.push(line(cx - 4, y + 18, cx + 4, y + 18));
-    if (kind === "contact") parts.push(line(cx, y + 18, cx + 5, y + 18));
-    if (kind === "mcb" || kind === "rcbo" || kind === "mpcb") parts.push(line(cx - 3.5, y + 14.5, cx + 3.5, y + 21.5), line(cx - 3.5, y + 21.5, cx + 3.5, y + 14.5));
+    if (breaker) parts.push(line(cx - 3.5, y + 14.5, cx + 3.5, y + 21.5), line(cx - 3.5, y + 21.5, cx + 3.5, y + 14.5));
+    if (kind === "switch") {
+      parts.push(line(cx - 4, y + 18, cx + 4, y + 18));
+      parts.push(`<circle cx="${cx}" cy="${y + 14.5}" r="2.5" fill="#FFFFFF" stroke="${INK}" stroke-width="1"/>`);
+    }
   }
+  const operators = OPERATORS[kind] ?? [];
+  const neutral = slotsOf(element).filter(Boolean).at(-1) === "N";
   if (kind !== "fuse" && poles.length) {
     const right = poles[poles.length - 1];
-    const link = kind === "rcd" || kind === "rcbo" ? right + 22 : right;
-    if (link > poles[0]) parts.push(`<line x1="${poles[0] - 6}" y1="${y + 32}" x2="${link}" y2="${y + 32}" stroke="${INK}" stroke-width="1" stroke-dasharray="3 2"/>`);
-    if (kind === "rcd" || kind === "rcbo") {
-      parts.push(`<ellipse cx="${right + 28}" cy="${y + 32}" rx="6" ry="9" fill="#FFFFFF" stroke="${INK}" stroke-width="1.2"/>`);
-      parts.push(text(right + 36, y + 36, "IΔ", { size: 8 }));
-    }
-    if (kind === "mpcb") parts.push(text(right + 16, y + 36, "I>", { size: 8 }));
+    const end = operators.length ? right + operatorStart(kind, neutral) : right;
+    if (end > poles[0] - 6 && (operators.length || poles.length > 1)) parts.push(`<line x1="${poles[0] - 6}" y1="${y + 32}" x2="${end}" y2="${y + 32}" stroke="${INK}" stroke-width="1" stroke-dasharray="3 2"/>`);
+    operators.forEach((entry, index) => parts.push(operator(entry, end + index * 20, y)));
   }
   const onRight = element.params?.labels === "right";
   const last = poles[poles.length - 1] ?? x + SLOT;
   const anchor = onRight ? "start" : "end";
-  const left = onRight ? last + (kind === "rcd" || kind === "rcbo" ? 52 : kind === "mpcb" ? 30 : 12) : (poles[0] ?? x + SLOT) - 14;
+  const left = onRight ? last + Math.max(12, operatorWidth(kind, neutral) + 8) : (poles[0] ?? x + SLOT) - (QUALIFIED.has(kind) ? 34 : 14);
   parts.push(text(left, y + 26, element.name, { size: 11, bold: true, anchor }));
   parts.push(text(left, y + 39, element.params?.rating, { size: 9, anchor }));
   parts.push(text(left, y + 51, element.params?.note, { size: 8, anchor }));
@@ -467,9 +516,24 @@ function relayCoil(element, refs){
   parts.push(text(x + 44, y + 29, element.name, { size: 11, bold: true }));
   parts.push(text(x + 40, y + 42, element.params?.note, { size: 8 }));
   if (refs?.length) parts.push(text(x + 40, y + 54, `14 → ${refs.join(", ")}`, { size: 8, fill: "#475569" }));
-  (element.params?.contacts ?? []).forEach((entry, index) => {
-    parts.push(text(x + 26, y + 76 + index * 11, `${entry.numbers}  →  ${entry.ref}`, { size: 8, fill: "#334155" }));
-  });
+  (element.params?.contacts ?? []).forEach((entry, index) => parts.push(contactMirror(x + 2, y + 172 + index * 26, entry)));
+  return parts.join("");
+}
+
+function contactMirror(x, y, entry){
+  const [common, no, nc] = entry.common ? [entry.common, entry.no, entry.nc] : String(entry.numbers ?? "").split(/[-/]/);
+  const bx = x + 24;
+  const parts = [text(x, y + 9, entry.ref, { size: 8 })];
+  parts.push(text(bx + 2, y - 1, no, { size: 8 }));
+  parts.push(line(bx, y + 2, bx + 14, y + 2, 1));
+  if (nc) {
+    parts.push(text(bx + 2, y + 12, nc, { size: 8 }));
+    parts.push(line(bx, y + 15, bx + 16, y + 15, 1));
+    parts.push(line(bx + 16, y + 15, bx + 16, y + 10, 1));
+  }
+  parts.push(line(bx + 16, y + 15, bx + 34, y + 7, 1));
+  parts.push(line(bx + 34, y + 7, bx + 46, y + 7, 1));
+  parts.push(text(bx + 38, y + 3, common, { size: 8 }));
   return parts.join("");
 }
 

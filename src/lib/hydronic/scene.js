@@ -151,6 +151,18 @@ function railLabels(pipe, points){
   return labels;
 }
 
+function cornerOf(junction, junctions, byId, routes){
+  const host = byId.get(junction.host);
+  const route = routes.get(junction.host);
+  if (!host || !route?.length) return false;
+  const near = (a, b) => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5;
+  const ends = [["from", route[0]], ["to", route[route.length - 1]]];
+  const free = ends.some(([end, point]) => host[end] && host[end].id === undefined && host[end].pipe === undefined && near(point, junction));
+  if (!free) return false;
+  return junctions.filter((other) => other.host === junction.host && near(other, junction)).length === 1
+    && !junctions.some((other) => other.pipeId === junction.host && near(other, junction));
+}
+
 export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   const routes = options.routes ?? computeRoutes(shapes);
   const byId = new Map(shapes.map((shape) => [shape.id, shape]));
@@ -187,6 +199,7 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
   junctions.forEach((junction, index) => {
     if (networkPipes.has(junction.pipeId) || plainPipes.has(junction.pipeId)) return;
     if (electricPipes.has(junction.pipeId)) {
+      if (cornerOf(junction, junctions, byId, routes)) return;
       items.push({ kind: "junction", id: `junction_${index + 1}`, owner: junction.pipeId, x: junction.x, y: junction.y, radius: 3.5, dot: true });
       return;
     }

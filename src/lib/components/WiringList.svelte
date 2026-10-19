@@ -9,10 +9,12 @@
   import { CONTROLLER_MODELS, CONTROL_TYPES, controlTypeOf, modelTerminals, newController, newControlRow, terminalUse, contactUse, isRelayType, sharesOutput, CUSTOM_CONNECTIONS, CUSTOM_SYMBOLS, newTemplate, customTypes, contactPairs, commPorts, portOf, linkDefaults, newLink, PROTOCOLS, LINK_TARGETS, isGateway } from "$lib/electric/control.js";
   import { portal } from "$lib/actions/portal.js";
   import Modal from "./Modal.svelte";
+  import Combo from "./Combo.svelte";
   import { loadLibrary, saveToLibrary, removeFromLibrary, templateFromLibrary, exportLibrary, importLibrary } from "$lib/electric/deviceLibrary.js";
 
   let { power = $bindable(), control = $bindable(), ondraw, onnotice } = $props();
 
+  const LINK_CABLES = ["UTP", "UTP Kat5", "FTP Kat6", "J-H(St)H 2x2x0,8mm2"];
   let part = $state("power");
   let libraryOpen = $state(false);
   const linkOwner = {
@@ -1267,17 +1269,6 @@
   {/each}
 </datalist>
 
-<datalist id="link-cables">
-  {#each ["UTP", "UTP Kat5", "FTP Kat6", "J-H(St)H 2x2x0,8mm2", "LiYCY 2x2x0,5mm2"] as type (type)}
-    <option value={type}></option>
-  {/each}
-</datalist>
-
-<datalist id="cable-types">
-  {#each CABLE_TYPES as type (type)}
-    <option value={type}></option>
-  {/each}
-</datalist>
 
 <div class="wiring-view">
   <div class="bar">
@@ -1475,8 +1466,8 @@
                 </td>
                 <td><input type="text" bind:value={row.strip} aria-label="Terminal strip" placeholder={isRelayType(row.type) || row.type === "aux" ? "" : control.strip || "-X2"}
                            disabled={isRelayType(row.type) || row.type === "aux"} spellcheck="false"></td>
-                <td><input type="text" list="cable-types" bind:value={row.cable} aria-label="Cable" placeholder={type.cable ?? ""}
-                           disabled={isRelayType(row.type) || row.type === "aux"} spellcheck="false"></td>
+                <td><Combo bind:value={row.cable} options={CABLE_TYPES} label="Cable" placeholder={type.cable ?? ""}
+                           disabled={isRelayType(row.type) || row.type === "aux"}/></td>
                 <td><input type="text" bind:value={row.model} aria-label="Model" disabled={isRelayType(row.type) || row.type === "aux"}></td>
                 <td><button type="button" class="icon remove" aria-label="Remove" onclick={() => removeControl(row.id)}>✕</button></td>
               </tr>
@@ -1612,7 +1603,7 @@
                 <td>
                   <input type="text" list="protocols" bind:value={link.protocol} aria-label="Protocol" spellcheck="false">
                 </td>
-                <td><input type="text" list="link-cables" bind:value={link.cable} aria-label="Cable type" spellcheck="false"></td>
+                <td><Combo bind:value={link.cable} options={LINK_CABLES} label="Cable type"/></td>
                 <td><input type="text" bind:value={link.strip} aria-label="Terminal strip" spellcheck="false" placeholder={control.strip || "-X2"}
                            disabled={!(link.target === "external" && portOf(model, link.port)?.kind === "serial")}></td>
                 <td><button type="button" class="icon remove" aria-label="Remove" onclick={() => removeLink(link.id)}>✕</button></td>
@@ -1655,7 +1646,7 @@
         </label>
         <label>
           Supply cable type
-          <input type="text" list="cable-types" bind:value={power.supply.cable} placeholder="NHXMH-J 5x2,5mm2" spellcheck="false">
+          <Combo bind:value={power.supply.cable} options={CABLE_TYPES} label="Supply cable type" placeholder="NHXMH-J 5x2,5mm2"/>
         </label>
         <label>
           Description
@@ -1719,7 +1710,7 @@
               <th title="Maximum current from the data sheet · when filled in it is used instead of the kW calculation">Max A</th>
               <th title="Current used for sizing · Max A if filled in, otherwise calculated from kW">Current</th>
               <th title="Power, model or output, e.g. 0,37 kW or 230VAC/24VDC 2,5A">Load data</th>
-              <th title="Empty uses NYM-J with one core per terminal">Cable</th>
+              <th title="Empty uses NHXMH-J with one core per terminal">Cable</th>
               <th title="Terminal strip the feeder cable lands on · empty uses the Feeder terminals of the supply">Terminals</th>
               <th title="2-pole breaker on the low-voltage side of a transformer or PSU, e.g. -F10 C6 · empty for none">LV protection</th>
               <th></th>
@@ -1792,8 +1783,8 @@
                 <td><input type="text" bind:value={row.maxCurrent} aria-label="Maximum current in A" disabled={load.id === "none"} inputmode="decimal" spellcheck="false"></td>
                 <td class="current">{amps(row)}</td>
                 <td><input type="text" bind:value={row.loadData} aria-label="Load data" disabled={load.id === "none"}></td>
-                <td><input type="text" list="cable-types" bind:value={row.cable} aria-label="Cable" disabled={load.id === "none" || load.cabinet}
-                           placeholder={load.id === "none" || load.cabinet ? "" : "NYM-J"} spellcheck="false"></td>
+                <td><Combo bind:value={row.cable} options={CABLE_TYPES} label="Cable" disabled={load.id === "none" || load.cabinet}
+                           placeholder={load.id === "none" || load.cabinet ? "" : "NHXMH-J"}/></td>
                 <td><input type="text" bind:value={row.strip} aria-label="Terminal strip" disabled={load.id === "none" || load.cabinet}
                            placeholder={load.id === "none" || load.cabinet ? "" : power.supply.strip || "-X1"} spellcheck="false"></td>
                 <td><input type="text" bind:value={row.lvProtection} aria-label="Low-voltage protection" disabled={!load.cabinet || load.kind === "socket"}
@@ -1887,7 +1878,7 @@
               <div class="template-head">
                 <label>Name <input type="text" bind:value={template.name} aria-label="Custom device name"></label>
                 <label class="short">Tag prefix <input type="text" bind:value={template.prefix} spellcheck="false" placeholder="-E"></label>
-                <label>Cable <input type="text" list="cable-types" bind:value={template.cable} spellcheck="false"></label>
+                <label>Cable <Combo bind:value={template.cable} options={CABLE_TYPES} label="Cable"/></label>
                 <label class="short">Symbol
                   <select bind:value={template.symbol}>
                     {#each CUSTOM_SYMBOLS as symbol (symbol.id)}
