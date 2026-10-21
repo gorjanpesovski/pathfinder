@@ -371,8 +371,17 @@ export function recuperationItems({ cx, width, height, displayHeight, recuperati
     return { under, over };
 }
 
+const ROBOTO_WIDTHS = {
+    a: 0.54, b: 0.56, c: 0.52, d: 0.56, e: 0.53, f: 0.35, g: 0.56, h: 0.55, i: 0.24, j: 0.24, k: 0.51, l: 0.24, m: 0.88,
+    n: 0.55, o: 0.57, p: 0.56, q: 0.57, r: 0.34, s: 0.52, t: 0.33, u: 0.55, v: 0.48, w: 0.75, x: 0.5, y: 0.47, z: 0.5,
+    A: 0.65, B: 0.62, C: 0.65, D: 0.66, E: 0.57, F: 0.55, G: 0.68, H: 0.71, I: 0.27, J: 0.55, K: 0.63, L: 0.54, M: 0.87,
+    N: 0.71, O: 0.69, P: 0.63, Q: 0.69, R: 0.62, S: 0.59, T: 0.6, U: 0.65, V: 0.64, W: 0.89, X: 0.63, Y: 0.6, Z: 0.6,
+    " ": 0.25, "/": 0.41, "-": 0.28, ".": 0.26, ",": 0.2, ":": 0.24, "(": 0.34, ")": 0.35
+};
+
 function textWidth(text, size){
-    return [...text].length * size * 0.56;
+    return [...text.normalize("NFD").replace(/[̀-ͯ]/g, "")]
+        .reduce((sum, char) => sum + (ROBOTO_WIDTHS[char] ?? (/\d/.test(char) ? 0.56 : 0.55)), 0) * size;
 }
 
 export function unitItems({ displayWidth, options, controller, prefix, scale = 1 }){

@@ -1,6 +1,6 @@
 import { ICONS } from "$lib/iconSprite.js";
 
-const IN_OUT_VALUE = "SYSTEM.LIBRARY.ATVISE.OBJECTDISPLAYS.Advanced.in_out_value";
+const IN_OUT_VALUE = "SYSTEM.LIBRARY.ATVISE.OBJECTDISPLAYS.Advanced.in_out_value_custom";
 const IN_OUT_NATIVE = { width: 100, height: 40 };
 const IN_OUT_FONT = 20;
 const FONT = "Roboto";
@@ -58,7 +58,7 @@ function field(item){
     const args = {
         ...(item.address ? { base: item.address } : {}),
         postDecimal: item.decimals,
-        decimalFraction: 0,
+        decimalFraction: 1,
         unit: `T{${item.unit}}`,
         editable: item.editable ? "Yes" : "No",
         fillNotEditable: "#ffffff",

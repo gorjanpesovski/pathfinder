@@ -1,20 +1,13 @@
-// Everything listed in the header's Resources popup.
+// Everything listed in the Resources popup.
 //
-// To add a resource:
-//   1. Drop the file into ./elements (offered as a download) or ./maps
-//      (offered as copy-to-clipboard, with a download as a fallback).
-//   2. Add an entry below. `file` is relative to this folder, `group` has to
-//      match one of the RESOURCE_GROUPS ids.
+// To add a Modbus table:
+//   1. Drop the file into ./maps (offered as copy-to-clipboard and download).
+//   2. Add an entry below. `file` is relative to this folder.
 //
 // An entry whose file is missing is skipped, so a half-finished line never
 // breaks the page — check the console for the warning.
 
-export const RESOURCE_GROUPS = [{
-        id: "elements",
-        title: "Object Display Elements",
-        description: "The element displays the generator places on the lines.",
-        folder: "src/lib/resources/elements/"
-    },
+export const RESOURCE_GROUPS = [
     {
         id: "maps",
         title: "Modbus Tables",
@@ -37,12 +30,5 @@ export const RESOURCES = [
         title: "Systemair Access 5 Modbus Table",
         description: "",
         file: "./maps/access5-modbus-map.txt"
-    },
-    {
-        id: "carel-object-elements",
-        group: "elements",
-        title: "Carel Object Elements",
-        description: "",
-        file: "./elements/carel-items.xml"
     }
 ];

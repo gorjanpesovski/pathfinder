@@ -1,16 +1,7 @@
 // Resolves the resource manifest against the files that actually sit in
-// ./resources, so the popup only ever renders resources it can hand over.
-//
-// The folder decides how a resource is delivered: files under elements/ are
-// pulled in as asset URLs (any file type, downloaded as-is), files under maps/
-// are inlined as text so they can go straight to the clipboard.
+// ./resources/maps, so the popup only ever renders tables it can hand over.
+// The tables are inlined as text so they can go straight to the clipboard.
 import { RESOURCE_GROUPS, RESOURCES } from "./resources/manifest.js";
-
-const assetUrls = import.meta.glob("./resources/elements/**/*", {
-    query: "?url",
-    import: "default",
-    eager: true
-});
 
 const textSources = import.meta.glob("./resources/maps/**/*", {
     query: "?raw",
@@ -28,9 +19,8 @@ function formatBytes(text) {
 function resolveResource(entry) {
     const path = `./resources/${entry.file.replace(/^\.\//, "")}`;
     const text = textSources[path];
-    const url = assetUrls[path];
 
-    if (text === undefined && url === undefined) {
+    if (text === undefined) {
         console.warn(`[resources] "${entry.id}" points at ${entry.file}, which does not exist`);
         return null;
     }
@@ -41,8 +31,7 @@ function resolveResource(entry) {
         description: entry.description ?? "",
         filename: path.split("/").pop(),
         text,
-        url,
-        size: text === undefined ? "" : formatBytes(text)
+        size: formatBytes(text)
     };
 }
 

@@ -1,15 +1,12 @@
 <script>
   import Modal from "./Modal.svelte";
   import { DEFAULT_ICON_LIBRARY, DEFAULT_ICON_NAMES, ICON_SLOTS } from "$lib/ahu/elements.js";
-  import { CONTROLLERS } from "$lib/ahu/registers.js";
 
   let {
-    nodePrefix = $bindable(),
     iconLibrary = $bindable(),
     iconNames = $bindable(),
     displayWidth = $bindable(),
     displayHeight = $bindable(),
-    controller = $bindable(),
     onclose
   } = $props();
 
@@ -271,18 +268,9 @@
             </div>
           {/snippet}
           {@render settingRow("Display size", "Width and height of the atvise display. The preview and the export use this size.", sizeControl)}
-          {#snippet controllerControl()}
-            <select aria-label="Modbus table" value={controller} onchange={(e) => controller = e.currentTarget.value}>
-              {#each Object.entries(CONTROLLERS) as [id, entry] (id)}
-                <option value={id}>{entry.name}</option>
-              {/each}
-            </select>
-          {/snippet}
-          {@render settingRow("Modbus table", "Controller register table used to address readouts, setpoints and indicators.", controllerControl)}
         </div>
         <h4>atvise paths</h4>
         <div class="settings-card">
-          {@render textRow("Node path prefix", "Written in front of every register, into the base parameter of icons, indicators and readouts.", nodePrefix, (value) => nodePrefix = value, "AGENT.OBJECTS.Klimat")}
           {@render textRow("Icon library", "atvise folder that holds the object displays the export references. The icon name is appended to it.", iconLibrary, (value) => iconLibrary = value || DEFAULT_ICON_LIBRARY, DEFAULT_ICON_LIBRARY)}
         </div>
       {:else if section === "icons"}

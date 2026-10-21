@@ -1,5 +1,3 @@
-import { ELEMENT_TYPES, RECUPERATION_OPTIONS, UNIT_OPTIONS, setpointId } from "./elements.js";
-
 const ACCESS_SUPPLY_FAN = {
     speed: ".Status_Supply_Air_Fan",
     pressure: ".Status_Supply_Air_Pressure",
@@ -112,7 +110,28 @@ export const CONTROLLERS = {
         },
         unitMode: {
             register: ".Status_Unit_State",
-            states: ["Čakanje", "Vklopljeno", "Izklop zaradi alarma", "Izklop preko mreže"]
+            states: [
+                "Čakanje (Wait)",
+                "Enota vklopljena",
+                "Izklop zaradi alarma (OFFbyALR)",
+                "Izklop zaradi omrežja (OFFbyNET)",
+                "Izklop zaradi BMS (OFFbyBMS)",
+                "Izklop po urniku (OFFdaFSC)",
+                "Izklop zaradi digitalnega vhoda (OFFbyDIN)",
+                "Izklop preko tipkovnice (OFFbyKEY)",
+                "Ročni način",
+                "-",
+                "Avtomatsko – Comfort",
+                "Avtomatsko – Pre-Cooling",
+                "Avtomatsko – Economy",
+                "Zaščita",
+                "Zagon",
+                "Zaustavitev",
+                "Izklop zaradi protizmrzovalne zaščite",
+                "Čiščenje / izpih",
+                "Fireman Override",
+                "Alarmni izklop"
+            ]
         }
     },
     access5: {
@@ -173,34 +192,4 @@ export function groupRegisters(controller, group){
 export function registersOf(controller, element){
     const entry = CONTROLLERS[controller]?.registers[element.template ?? element.key];
     return (typeof entry === "function" ? entry(element) : entry) ?? {};
-}
-
-export function elementDefaults(controller, element){
-    const spec = ELEMENT_TYPES[element.type];
-    const registers = registersOf(controller, element);
-    return {
-        readouts: [
-            ...spec.measures.filter((measure) => registers[measure]),
-            ...spec.setpoints.map(setpointId).filter((id) => registers[id])
-        ],
-        fittings: (spec.fittings ?? []).filter((fitting) => fitting === "pump" ? registers.pump : registers.position),
-        indicators: spec.indicators.filter((indicator) => registers[indicator])
-    };
-}
-
-export function recuperationDefaults(controller, recuperation){
-    const registers = groupRegisters(controller, "recuperation");
-    return {
-        readouts: RECUPERATION_OPTIONS.readouts.filter((entry) => registers[entry.id] && (!entry.rotaryOnly || recuperation === "rotary-heat-exchanger")).map((entry) => entry.id),
-        indicators: RECUPERATION_OPTIONS.indicators.filter((entry) => registers[entry.id]).map((entry) => entry.id)
-    };
-}
-
-export function unitDefaults(controller){
-    const registers = groupRegisters(controller, "unit");
-    const mode = !!CONTROLLERS[controller]?.unitMode;
-    return {
-        room: UNIT_OPTIONS.room.filter((entry) => registers[entry.id]).map((entry) => entry.id),
-        status: UNIT_OPTIONS.status.filter((entry) => entry.text ? mode : registers[entry.id]).map((entry) => entry.id)
-    };
 }

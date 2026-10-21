@@ -7,9 +7,14 @@
   import { DEFAULT_ICON_LIBRARY, DEFAULT_ICON_NAMES, DEFAULT_NODE_PREFIX, ELEMENT_TYPES, FITTINGS, INDICATORS, LINES, MEASURES, RECUPERATION_OPTIONS, UNIT_OPTIONS, setpointId } from "$lib/ahu/elements.js";
   import { frameItems, lineItems, mixingLead, MIXING_KEY, recuperationItems, sideCenters, unitItems } from "$lib/ahu/scene.js";
   import { displayScript, escapeXml, itemsToAtvise } from "$lib/ahu/atvise.js";
-  import { CONTROLLERS, elementDefaults, recuperationDefaults, unitDefaults } from "$lib/ahu/registers.js";
   import { loadJson, loadText, saveJson, saveText } from "$lib/settings.js";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
+  import TargetDialog from "$lib/components/TargetDialog.svelte";
+  import HeaderMenu from "$lib/components/HeaderMenu.svelte";
+  import PageTabs from "$lib/components/PageTabs.svelte";
+  import ProjectCrumb from "$lib/components/ProjectCrumb.svelte";
+  import { cleanDocumentName, defaultDocumentName, fileNameFor, loadAutosave, parseDocument, saveAutosave, serializeDocument } from "$lib/document.js";
+  import { fileAccess, hashText, recallFile, rememberFile } from "$lib/fileStore.js";
 
   let displayWidth = $state(Number(loadText("autoAhu.displayWidth", "1920")) || 1920);
   let displayHeight = $state(Number(loadText("autoAhu.displayHeight", "1125")) || 1125);
@@ -331,20 +336,16 @@
   }
 
   function downloadResource(resource) {
-      // Text resources are inlined rather than emitted as assets, so they need
-      // a blob URL; everything under elements/ already has one.
-      const objectUrl = resource.url ? null : URL.createObjectURL(
-          new Blob([resource.text], { type: "text/plain;charset=utf-8" })
-      );
+      const objectUrl = URL.createObjectURL(new Blob([resource.text], { type: "text/plain;charset=utf-8" }));
 
       const link = document.createElement("a");
-      link.href = resource.url ?? objectUrl;
+      link.href = objectUrl;
       link.download = resource.filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
 
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      URL.revokeObjectURL(objectUrl);
   }
 
   let copySuccess = $state(false);
@@ -585,6 +586,401 @@
       editingTitle = false;
   }
 
+  const DEFAULT_TITLE = "Klimatska Naprava";
+
+  function newPageId() {
+      return `page-${crypto.randomUUID().slice(0, 8)}`;
+  }
+
+  function capturePage() {
+      return $state.snapshot({
+          title: displayTitle,
+          recuperation: selectedRecuperation,
+          recuperationX: recuperationUnitX,
+          recuperationOptions,
+          unitOptions,
+          placements,
+          elementScale,
+          controller: selectModbusTable,
+          nodePrefix: nodePathPrefix
+      });
+  }
+
+  function applyPage(data) {
+      closeOverlays();
+      unitOpen = false;
+      hoveredOwner = null;
+      displayTitle = data?.title ?? DEFAULT_TITLE;
+      selectedRecuperation = data?.recuperation ?? "rotary-heat-exchanger";
+      recuperationOptions = { bypass: false, mixing: false, readouts: [], indicators: [], ...data?.recuperationOptions };
+      unitOptions = { room: [], status: [], ...data?.unitOptions };
+      placements = { exh: [], int: [], ret: [], sup: [], ...data?.placements };
+      elementScale = data?.elementScale ?? 1;
+      if (typeof data?.controller === "string") selectModbusTable = data.controller;
+      if (typeof data?.nodePrefix === "string") nodePathPrefix = data.nodePrefix;
+      recuperationUnitX = data?.recuperationX ?? displayWidth / 2;
+  }
+
+  function syncInstanceCounter() {
+      let highest = 0;
+      for (const page of pages) {
+          const lists = page.id === activePage ? placements : page.data?.placements;
+          for (const list of Object.values(lists ?? {})) {
+              for (const element of list) highest = Math.max(highest, Number(/_(\d+)$/.exec(element.key)?.[1] ?? 0));
+          }
+      }
+      nextInstance = highest + 1;
+  }
+
+  const firstPageId = newPageId();
+  let pages = $state([{ id: firstPageId, name: "Page 1", data: null }]);
+  let activePage = $state(firstPageId);
+  let documentName = $state(null);
+  const activePageName = $derived(pages.find((page) => page.id === activePage)?.name ?? "");
+
+  function stashActive() {
+      const page = pages.find((entry) => entry.id === activePage);
+      if (page) page.data = capturePage();
+  }
+
+  function selectPage(pageId) {
+      if (pageId === activePage) return;
+      stashActive();
+      activePage = pageId;
+      applyPage(pages.find((page) => page.id === pageId).data);
+  }
+
+  function addPage() {
+      const taken = new Set(pages.map((page) => page.name));
+      let index = pages.length + 1;
+      while (taken.has(`Page ${index}`)) index += 1;
+      stashActive();
+      const id = newPageId();
+      pages.push({ id, name: `Page ${index}`, data: null });
+      activePage = id;
+      applyPage(null);
+  }
+
+  function movePage(pageId, index) {
+      const from = pages.findIndex((page) => page.id === pageId);
+      if (from < 0 || index < 0 || index >= pages.length || index === from) return;
+      const [page] = pages.splice(from, 1);
+      pages.splice(index, 0, page);
+  }
+
+  function duplicatePage(pageId) {
+      const index = pages.findIndex((page) => page.id === pageId);
+      const source = pages[index];
+      if (!source) return;
+      const data = structuredClone(source.id === activePage ? capturePage() : $state.snapshot(source.data));
+      const taken = new Set(pages.map((page) => page.name));
+      let name = `${source.name} (copy)`;
+      for (let count = 2; taken.has(name); count += 1) name = `${source.name} (copy ${count})`;
+      stashActive();
+      const id = newPageId();
+      pages.splice(index + 1, 0, { id, name, data });
+      activePage = id;
+      applyPage(data);
+  }
+
+  function renamePage(pageId, name) {
+      const page = pages.find((entry) => entry.id === pageId);
+      if (page) page.name = name;
+  }
+
+  function pageFilled(page) {
+      const data = page.id === activePage ? capturePage() : page.data;
+      return Object.values(data?.placements ?? {}).some((list) => list.length > 0);
+  }
+
+  function deletePage(pageId) {
+      if (pages.length < 2) return;
+      const index = pages.findIndex((page) => page.id === pageId);
+      const page = pages[index];
+      if (!page) return;
+      if (pageFilled(page) && !window.confirm(`Delete "${page.name}" and everything on it?`)) return;
+      pages.splice(index, 1);
+      if (pageId !== activePage) return;
+      activePage = pages[Math.min(index, pages.length - 1)].id;
+      applyPage(pages.find((entry) => entry.id === activePage).data);
+  }
+
+  function projectSettings() {
+      return { displayWidth, displayHeight };
+  }
+
+  function currentDocument(name = documentName) {
+      return serializeDocument({
+          name,
+          active: activePage,
+          settings: projectSettings(),
+          pages: pages.map((page) => ({ id: page.id, name: page.name, data: page.id === activePage ? capturePage() : $state.snapshot(page.data) }))
+      });
+  }
+
+  function applyDocument(doc) {
+      const settings = doc.settings ?? {};
+      if (Number(settings.displayWidth)) displayWidth = Number(settings.displayWidth);
+      if (Number(settings.displayHeight)) displayHeight = Number(settings.displayHeight);
+      documentName = doc.name;
+      pages = doc.pages.map((page) => page.data ? { ...page, data: { controller: settings.controller, nodePrefix: settings.nodePrefix, ...page.data } } : page);
+      activePage = doc.active;
+      applyPage(pages.find((page) => page.id === activePage).data);
+      syncInstanceCounter();
+  }
+
+  function projectHash(text) {
+      return hashText(text.replace(/"savedAt":"[^"]*",?/, "").replace(/"active":"page-[^"]*",?/, ""));
+  }
+
+  const restored = loadAutosave();
+  if (restored) applyDocument(restored);
+
+  const documentText = $derived(currentDocument());
+  const documentHash = $derived(projectHash(documentText));
+  let savedHash = $state(loadText("autoAhu.savedHash", ""));
+  $effect(() => saveText("autoAhu.savedHash", savedHash));
+  const unsaved = $derived(documentHash !== savedHash);
+  let autosaveFile = $state(loadText("autoAhu.autosaveFile", "false") === "true");
+  $effect(() => saveText("autoAhu.autosaveFile", String(autosaveFile)));
+  let fileWriting = $state(false);
+  let fileHandle = $state.raw(null);
+  let fileAccessState = $state("none");
+  const projectTitle = $derived(documentName ?? "Untitled project");
+  const projectStatus = $derived(
+      fileWriting ? "saving"
+      : autosaveFile && fileHandle && fileAccessState !== "granted" ? "paused"
+      : unsaved ? (autosaveFile && fileHandle ? "pending" : fileHandle || savedHash ? "unsaved" : "unlinked")
+      : autosaveFile && fileHandle ? "autosaved" : "saved"
+  );
+
+  let fileNotice = $state(null);
+  let fileNoticeTimer;
+
+  function showFileNotice(text) {
+      fileNotice = text;
+      clearTimeout(fileNoticeTimer);
+      fileNoticeTimer = setTimeout(() => fileNotice = null, 2400);
+  }
+
+  let browserTimer;
+  $effect(() => {
+      const text = documentText;
+      clearTimeout(browserTimer);
+      browserTimer = setTimeout(() => saveAutosave(text), 400);
+  });
+
+  let fileTimer;
+  $effect(() => {
+      const hash = documentHash;
+      clearTimeout(fileTimer);
+      if (!autosaveFile || !fileHandle || fileAccessState !== "granted" || hash === savedHash) return;
+      fileTimer = setTimeout(autosaveToFile, 1500);
+  });
+
+  async function autosaveToFile() {
+      if (fileWriting || !fileHandle) return;
+      try {
+          await writeProject(fileHandle, documentName);
+      } catch (error) {
+          fileAccessState = await fileAccess(fileHandle);
+          if (fileAccessState === "granted") showFileNotice(`Autosave failed: ${error.message}`);
+      }
+  }
+
+  function linkFile(handle, access) {
+      fileHandle = handle;
+      fileAccessState = handle ? access : "none";
+      rememberFile(handle);
+  }
+
+  async function ensureAccess() {
+      if (!fileHandle) return false;
+      if (fileAccessState !== "granted") fileAccessState = await fileAccess(fileHandle, true);
+      return fileAccessState === "granted";
+  }
+
+  async function resumeAutosave() {
+      if (await ensureAccess()) autosaveToFile();
+  }
+
+  async function setAutosaveFile(on) {
+      if (!on) {
+          autosaveFile = false;
+          return;
+      }
+      if (!fileHandle) await saveProjectAs();
+      if (!fileHandle || !(await ensureAccess())) return;
+      autosaveFile = true;
+  }
+
+  const FILE_TYPES = [{ description: "Auto AHU project", accept: { "application/json": [".json"] } }];
+  const PICKER_ID = "auto-ahu-project";
+  const canPickFiles = typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+
+  recallFile().then(async (handle) => {
+      if (!handle || fileHandle || !canPickFiles || cleanDocumentName(handle.name) !== documentName) return;
+      fileHandle = handle;
+      fileAccessState = await fileAccess(handle);
+  });
+
+  function saveFailed(error) {
+      if (error?.name !== "AbortError") showFileNotice(`Could not save: ${error.message}`);
+  }
+
+  async function writeProject(handle, name, adopt = true) {
+      const text = currentDocument(name);
+      const hash = projectHash(text);
+      fileWriting = true;
+      try {
+          const writable = await handle.createWritable();
+          await writable.write(text);
+          await writable.close();
+          if (adopt) savedHash = hash;
+      } finally {
+          fileWriting = false;
+      }
+  }
+
+  async function saveProject() {
+      if (!fileHandle) return saveProjectAs();
+      if (!(await ensureAccess())) return saveProjectAs();
+      try {
+          await writeProject(fileHandle, documentName);
+          showFileNotice(`Saved to ${fileHandle.name}`);
+      } catch (error) {
+          saveFailed(error);
+      }
+  }
+
+  async function saveProjectAs(copy = false) {
+      if (!canPickFiles) {
+          downloadProject(documentName ?? defaultDocumentName(), !copy);
+          return;
+      }
+      try {
+          const handle = await window.showSaveFilePicker({
+              suggestedName: fileNameFor(documentName ?? defaultDocumentName()),
+              types: FILE_TYPES,
+              id: PICKER_ID,
+              ...(fileHandle ? { startIn: fileHandle } : {})
+          });
+          const name = cleanDocumentName(handle.name);
+          if (!copy) documentName = name;
+          await writeProject(handle, name, !copy);
+          if (!copy) linkFile(handle, "granted");
+          showFileNotice(copy ? `Saved a copy to ${handle.name}` : `Saved to ${handle.name}`);
+      } catch (error) {
+          saveFailed(error);
+      }
+  }
+
+  function downloadProject(name = documentName ?? defaultDocumentName(), adopt = false) {
+      const fileName = fileNameFor(name);
+      const clean = cleanDocumentName(fileName);
+      if (adopt) {
+          documentName = clean;
+          linkFile(null);
+      }
+      const text = currentDocument(clean);
+      if (adopt) savedHash = projectHash(text);
+      const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showFileNotice(`Downloaded ${fileName}`);
+  }
+
+  let pickedFileName = null;
+
+  function pickFileText() {
+      return new Promise((resolve, reject) => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = ".json,application/json";
+          input.onchange = async () => {
+              const file = input.files?.[0];
+              if (!file) return reject(Object.assign(new Error("No file"), { name: "AbortError" }));
+              pickedFileName = file.name;
+              resolve(await file.text());
+          };
+          input.click();
+      });
+  }
+
+  function newProject() {
+      const pending = unsaved && pages.some(pageFilled) && !(autosaveFile && fileHandle && fileAccessState === "granted");
+      if (pending && !window.confirm(`Start a new project? Unsaved changes in "${projectTitle}" will be lost.`)) return;
+      const id = newPageId();
+      applyDocument({ name: null, active: id, settings: {}, pages: [{ id, name: "Page 1", data: null }] });
+      linkFile(null);
+      savedHash = "";
+      showFileNotice("New project");
+  }
+
+  async function openProject() {
+      try {
+          if (typeof window.showOpenFilePicker === "function") {
+              const [handle] = await window.showOpenFilePicker({ types: FILE_TYPES, id: PICKER_ID });
+              applyDocument(parseDocument(await (await handle.getFile()).text()));
+              documentName = cleanDocumentName(handle.name) ?? documentName;
+              linkFile(handle, await fileAccess(handle));
+              savedHash = projectHash(currentDocument());
+              showFileNotice(`Opened ${handle.name}`);
+          } else {
+              applyDocument(parseDocument(await pickFileText()));
+              linkFile(null);
+              documentName = cleanDocumentName(pickedFileName) ?? documentName;
+              savedHash = projectHash(currentDocument());
+              showFileNotice("Project opened");
+          }
+      } catch (error) {
+          if (error?.name !== "AbortError") showFileNotice(`Could not open: ${error.message}`);
+      }
+  }
+
+  function renameProject(value) {
+      const clean = cleanDocumentName(value);
+      if (clean) documentName = clean;
+  }
+
+  function fileKeydown(event) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return false;
+      const key = event.key.toLowerCase();
+      if (key === "s") {
+          event.preventDefault();
+          if (event.shiftKey) saveProjectAs();
+          else saveProject();
+          return true;
+      }
+      if (key === "o" && !event.shiftKey) {
+          event.preventDefault();
+          openProject();
+          return true;
+      }
+      return false;
+  }
+
+  const fileItems = $derived([
+      { label: "New project", hint: "Start an empty project", onclick: newProject },
+      { label: "Open…", shortcut: "Ctrl+O", onclick: openProject },
+      { separator: true },
+      { label: "Save", shortcut: "Ctrl+S", hint: fileHandle ? "Update the current file" : "Choose where to save the project", onclick: saveProject },
+      { label: "Save as…", shortcut: "Ctrl+Shift+S", hint: "New name or folder, keep working in the new file", onclick: () => saveProjectAs() },
+      { label: "Save a copy…", hint: "Keep working in this file", onclick: () => saveProjectAs(true) },
+      { label: "Download", hint: "Put a copy in the Downloads folder", onclick: () => downloadProject() },
+      canPickFiles
+          ? { toggle: true, label: "Autosave to file", checked: autosaveFile, onchange: setAutosaveFile, hint: autosaveFile ? "Every change is written to the project file" : "Write every change to the project file" }
+          : { note: "This browser can't pick a folder, so projects go to Downloads. Use Chrome or Edge to choose where to save." },
+      { separator: true },
+      { label: "Resources…", hint: "Modbus tables and atvise files to download", onclick: openResources },
+      { label: "Settings…", hint: "Display size and icons", onclick: () => settingsOpen = true }
+  ]);
+
   function openPicker(line, slot) {
       selected = null;
       pickerQuery = "";
@@ -624,6 +1020,7 @@
   const recuperationBox = $derived(sceneGroups.find((group) => group.owner === RECUPERATION)?.box ?? null);
 
   function handleKey(event) {
+      if (fileKeydown(event)) return;
       if (event.key === "Escape" && (picker || selected || editingTitle)) {
           closeOverlays();
           return;
@@ -744,16 +1141,13 @@
       settling = null;
   }
 
-  let autoFilled = $state(false);
+  let exportOpen = $state(false);
 
-  function autoFill() {
-      for (const line of Object.keys(placements)) {
-          placements[line] = placements[line].map((element) => ({ ...element, ...elementDefaults(selectModbusTable, element) }));
-      }
-      recuperationOptions = { ...recuperationOptions, ...recuperationDefaults(selectModbusTable, selectedRecuperation) };
-      unitOptions = unitDefaults(selectModbusTable);
-      autoFilled = true;
-      setTimeout(() => autoFilled = false, 1600);
+  function confirmTarget(choice) {
+      exportOpen = false;
+      selectModbusTable = choice.controller;
+      nodePathPrefix = choice.prefix;
+      handleConfiguration();
   }
 
   async function handleConfiguration() {
@@ -772,7 +1166,7 @@
               <atv:argument name="animation_type" value="Background"/>
               <atv:argument name="hover_color" value="#2A7A53"/>
               </svg>
-              <text atv:refpx="960" atv:refpy="81" fill="#1E293B" font-family="Roboto" font-size="46" font-weight="bold" id="title" x="765.5" y="97">${escapeXml(displayTitle)}</text>
+              <text atv:refpx="960" atv:refpy="65.5" fill="#1E293B" font-family="Roboto" font-size="46" font-weight="bold" id="title" x="765.5" y="81.5">${escapeXml(displayTitle)}</text>
               <svg atv:refpx="55.0001" atv:refpy="65.3353" height="121" id="back_button" transform="matrix(0.6667,0,0,0.6667,0,0)" width="121" x="21.996" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.4.%20Gumbi.Round_Buttons.Button" y="37.498">
               <atv:argument name="animation_type" value="Background"/>
               <atv:argument name="hover_color" value="#A32A3A"/>
@@ -835,40 +1229,6 @@
     height: 26px;
   }
 
-
-  .resources-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 30px;
-    padding: 0 12px;
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    color: #2563eb;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  }
-
-  .resources-link.filled {
-    border-color: #16a34a;
-    color: #16a34a;
-  }
-
-  .resources-link:disabled {
-    color: #94a3b8;
-    border-color: #e2e8f0;
-    cursor: default;
-  }
-
-  .resources-link:hover:not(:disabled) {
-    background: #eff6ff;
-    border-color: #93c5fd;
-    color: #1d4ed8;
-  }
 
   .resources-icon {
     width: 16px;
@@ -1076,7 +1436,7 @@
   .app-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    height: calc(100dvh - 44px);
+    height: calc(100dvh - 84px);
     padding: 12px;
     box-sizing: border-box;
   }
@@ -1646,12 +2006,39 @@
     border-color: #16a34a;
   }
 
-  .app-version {
-    position: absolute;
-    right: 14px;
-    bottom: 6px;
-    font-size: 11px;
-    color: #94a3b8;
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .menus {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .header-divider {
+    width: 1px;
+    height: 20px;
+    background: #e2e8f0;
+  }
+
+  .file-notice {
+    position: fixed;
+    left: 50%;
+    bottom: 56px;
+    z-index: 80;
+    transform: translateX(-50%);
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: #0f172a;
+    font-size: 12px;
+    font-weight: 500;
+    color: #ffffff;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
+    pointer-events: none;
   }
 
   .viewer-hint {
@@ -1742,41 +2129,24 @@
 </style>
 
 <svelte:window onkeydown={handleKey} onpointerdown={handleOutside} onresize={() => viewportTick += 1}/>
-<title>Auto AHU</title>
+<title>{unsaved && !(autosaveFile && fileHandle) ? "• " : ""}{projectTitle} — Auto AHU</title>
 {@html ICON_SPRITE}
 <div class="header">
-    <div class="logo-section">
-        <link rel="icon" type="image/x-icon" href="{base}/logo.svg">
-        <img class="logo" src="{base}/logo.svg" alt="Auto AHU" title="Auto AHU {__APP_VERSION__} · commit {__APP_COMMIT__}">
+    <div class="header-left">
+        <div class="logo-section">
+            <link rel="icon" type="image/x-icon" href="{base}/logo.svg">
+            <img class="logo" src="{base}/logo.svg" alt="Auto AHU" title="Auto AHU {__APP_VERSION__} · commit {__APP_COMMIT__}">
+        </div>
+        <nav class="menus" aria-label="Main menu">
+            <HeaderMenu label="File" items={fileItems} width={290}
+                        status={{ label: "Saving to", value: fileHandle?.name ?? null, empty: "Not saved to a file yet" }}/>
+        </nav>
+        <span class="header-divider" aria-hidden="true"></span>
+        <ProjectCrumb name={projectTitle} view={activePageName} fileName={fileHandle?.name ?? null} status={projectStatus}
+                      onrename={renameProject} onresume={resumeAutosave}/>
     </div>
     <div class="resources-section">
-        <button class="resources-link" type="button" onclick={openResources}>
-            <svg class="resources-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 3v10"/>
-                <path d="m8 11 4 4 4-4"/>
-                <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
-            </svg>
-            Resources
-        </button>
-        <button class="resources-link" type="button" onclick={() => settingsOpen = true}>
-            <svg class="resources-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-            Settings
-        </button>
-        <button class="resources-link" class:filled={autoFilled} type="button" onclick={autoFill} disabled={selectModbusTable === "empty"} title="Turn on every readout, setpoint and indicator that {CONTROLLERS[selectModbusTable]?.name} has a register for">
-            <svg class="resources-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                {#if autoFilled}
-                    <path d="m5 12 5 5 9-10"/>
-                {:else}
-                    <path d="m15 4 5 5L9 20H4v-5z"/>
-                    <path d="m13 6 5 5"/>
-                {/if}
-            </svg>
-            {autoFilled ? "Filled" : `Auto-fill · ${CONTROLLERS[selectModbusTable]?.name ?? ""}`}
-        </button>
-        <button class="export-button" class:copied={copySuccess} type="button" onclick={handleConfiguration}>
+        <button class="export-button" class:copied={copySuccess} type="button" onclick={() => exportOpen = true}>
             <svg class="resources-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 {#if copySuccess}
                     <path d="m5 12 5 5 9-10"/>
@@ -1795,7 +2165,7 @@
         <div class="dialog-head">
             <div>
                 <div class="dialog-title">Resources</div>
-                <div class="dialog-subtitle">Object display element and modbus tables.</div>
+                <div class="dialog-subtitle">Modbus tables.</div>
             </div>
             <button class="dialog-close" type="button" onclick={closeResources} aria-label="Close resources">&times;</button>
         </div>
@@ -1827,19 +2197,15 @@
                                             {/if}
                                         </div>
                                         <div class="resource-actions">
-                                            {#if resource.text !== undefined}
-                                                <button class="resource-button primary" class:copied={copiedResourceId === resource.id} type="button" onclick={() => copyResource(resource)}>
-                                                    {copiedResourceId === resource.id ? "Copied" : "Copy"}
-                                                </button>
-                                            {/if}
+                                            <button class="resource-button primary" class:copied={copiedResourceId === resource.id} type="button" onclick={() => copyResource(resource)}>
+                                                {copiedResourceId === resource.id ? "Copied" : "Copy"}
+                                            </button>
                                             <button class="resource-button" type="button" onclick={() => downloadResource(resource)}>
                                                 Download
                                             </button>
                                         </div>
                                     </div>
-                                    {#if resource.text !== undefined}
-                                        <pre class="resource-preview">{resource.text}</pre>
-                                    {/if}
+                                    <pre class="resource-preview">{resource.text}</pre>
                                 </li>
                             {/each}
                         </ul>
@@ -1851,13 +2217,12 @@
 </dialog>
 <div class="app-layout">
   <div class="viewer-section">
-    <span class="app-version" title="Auto AHU {__APP_VERSION__} · commit {__APP_COMMIT__}">{__APP_VERSION__}</span>
     <p class="viewer-hint">Hover a pipe and click + to add an element. Click an element to edit it, drag it to move it. Click the title to rename it, click the heat exchanger to change its type.</p>
     <div class="svg-container" bind:this={viewer}>
       <svg class="preview-svg" role="application" aria-label="AHU preview" class:moving={moving} class:instant viewBox="0 0 {displayWidth} {displayHeight}" bind:this={previewSvg}
            onpointerdown={startMove} onpointermove={updateMove} onpointerup={endMove} onpointercancel={endMove}
            onpointerleave={() => { hoveredOwner = null; if (!moving) hoverLine = null; }}>
-        <text class="title-text" class:editing={editingTitle} x={displayWidth/2} y="75" font-family="Roboto" font-size="46" font-weight="bold" fill="#1E293B" text-anchor="middle">{displayTitle || "Untitled display"}</text>
+        <text class="title-text" class:editing={editingTitle} x={displayWidth/2} y="81.5" font-family="Roboto" font-size="46" font-weight="bold" fill="#1E293B" text-anchor="middle">{displayTitle || "Untitled display"}</text>
         {#if movePreview}
           {@const slot = sceneGroups.find((group) => group.owner === moving.key)?.box}
           {#if slot}
@@ -1937,7 +2302,7 @@
       {/if}
 
       {#if editingTitle && previewSvg && viewer}
-        {@const anchor = toLocal(displayWidth / 2, 75)}
+        {@const anchor = toLocal(displayWidth / 2, 81.5)}
         <input class="title-input" type="text" aria-label="Display title" bind:value={displayTitle} use:focusTitle
                style="left: {anchor.left}px; top: {anchor.top - 46 * anchor.scale}px; font-size: {46 * anchor.scale}px; height: {60 * anchor.scale}px"
                onkeydown={(e) => { if (e.key === "Enter" || e.key === "Escape") editingTitle = false; }} onblur={() => editingTitle = false}>
@@ -2036,6 +2401,12 @@
     </div>
   </div>
 </div>
+<PageTabs {pages} active={activePage} onselect={selectPage} onadd={addPage} onrename={renamePage} ondelete={deletePage}
+          onmove={movePage} onduplicate={duplicatePage}
+          version={__APP_VERSION__} build={__APP_COMMIT__}/>
+{#if fileNotice}
+  <div class="file-notice" role="status">{fileNotice}</div>
+{/if}
 {#snippet toggle(label, on, flip)}
   <button type="button" class="toggle" class:on aria-pressed={on} onclick={flip}>{label}</button>
 {/snippet}
@@ -2094,7 +2465,11 @@
   </div>
 {/snippet}
 
+{#if exportOpen}
+  <TargetDialog controller={selectModbusTable} prefix={nodePathPrefix} onconfirm={confirmTarget} onclose={() => exportOpen = false}/>
+{/if}
+
 {#if settingsOpen}
-  <SettingsDialog bind:nodePrefix={nodePathPrefix} bind:iconLibrary bind:iconNames bind:displayWidth bind:displayHeight bind:controller={selectModbusTable}
+  <SettingsDialog bind:iconLibrary bind:iconNames bind:displayWidth bind:displayHeight
                   onclose={() => settingsOpen = false}/>
 {/if}
