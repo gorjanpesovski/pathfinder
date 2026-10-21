@@ -1,7 +1,9 @@
 <script>
   import { base } from "$app/paths";
-  import { Tween, prefersReducedMotion } from "svelte/motion";
+  import { prefersReducedMotion } from "svelte/motion";
   import { cubicOut } from "svelte/easing";
+  import HeaderMenu from "$lib/components/HeaderMenu.svelte";
+  import Modal from "$lib/components/Modal.svelte";
 
   let padding = $state(40);
   let paddingSettings = $state(40);
@@ -116,7 +118,7 @@
   let settingsTitle = $state("Naslov");
   let settingsBackgroundStroke = $state("#9CA9BF");
 
-  let settingsList = $state([]);
+  let columns = $state([{ key: 0, sections: [{ key: -1, settings: [] }] }]);
 
   let buttonsList = $state([]);
   let buttonSize = $state(80);
@@ -126,22 +128,6 @@
   let settingsWidthMin = $derived(paddingSettings * 2 + elementWidth + 80);
 
   let rowStep = $derived(elementHeight + paddingElements);
-  let rowsHeight = $derived(
-    settingsList.length === 0
-      ? 0
-      : settingsList.length * elementHeight + (settingsList.length - 1) * paddingElements
-  );
-  let settingsHeight = $derived(paddingSettings * 2 + rowsHeight);
-
-  // The preview eases into its new size. The export deliberately reads the exact
-  // geometry above instead, so clicking Configure mid-animation still writes the
-  // final coordinates rather than a half-expanded box.
-  const EXPAND_MS = 280;
-  const previewRowsHeight = Tween.of(() => rowsHeight, {
-    duration: () => (prefersReducedMotion.current ? 0 : EXPAND_MS),
-    easing: cubicOut
-  });
-  let previewSettingsHeight = $derived(paddingSettings * 2 + previewRowsHeight.current);
 
   let canvasMargin = $derived(isFull ? padding : shadowMargin);
   let titleY = $derived(canvasMargin);
@@ -154,36 +140,59 @@
   let settingsY = $derived(
     isFull ? canvasMargin + headerHeight + canvasMargin : canvasMargin
   );
-  let displayWidth = $derived(settingsWidht + canvasMargin * 2);
-  let displayHeight = $derived(settingsY + settingsHeight + canvasMargin);
-  let previewDisplayHeight = $derived(settingsY + previewSettingsHeight + canvasMargin);
+  let visibleColumns = $derived(isFull ? columns : [{ key: columns[0].key, sections: columns[0].sections.slice(0, 1) }]);
+  let displayWidth = $derived(visibleColumns.length * settingsWidht + (visibleColumns.length - 1) * canvasMargin + canvasMargin * 2);
 
-  let contentLeft = $derived(settingsX + paddingSettings);
-  let contentRight = $derived(settingsX + settingsWidht - paddingSettings);
-
-  function settingId(setting, index){
+  function settingId(setting, index, sectionIndex){
     const slug = setting.title
       .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[̀-ͯ]/g, "")
       .replace(/[^\w]+/g, "_")
       .replace(/^_+|_+$/g, "")
       .toLowerCase();
-    return `${slug || "setting"}_${index + 1}`;
+    const prefix = sectionIndex === 0 ? "" : `section${sectionIndex + 1}_`;
+    return `${prefix}${slug || "setting"}_${index + 1}`;
   }
 
-  let rows = $derived(settingsList.map((setting, index) => {
-    const top = settingsY + paddingSettings + index * rowStep;
-    const width = setting.type === "switch" ? switchWidth : elementWidth;
-    return {
-      setting,
-      id: settingId(setting, index),
-      top,
-      width,
-      x: contentRight - width,
-      baselineY: top + elementHeight / 2 + rowFontSize * centralRatio,
-      dividerY: top - paddingElements / 2,
-    };
+  let layout = $derived.by(() => {
+    const entries = [];
+    visibleColumns.forEach((column, columnIndex) => {
+      const x = settingsX + columnIndex * (settingsWidht + canvasMargin);
+      const contentLeft = x + paddingSettings;
+      const contentRight = x + settingsWidht - paddingSettings;
+      let y = settingsY;
+      column.sections.forEach((section) => {
+        const sectionIndex = entries.length;
+        const count = section.settings.length;
+        const height = paddingSettings * 2 + (count === 0 ? 0 : count * elementHeight + (count - 1) * paddingElements);
+        const rows = section.settings.map((setting, index) => {
+          const top = y + paddingSettings + index * rowStep;
+          const width = setting.type === "switch" ? switchWidth : elementWidth;
+          return {
+            setting,
+            id: settingId(setting, index, sectionIndex),
+            top,
+            width,
+            x: contentRight - width,
+            labelX: contentLeft,
+            baselineY: top + elementHeight / 2 + rowFontSize * centralRatio,
+            dividerY: top - paddingElements / 2,
+          };
+        });
+        entries.push({ section, column, index: sectionIndex, x, y, height, rows, contentLeft, contentRight });
+        y += height + canvasMargin;
+      });
+    });
+    return entries;
+  });
+
+  let columnEnds = $derived(visibleColumns.map((column) => {
+    const entries = layout.filter((entry) => entry.column.key === column.key);
+    const last = entries[entries.length - 1];
+    return { column, x: last.x, bottom: last.y + last.height };
   }));
+
+  let displayHeight = $derived(Math.max(...columnEnds.map((end) => end.bottom)) + canvasMargin);
 
   let buttons = $derived.by(() => {
     if (!isFull) return [];
@@ -196,27 +205,11 @@
         id: `${button.type}_button_${index + 1}`,
         x: button.side === "left"
           ? settingsX + inset
-          : settingsX + settingsWidht - buttonSize - inset,
+          : displayWidth - canvasMargin - buttonSize - inset,
         y: headerCenterY - buttonSize / 2,
       };
     });
   });
-
-  function addButton(){
-    buttonsList.push({type: "close", side: "right"});
-  }
-
-  function removeButton(){
-    buttonsList.pop();
-  }
-
-  function addSetting(){
-    settingsList.push({title: "Title", type: "dropdown", value: ""});
-  }
-
-  function removeSetting(){
-    settingsList.pop();
-  }
 
   function readHex(event, current){
     const value = event.currentTarget.value.trim();
@@ -263,23 +256,28 @@
   const ATVISE_SCRIPT = `<script atv:desc="" atv:name="" type="text/ecmascript"/>`;
 
   function buildAtviseSvg(){
-    const objects = rows.map((row, index) => {
-      const id = escapeXml(row.id);
-      const display = OBJECT_DISPLAY_MAP[row.setting.type];
-      const scaleX = round4(row.width / display.width);
-      const scaleY = round4(elementHeight / display.height);
-      const divider = index === 0
-        ? ""
-        : `<line fill="none" id="${id}_divider" stroke="#E2E8F0" stroke-width="1" x1="${contentLeft}" x2="${contentRight}" y1="${row.dividerY}" y2="${row.dividerY}"/>\n  `;
-      const label = `<text atv:refpx="${contentLeft}" atv:refpy="${row.baselineY}" fill="#1E293B" font-family="Roboto" font-size="${rowFontSize}" id="${id}_title" text-anchor="start" x="${contentLeft}" y="${row.baselineY}">${escapeXml(row.setting.title)}</text>`;
-      const args = display.takesFontSize
-        ? `<atv:argument name="fontSize" value="${inputFontSize}"/>`
-        : "";
-      const placedX = round4(row.x / scaleX);
-      const placedY = round4(row.top / scaleY);
-      const openTag = `<svg atv:refpx="${row.x + row.width / 2}" atv:refpy="${row.top + elementHeight / 2}" height="${display.height}" id="${id}" transform="matrix(${scaleX},0,0,${scaleY},0,0)" width="${display.width}" x="${placedX}" xlink:href="${display.path}" y="${placedY}"`;
-      const control = args ? `${openTag}>${args}</svg>` : `${openTag}/>`;
-      return `${divider}${label}\n  ${control}`;
+    const sectionObjects = layout.map((entry) => {
+      const suffix = entry.index === 0 ? "" : `_${entry.index + 1}`;
+      const background = `<rect atv:refpx="${entry.x + settingsWidht / 2}" atv:refpy="${entry.y + entry.height / 2}" fill="${settingsFillRef}" height="${entry.height}" id="settings_background${suffix}" rx="10" ry="10" stroke="${settingsBackgroundStroke}" stroke-width="1" style="${settingsShadow}" width="${settingsWidht}" x="${entry.x}" y="${entry.y}"/>`;
+      const objects = entry.rows.map((row, index) => {
+        const id = escapeXml(row.id);
+        const display = OBJECT_DISPLAY_MAP[row.setting.type];
+        const scaleX = round4(row.width / display.width);
+        const scaleY = round4(elementHeight / display.height);
+        const divider = index === 0
+          ? ""
+          : `<line fill="none" id="${id}_divider" stroke="#E2E8F0" stroke-width="1" x1="${entry.contentLeft}" x2="${entry.contentRight}" y1="${row.dividerY}" y2="${row.dividerY}"/>\n  `;
+        const label = `<text atv:refpx="${entry.contentLeft}" atv:refpy="${row.baselineY}" fill="#1E293B" font-family="Roboto" font-size="${rowFontSize}" id="${id}_title" text-anchor="start" x="${entry.contentLeft}" y="${row.baselineY}">${escapeXml(row.setting.title)}</text>`;
+        const args = display.takesFontSize
+          ? `<atv:argument name="fontSize" value="${inputFontSize}"/>`
+          : "";
+        const placedX = round4(row.x / scaleX);
+        const placedY = round4(row.top / scaleY);
+        const openTag = `<svg atv:refpx="${row.x + row.width / 2}" atv:refpy="${row.top + elementHeight / 2}" height="${display.height}" id="${id}" transform="matrix(${scaleX},0,0,${scaleY},0,0)" width="${display.width}" x="${placedX}" xlink:href="${display.path}" y="${placedY}"`;
+        const control = args ? `${openTag}>${args}</svg>` : `${openTag}/>`;
+        return `${divider}${label}\n  ${control}`;
+      }).join("\n  ");
+      return [background, objects].filter(Boolean).join("\n  ");
     }).join("\n  ");
 
     const buttonObjects = buttons.map((entry) => {
@@ -296,8 +294,7 @@
         ? `<text atv:refpx="${displayWidth / 2}" atv:refpy="${titleBaselineY}" fill="#1E293B" font-family="Roboto" font-size="${titleFontSize}" font-weight="bold" id="title" text-anchor="middle" x="${displayWidth / 2}" y="${titleBaselineY}">${escapeXml(settingsTitle)}</text>`
         : "",
       buttonObjects,
-      `<rect atv:refpx="${settingsX + settingsWidht / 2}" atv:refpy="${settingsY + settingsHeight / 2}" fill="${settingsFillRef}" height="${settingsHeight}" id="settings_background" rx="10" ry="10" stroke="${settingsBackgroundStroke}" stroke-width="1" style="${settingsShadow}" width="${settingsWidht}" x="${settingsX}" y="${settingsY}"/>`,
-      objects,
+      sectionObjects,
     ].filter(Boolean).join("\n  ");
 
     return `<?xml version='1.0' encoding='UTF-8' standalone='no'?>
@@ -312,8 +309,6 @@
 </svg>`;
   }
 
-  // Settings are appended and popped at the tail, so nothing already on the
-  // canvas moves — fading the new row in is all the preview needs.
   function appear(node, { duration = 240, dy = 6, delay = 0 } = {}) {
     if (prefersReducedMotion.current) return { duration: 0 };
     return {
@@ -322,33 +317,6 @@
       easing: cubicOut,
       css: (t, u) => `opacity: ${t}; transform: translate(0, ${u * dy}px);`
     };
-  }
-
-  // Collapses the row's own height plus the fieldset's 8px gap above it, so the
-  // list closes up smoothly instead of snapping by a row.
-  function addRow(node, { duration = 220 } = {}) {
-    if (prefersReducedMotion.current) return { duration: 0 };
-    const height = parseFloat(getComputedStyle(node).height);
-    return {
-      duration,
-      easing: cubicOut,
-      css: (t, u) => `
-        opacity: ${t};
-        height: ${t * height}px;
-        margin-top: ${u * -8}px;
-        align-items: flex-start;
-        overflow: hidden;
-      `
-    };
-  }
-
-  let showDisplaySettings = $state(false);
-  let displaySettingsEl;
-
-  function closeOnOutsideClick(event){
-    if (showDisplaySettings && !displaySettingsEl?.contains(event.target)) {
-      showDisplaySettings = false;
-    }
   }
 
   let copySuccess = $state(false);
@@ -365,287 +333,628 @@
     }
   }
 
+  const SETTING_TYPES = [
+    { id: "value", label: "Value" },
+    { id: "dropdown", label: "Dropdown" },
+    { id: "switch", label: "Switch" },
+  ];
+
+  const BUTTON_TYPES = [
+    { id: "close", label: "Close window" },
+    { id: "general", label: "Round button" },
+  ];
+
+  const DRAG_THRESHOLD = 6;
+  const MARKER_RADIUS = 11;
+  const HANDLE_WIDTH = 14;
+
+  let nextKey = 1;
+  let previewSvg = $state(null);
+  let viewer = $state(null);
+  let viewportTick = $state(0);
+  let picker = $state(null);
+  let selected = $state(null);
+  let editingTitle = $state(false);
+  let editingLabel = $state(null);
+  let settingsOpen = $state(false);
+  let hovered = null;
+  let press = null;
+  let resizing = $state(null);
+  let dragging = $state(null);
+
+  function findSetting(key){
+    for (const column of columns) {
+      for (const section of column.sections) {
+        const setting = section.settings.find((entry) => entry.key === key);
+        if (setting) return { section, setting };
+      }
+    }
+    return null;
+  }
+
+  function findRow(key){
+    for (const entry of layout) {
+      const row = entry.rows.find((candidate) => candidate.setting.key === key);
+      if (row) return row;
+    }
+    return null;
+  }
+
+  let selectedRow = $derived(selected?.kind === "setting" ? findRow(selected.key) : null);
+  let labelRow = $derived(editingLabel === null ? null : findRow(editingLabel));
+  let selectedButton = $derived(selected?.kind === "button" ? buttons.find((entry) => entry.button.key === selected.key) ?? null : null);
+
+  let insertSlots = $derived(layout.flatMap((entry) => {
+    const x = entry.x + settingsWidht / 2;
+    const slot = (index, y) => ({ id: `${entry.section.key}:${index}`, section: entry.section, index, x, y });
+    if (entry.rows.length === 0) return [slot(0, entry.y + entry.height / 2)];
+    return [
+      slot(0, entry.y + paddingSettings / 2),
+      ...entry.rows.slice(1).map((row, index) => slot(index + 1, row.dividerY)),
+      slot(entry.rows.length, entry.y + entry.height - paddingSettings / 2),
+    ];
+  }));
+
+  let buttonSlots = $derived.by(() => {
+    if (!isFull) return [];
+    const count = (side) => buttonsList.filter((button) => button.side === side).length;
+    const step = buttonSize + buttonGap;
+    return [
+      { side: "left", x: settingsX + count("left") * step + buttonSize / 2, y: headerCenterY },
+      { side: "right", x: displayWidth - canvasMargin - count("right") * step - buttonSize / 2, y: headerCenterY },
+    ];
+  });
+
+  function toLocal(x, y){
+    viewportTick;
+    displayWidth;
+    displayHeight;
+    const matrix = previewSvg.getScreenCTM();
+    const frame = viewer.getBoundingClientRect();
+    return { left: matrix.a * x + matrix.e - frame.left, top: matrix.d * y + matrix.f - frame.top, scale: matrix.a };
+  }
+
+  function toSvgY(clientY){
+    const matrix = previewSvg.getScreenCTM();
+    return (clientY - matrix.f) / matrix.d;
+  }
+
+  function closeOverlays(){
+    picker = null;
+    selected = null;
+    editingTitle = false;
+    editingLabel = null;
+  }
+
+  function openPicker(next){
+    selected = null;
+    editingTitle = false;
+    editingLabel = null;
+    picker = picker?.side === next.side ? null : next;
+  }
+
+  function insertSetting(section, index){
+    closeOverlays();
+    section.settings.splice(index, 0, { key: nextKey++, title: "Title", type: "dropdown", value: "" });
+  }
+
+  function addSection(column){
+    closeOverlays();
+    column.sections.push({ key: nextKey++, settings: [] });
+  }
+
+  function addColumn(side){
+    closeOverlays();
+    const column = { key: nextKey++, sections: [{ key: nextKey++, settings: [] }] };
+    if (side === "left") columns.unshift(column);
+    else columns.push(column);
+  }
+
+  function removeSection(key){
+    if (columns.reduce((sum, column) => sum + column.sections.length, 0) < 2) return;
+    const column = columns.find((candidate) => candidate.sections.some((section) => section.key === key));
+    const index = column.sections.findIndex((section) => section.key === key);
+    if (column.sections[index].settings.length && !window.confirm("Remove this settings section and its settings?")) return;
+    closeOverlays();
+    column.sections.splice(index, 1);
+    if (column.sections.length === 0) columns.splice(columns.indexOf(column), 1);
+  }
+
+  function addButtonOn(side, type){
+    buttonsList.push({ key: nextKey++, type, side });
+    picker = null;
+  }
+
+  function removeSetting(key){
+    const found = findSetting(key);
+    if (found) found.section.settings.splice(found.section.settings.indexOf(found.setting), 1);
+    if (selected?.key === key) selected = null;
+    if (editingLabel === key) editingLabel = null;
+  }
+
+  function removeButton(key){
+    const index = buttonsList.findIndex((button) => button.key === key);
+    if (index >= 0) buttonsList.splice(index, 1);
+    if (selected?.key === key) selected = null;
+  }
+
+  function selectButton(key){
+    picker = null;
+    editingTitle = false;
+    editingLabel = null;
+    selected = selected?.key === key ? null : { kind: "button", key };
+  }
+
+  function pressRow(event, entry, row){
+    if (event.button !== 0) return;
+    press = {
+      key: row.setting.key,
+      section: entry.section,
+      part: event.target.closest?.("[data-part]")?.dataset.part ?? null,
+      clientY: event.clientY,
+      startY: toSvgY(event.clientY),
+      startTop: row.top,
+      moved: false
+    };
+  }
+
+  function pressResize(event, side){
+    if (event.button !== 0) return;
+    event.preventDefault();
+    closeOverlays();
+    resizing = { side, clientX: event.clientX, startWidth: settingsWidht, scale: previewSvg.getScreenCTM().a };
+  }
+
+  function movePointer(event){
+    if (resizing) {
+      const delta = (event.clientX - resizing.clientX) / resizing.scale * (resizing.side === "right" ? 2 : -2) / visibleColumns.length;
+      const width = Math.round((resizing.startWidth + delta) / 10) * 10;
+      settingsWidht = Math.max(settingsWidthMin, Math.min(settingsWidthMax, width));
+      return;
+    }
+    if (!press) return;
+    if (!press.moved) {
+      if (Math.abs(event.clientY - press.clientY) < DRAG_THRESHOLD) return;
+      press.moved = true;
+      closeOverlays();
+    }
+    const list = press.section.settings;
+    const entry = layout.find((candidate) => candidate.section.key === press.section.key);
+    const firstTop = entry.y + paddingSettings;
+    const wanted = press.startTop + toSvgY(event.clientY) - press.startY;
+    const from = list.findIndex((setting) => setting.key === press.key);
+    const to = Math.max(0, Math.min(list.length - 1, Math.round((wanted - firstTop) / rowStep)));
+    if (to !== from) {
+      const [setting] = list.splice(from, 1);
+      list.splice(to, 0, setting);
+    }
+    dragging = { key: press.key, offset: wanted - (firstTop + to * rowStep) };
+  }
+
+  function releasePointer(){
+    if (resizing) {
+      resizing = null;
+      return;
+    }
+    if (!press) return;
+    const { key, moved, part } = press;
+    press = null;
+    if (moved) {
+      dragging = null;
+      return;
+    }
+    picker = null;
+    editingTitle = false;
+    if (part === "label") {
+      selected = null;
+      editingLabel = key;
+    } else if (part === "control") {
+      editingLabel = null;
+      selected = selected?.key === key ? null : { kind: "setting", key };
+    }
+  }
+
+  function startTitleEdit(event){
+    event.preventDefault();
+    picker = null;
+    selected = null;
+    editingLabel = null;
+    editingTitle = true;
+  }
+
+  function focusInput(node){
+    node.focus();
+    node.select();
+  }
+
+  function handleKey(event){
+    if (settingsOpen || defaultsOpen) return;
+    if (event.key === "Escape") {
+      closeOverlays();
+      return;
+    }
+    if (event.target.closest?.("input, select, textarea")) return;
+    const target = selected ?? hovered;
+    if (target && (event.key === "Delete" || event.key === "Backspace")) {
+      event.preventDefault();
+      if (target.kind === "setting") removeSetting(target.key);
+      else removeButton(target.key);
+      hovered = null;
+    }
+  }
+
+  function handleOutside(event){
+    if (event.target.closest?.(".canvas-popover, .title-input, .label-input, [data-hit]")) return;
+    closeOverlays();
+  }
+
+  function newDisplay(){
+    const filled = buttonsList.length || layout.length > 1 || layout.some((entry) => entry.rows.length);
+    if (filled && !window.confirm("Start a new display? The current settings and buttons will be removed.")) return;
+    closeOverlays();
+    columns.splice(0, columns.length, { key: nextKey++, sections: [{ key: nextKey++, settings: [] }] });
+    buttonsList.length = 0;
+    settingsTitle = "Naslov";
+  }
+
+  const DEFAULTS_KEY = "autoSettings.defaults";
+  const SIDE_OFFSET = 22;
+
+  function loadDefaults(){
+    try {
+      const stored = JSON.parse(localStorage.getItem(DEFAULTS_KEY) ?? "[]");
+      return Array.isArray(stored) ? stored : [];
+    } catch {
+      return [];
+    }
+  }
+
+  let savedDefaults = $state(loadDefaults());
+  let defaultsOpen = $state(false);
+  let defaultName = $state("");
+
+  function storeDefaults(){
+    try {
+      localStorage.setItem(DEFAULTS_KEY, JSON.stringify(savedDefaults));
+    } catch {}
+  }
+
+  function snapshot(){
+    return $state.snapshot({
+      title: settingsTitle,
+      buildMode,
+      width: settingsWidht,
+      columns,
+      buttons: buttonsList,
+      elementWidth,
+      elementHeight,
+      rowFontSize,
+      inputFontSize,
+      buttonSize,
+      backgroundFill,
+      settingsFill,
+      stroke: settingsBackgroundStroke
+    });
+  }
+
+  function saveDefault(){
+    const name = defaultName.trim();
+    if (!name) return;
+    const index = savedDefaults.findIndex((entry) => entry.name.toLowerCase() === name.toLowerCase());
+    if (index >= 0 && !window.confirm(`Replace the saved default "${savedDefaults[index].name}"?`)) return;
+    const entry = { name, savedAt: new Date().toISOString(), display: snapshot() };
+    if (index >= 0) savedDefaults[index] = entry;
+    else savedDefaults.push(entry);
+    savedDefaults.sort((a, b) => a.name.localeCompare(b.name));
+    storeDefaults();
+    defaultName = "";
+  }
+
+  function rekey(display){
+    return {
+      columns: display.columns.map((column) => ({
+        key: nextKey++,
+        sections: column.sections.map((section) => ({
+          key: nextKey++,
+          settings: section.settings.map((setting) => ({ ...setting, key: nextKey++ }))
+        }))
+      })),
+      buttons: display.buttons.map((button) => ({ ...button, key: nextKey++ }))
+    };
+  }
+
+  function applyDefault(entry){
+    const filled = buttonsList.length || layout.length > 1 || layout.some((section) => section.rows.length);
+    if (filled && !window.confirm(`Load "${entry.name}"? The current display will be replaced.`)) return;
+    const display = entry.display;
+    const { columns: nextColumns, buttons: nextButtons } = rekey(display);
+    closeOverlays();
+    settingsTitle = display.title;
+    buildMode = display.buildMode;
+    elementWidth = display.elementWidth;
+    elementHeight = display.elementHeight;
+    rowFontSize = display.rowFontSize;
+    inputFontSize = display.inputFontSize;
+    buttonSize = display.buttonSize;
+    backgroundFill = display.backgroundFill;
+    settingsFill = display.settingsFill;
+    settingsBackgroundStroke = display.stroke;
+    columns = nextColumns;
+    buttonsList = nextButtons;
+    settingsWidht = display.width;
+    defaultsOpen = false;
+  }
+
+  function deleteDefault(entry){
+    if (!window.confirm(`Delete the saved default "${entry.name}"?`)) return;
+    savedDefaults.splice(savedDefaults.indexOf(entry), 1);
+    storeDefaults();
+  }
+
+  function settingCount(display){
+    return display.columns.reduce((sum, column) => sum + column.sections.reduce((inner, section) => inner + section.settings.length, 0), 0);
+  }
+
+  let fileItems = $derived([
+    { label: "New display", hint: "Start with an empty settings box", onclick: newDisplay },
+    { separator: true },
+    { label: "Save as default…", hint: "Keep this display to start from later, for example a fan coil unit", onclick: () => defaultsOpen = true },
+    { label: "Load default…", hint: savedDefaults.length ? `${savedDefaults.length} saved` : "Nothing saved yet", onclick: () => defaultsOpen = true },
+    { separator: true },
+    { label: "Settings…", hint: "Element size, fonts and colours", onclick: () => settingsOpen = true },
+  ]);
 </script>
+
 
 <style>
   :global(body) {
     height: 100dvh;
     width: 100vw;
-    font-family: 'Segoe UI', Arial, sans-serif;
+    font-family: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
     margin: 0;
-    padding: 24px;
+    padding: 0;
     background-color: #f1f5f9;
     color: #0f172a;
     box-sizing: border-box;
     overflow: hidden;
   }
 
-  /* Page load: the header and the two panels rise into place in sequence.
-     `both` holds the opening frame, so nothing flashes before its delay. */
-  @keyframes rise {
-    from {
-      opacity: 0;
-      transform: translateY(14px);
-    }
-  }
-
-  .header{
+  .header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    max-width: 1800px;
-    margin: 0 auto 20px auto;
-    animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-    /* The rise animation transforms the header, which makes it a stacking
-       context — so the settings panel inside can no longer out-stack the later
-       .app-layout on its own. Lift the whole header above it instead. */
-    position: relative;
-    z-index: 2;
+    height: 44px;
+    padding: 0 12px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    box-sizing: border-box;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
   }
 
   .logo-section {
     display: flex;
     align-items: center;
-    font-size: 20px;
-    color: #1E293B;
-
-    .subtitle{
-        font-size: 12px;
-        color: #475569;
-        font-weight: 500;
-    }
   }
 
-  .logo{
-    height: 50px;
-    margin-right: 10px;
+  .logo {
+    height: 26px;
   }
 
-  .display-settings {
-    position: relative;
-  }
-
-  button.display-settings-toggle {
-    display: inline-flex;
+  .menus {
+    display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font: inherit;
-    font-size: 14px;
-    font-weight: 600;
-    color: #2563eb;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    gap: 2px;
   }
 
-  button.display-settings-toggle:hover,
-  button.display-settings-toggle.open {
-    background: #eff6ff;
-    border-color: #93c5fd;
-    color: #1d4ed8;
+  .header-divider {
+    width: 1px;
+    height: 20px;
+    background: #e2e8f0;
   }
 
-  button.display-settings-toggle:focus-visible {
-    outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+  .app-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #0f172a;
   }
 
-  .display-settings-icon {
-    width: 18px;
-    height: 18px;
+  .export-icon {
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
   }
 
-  .display-settings-panel {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    z-index: 20;
-    width: 320px;
-    max-height: calc(100dvh - 160px);
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 16px;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
-    box-sizing: border-box;
+  .export-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 14px;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    background: #2563eb;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
   }
 
-  h2 {
-    font-size: 18px;
-    font-weight: 600;
-    margin: 0 0 16px 0;
-    color: #334155;
+  .export-button:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+  }
+
+  .export-button.copied {
+    background: #16a34a;
+    border-color: #16a34a;
   }
 
   .app-layout {
     display: grid;
-    grid-template-columns: 380px 1fr;
-    gap: 24px;
-    align-items: stretch;
-    max-width: 1800px;
-    height: calc(100dvh - 110px);
-    margin: 0 auto;
+    grid-template-columns: minmax(0, 1fr);
+    height: calc(100dvh - 44px);
+    padding: 12px;
+    box-sizing: border-box;
   }
 
   .viewer-section {
+    position: relative;
     height: 100%;
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     padding: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     display: flex;
     flex-direction: column;
     align-items: center;
     box-sizing: border-box;
     min-height: 0;
-    animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.18s both;
+  }
+
+  .viewer-hint {
+    margin: -10px 0 14px;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+
+  .app-version {
+    position: absolute;
+    right: 14px;
+    bottom: 6px;
+    font-size: 11px;
+    color: #94a3b8;
   }
 
   .svg-container {
+    position: relative;
     width: 100%;
-    max-width: 100%;
     flex: 1;
     min-height: 0;
     display: flex;
     justify-content: center;
     align-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #f8fafc;
+    overflow: hidden;
   }
 
   svg.preview-svg {
     width: auto;
     height: auto;
-    max-width: 100%;
-    max-height: 100%;
+    max-width: calc(100% - 120px);
+    max-height: calc(100% - 96px);
     display: block;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
+    overflow: visible;
   }
 
-  .selection-section {
-    display: flex;
-    height: 100%;
-    flex-direction: column;
-    gap: 16px;
-    background: #ffffff;
-    padding: 20px;
-    border-radius: 8px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    max-height: 100%;
-    overflow-y: auto;
-    box-sizing: border-box;
-    min-height: 0;
-    animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.09s both;
+  svg.preview-svg .row {
+    cursor: grab;
+    transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .header,
-    .selection-section,
-    .viewer-section {
-      animation: none;
-    }
+  svg.preview-svg .row.dragging {
+    cursor: grabbing;
+    transition: none;
+    filter: drop-shadow(0 10px 14px rgba(15, 23, 42, 0.2));
   }
 
-  .field-row {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 12px;
+  svg.preview-svg .hit {
+    fill: transparent;
+    stroke: transparent;
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+    transition: fill 0.15s ease, stroke 0.15s ease;
   }
 
-  .field-row > .input-group,
-  .field-row > input[type="text"],
-  .field-row > select {
-    flex: 1 1 0;
-    min-width: 0;
+  svg.preview-svg .row:hover .hit,
+  svg.preview-svg .title-button:hover .hit {
+    fill: rgba(37, 99, 235, 0.04);
   }
 
-  .field-row > input[type="color"] {
-    flex: 0 0 44px;
-    width: 44px;
-    height: 38px;
-    padding: 2px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    background-color: #FFFFFF;
-    box-sizing: border-box;
+  svg.preview-svg .row.selected .hit,
+  svg.preview-svg .title-button.selected .hit {
+    fill: rgba(37, 99, 235, 0.08);
+    stroke: #2563eb;
+  }
+
+  svg.preview-svg .title-button {
     cursor: pointer;
   }
 
-  .field-row > .row-sep {
-    flex: 0 0 10px;
-    text-align: center;
-    font-size: 13px;
-    color: #94a3b8;
+  svg.preview-svg .preview-control {
+    pointer-events: none;
   }
 
-  fieldset {
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    background: #f8fafc;
-    margin: 0;
+  svg.preview-svg .title-text {
+    cursor: text;
+    transition: fill 0.15s ease;
   }
 
-  legend {
-    font-weight: 600;
-    font-size: 13px;
-    color: #334155;
-    padding: 0 6px;
+  svg.preview-svg .title-text:hover {
+    fill: #2563eb;
   }
 
-  label {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-    color: #334155;
+  svg.preview-svg .title-text.editing {
+    visibility: hidden;
+  }
+
+  svg.preview-svg .insert {
     cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease;
   }
 
-  .input-group {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    text-align: left;
-    gap: 6px;
-    font-weight: 600;
-    font-size: 13px;
-    color: #475569;
+  svg.preview-svg:hover .insert,
+  svg.preview-svg .insert.active {
+    opacity: 1;
   }
 
-  .input-group:has(input[type="range"]) {
-    gap: 0;
+  svg.preview-svg.moving .insert {
+    display: none;
   }
 
-  .field-hint {
-    font-weight: 400;
-    font-size: 12px;
-    color: #94a3b8;
+  svg.preview-svg .insert-hit {
+    fill: transparent;
   }
 
-  .input-group input,
-  .input-group select {
-    padding: 8px 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font-size: 14px;
-    background-color: #f8fafc;
-    color: #0f172a;
+  svg.preview-svg .insert-dot {
+    fill: #ffffff;
+    stroke: #2563eb;
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+    transition: fill 0.15s ease;
+  }
+
+  svg.preview-svg .insert.button-slot .insert-dot {
+    stroke-dasharray: 4 3;
+  }
+
+  svg.preview-svg .insert path {
+    pointer-events: none;
+    stroke: #2563eb;
+    stroke-width: 2;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  svg.preview-svg .insert:hover .insert-dot,
+  svg.preview-svg .insert.active .insert-dot {
+    fill: #2563eb;
+  }
+
+  svg.preview-svg .insert:hover path,
+  svg.preview-svg .insert.active path {
+    stroke: #ffffff;
   }
 
   .preview-control {
@@ -653,8 +962,10 @@
     height: 100%;
   }
 
-  .preview-control select,
-  .preview-control input {
+  .preview-control .fake-input {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
     box-sizing: border-box;
@@ -662,14 +973,15 @@
     border: 1px solid #CBD5E1;
     border-radius: 6px;
     background-color: #FFFFFF;
-    color: #334155;
+    color: #94a3b8;
     font-family: Roboto, 'Segoe UI', Arial, sans-serif;
     font-size: var(--input-font-size, 18px);
-    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
   }
 
-  .preview-control input.value-field {
-    text-align: center;
+  .preview-control .fake-input.dropdown {
+    justify-content: space-between;
   }
 
   .preview-control .preview-switch {
@@ -680,16 +992,8 @@
     height: 100%;
     padding: 4%;
     box-sizing: border-box;
-    border: none;
     border-radius: 999px;
     background-color: #9CA9BF;
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-  }
-
-  .preview-control .preview-switch.on {
-    justify-content: flex-end;
-    background-color: #22C55E;
   }
 
   .preview-control .preview-switch .knob {
@@ -700,21 +1004,235 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
 
-  .selection-section input[type="text"],
-  .selection-section select,
-  .display-settings-panel input[type="text"],
-  .display-settings-panel input[type="number"],
-  .display-settings-panel select {
-    width: 100%;
-    height: 38px;
-    padding: 8px 12px;
-    border: 1px solid #cbd5e1;
+  .canvas-chip {
+    position: absolute;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    font-size: 12px;
+    color: #64748b;
+  }
+
+  .canvas-chip.top-left {
+    top: 12px;
+    left: 12px;
+  }
+
+  .canvas-chip.bottom-right {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .canvas-chip span {
+    font-weight: 500;
+  }
+
+  .canvas-chip output {
+    min-width: 44px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .canvas-chip input[type="range"] {
+    width: 140px;
+  }
+
+  .canvas-popover {
+    position: absolute;
+    z-index: 5;
+    transform: translate(-50%, -100%);
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.18);
+    animation: popover-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .canvas-popover.below {
+    transform: translate(-50%, 0);
+  }
+
+  @keyframes popover-in {
+    from {
+      opacity: 0;
+      margin-top: 6px;
+    }
+  }
+
+  .popover-title {
+    font-family: 'Sora', 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .picker {
+    width: 200px;
+  }
+
+  .pick-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 8px;
+  }
+
+  .pick {
+    padding: 6px 8px;
+    border: none;
     border-radius: 6px;
-    font-size: 14px;
-    background-color: #FFFFFF;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    color: #334155;
+    cursor: pointer;
+  }
+
+  .pick:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  .panel {
+    width: 300px;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .panel-close {
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    font-size: 18px;
+    line-height: 1;
+    color: #64748b;
+    cursor: pointer;
+  }
+
+  .panel-close:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+
+  .panel-remove {
+    width: 100%;
+    height: 30px;
+    margin-top: 14px;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    background: #ffffff;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #b91c1c;
+    cursor: pointer;
+  }
+
+  .panel-remove:hover {
+    background: #fef2f2;
+  }
+
+  .options {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px 10px;
+  }
+
+  .option-name {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #64748b;
+  }
+
+  .options input[type="text"] {
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    font: inherit;
+    font-size: 12.5px;
     color: #0f172a;
     box-sizing: border-box;
-    text-align: left;
+  }
+
+  .options input[type="text"]:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  }
+
+  .segmented {
+    display: inline-flex;
+    justify-self: start;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .segmented button {
+    height: 24px;
+    padding: 0 9px;
+    border: none;
+    background: #ffffff;
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #475569;
+    cursor: pointer;
+  }
+
+  .segmented button + button {
+    border-left: 1px solid #cbd5e1;
+  }
+
+  .segmented button:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  .segmented button.on {
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 600;
+    box-shadow: inset 0 0 0 1px #93c5fd;
+  }
+
+  .title-input {
+    position: absolute;
+    z-index: 5;
+    width: min(70%, 700px);
+    transform: translateX(-50%);
+    padding: 0 12px;
+    border: 1.5px solid #2563eb;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+    font-family: Roboto, 'IBM Plex Sans', Arial, sans-serif;
+    font-weight: 700;
+    text-align: center;
+    color: #1e293b;
+    box-sizing: border-box;
+  }
+
+  .title-input:focus {
+    outline: none;
   }
 
   input[type="range"] {
@@ -722,10 +1240,8 @@
     --track-border: 1px;
     --thumb-size: 12px;
     --thumb-border: 2px;
-
     -webkit-appearance: none;
     appearance: none;
-    width: 100%;
     height: 20px;
     margin: 0;
     padding: 0;
@@ -761,15 +1277,11 @@
     appearance: none;
     width: var(--thumb-size);
     height: var(--thumb-size);
-    margin-top: calc(
-      (var(--track-height) + 2 * var(--track-border)
-        - var(--thumb-size) - 2 * var(--thumb-border)) / 2
-    );
+    margin-top: calc((var(--track-height) + 2 * var(--track-border) - var(--thumb-size) - 2 * var(--thumb-border)) / 2);
     border-radius: 50%;
     background-color: #ffffff;
     border: 2px solid #2563eb;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
   }
 
   input[type="range"]::-moz-range-thumb {
@@ -778,337 +1290,413 @@
     border-radius: 50%;
     background-color: #ffffff;
     border: 2px solid #2563eb;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-  }
-
-  input[type="range"]:hover::-webkit-slider-thumb {
-    background-color: #eff6ff;
-    border-color: #1d4ed8;
-  }
-
-  input[type="range"]:hover::-moz-range-thumb {
-    background-color: #eff6ff;
-    border-color: #1d4ed8;
-  }
-
-  input[type="range"]:active::-webkit-slider-thumb {
-    background-color: #2563eb;
-    transform: scale(1.1);
-  }
-
-  input[type="range"]:active::-moz-range-thumb {
-    background-color: #2563eb;
-    transform: scale(1.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
   }
 
   input[type="range"]:focus {
     outline: none;
   }
 
-  input[type="range"]:focus-visible::-webkit-slider-thumb {
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
-  }
-
-  input[type="range"]:focus-visible::-moz-range-thumb {
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
-  }
-
-  .button-secition{
+  .settings {
     display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 8px;
-  }
-
-  button.add-setting,
-  button.remove-setting {
-    display: flex;
-    flex: 1 1 0;
-    min-width: 0;
-    height: 38px;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
     gap: 6px;
-    padding: 8px 12px;
-    border: 1px dashed #cbd5e1;
-    border-radius: 6px;
-    background-color: #ffffff;
-    color: #475569;
-    font-family: inherit;
+  }
+
+  .settings h4 {
+    margin: 14px 0 6px;
     font-size: 13px;
     font-weight: 600;
+    color: #0f172a;
+  }
+
+  .settings h4:first-child {
+    margin-top: 0;
+  }
+
+  .settings-card {
+    padding: 0 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+  }
+
+  .setting {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 12px 0;
+  }
+
+  .setting + .setting {
+    border-top: 1px solid #eef2f7;
+  }
+
+  .setting-title {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: #0f172a;
+  }
+
+  .setting-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: #64748b;
+  }
+
+  .setting-control input[type="number"],
+  .setting-control input[type="text"],
+  .setting-control select {
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    font: inherit;
+    font-size: 12.5px;
+    color: #0f172a;
+    box-sizing: border-box;
+  }
+
+  .setting-control input[type="number"] {
+    width: 76px;
+  }
+
+  .setting-control input[type="text"] {
+    width: 96px;
+    font-family: 'IBM Plex Mono', Consolas, monospace;
+  }
+
+  .setting-control input[type="color"] {
+    width: 34px;
+    height: 30px;
+    padding: 2px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
     box-sizing: border-box;
     cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   }
 
-  button.add-setting:hover {
-    border-color: #2563eb;
-    background-color: #eff6ff;
-    color: #2563eb;
-  }
-
-  button.add-setting:focus-visible {
+  .setting-control input:focus,
+  .setting-control select:focus {
     outline: none;
     border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
   }
 
-  button.remove-setting:hover:not(:disabled) {
-    border-color: #dc2626;
-    background-color: #fef2f2;
-    color: #dc2626;
+  svg.preview-svg .section-box {
+    transition: y 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
-  button.remove-setting:focus-visible {
-    outline: none;
-    border-color: #dc2626;
-    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.25);
+  svg.preview-svg .row-label {
+    cursor: text;
+    transition: fill 0.15s ease;
   }
 
-  button.remove-setting:disabled {
-    border-color: #e2e8f0;
-    background-color: #f8fafc;
-    color: #cbd5e1;
-    cursor: not-allowed;
+  svg.preview-svg .row-label:hover {
+    fill: #2563eb;
   }
 
-  button.add-setting .plus,
-  button.remove-setting .minus {
-    font-size: 16px;
-    line-height: 1;
+  svg.preview-svg .row-label.editing {
+    visibility: hidden;
   }
 
-  button.configure {
-    flex: 0 0 auto;
-    padding: 12px 16px;
-    background-color: #2563eb;
-    color: #ffffff;
-    border: none;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 14px;
+  svg.preview-svg .row-control {
     cursor: pointer;
-    margin-top: 8px;
-    transition: background-color 0.15s ease;
   }
 
-  button.configure:hover {
-    background-color: #1d4ed8;
+  svg.preview-svg .control-outline {
+    fill: transparent;
+    stroke: transparent;
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+    transition: stroke 0.15s ease, fill 0.15s ease;
   }
 
-  button.configure.copied {
-    background-color: #16a34a;
+  svg.preview-svg .row-control:hover .control-outline {
+    stroke: #93c5fd;
+  }
+
+  svg.preview-svg .row-control.selected .control-outline {
+    fill: rgba(37, 99, 235, 0.08);
+    stroke: #2563eb;
+  }
+
+  svg.preview-svg .resize-handle {
+    cursor: ew-resize;
+  }
+
+  svg.preview-svg .handle-hit {
+    fill: transparent;
+  }
+
+  svg.preview-svg .handle-grip {
+    fill: #2563eb;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  svg.preview-svg .section:hover .handle-grip {
+    opacity: 0.35;
+  }
+
+  svg.preview-svg .resize-handle:hover .handle-grip,
+  .svg-container.resizing svg.preview-svg .handle-grip {
+    opacity: 0.9;
+  }
+
+  .svg-container.resizing,
+  .svg-container.resizing * {
+    cursor: ew-resize !important;
+    user-select: none;
+  }
+
+  svg.preview-svg .section-remove {
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+
+  svg.preview-svg:not(.moving) .section:hover .section-remove {
+    opacity: 1;
+  }
+
+  svg.preview-svg .section-remove circle {
+    fill: #ffffff;
+    stroke: #fca5a5;
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+  }
+
+  svg.preview-svg .section-remove path {
+    stroke: #dc2626;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  svg.preview-svg .section-remove:hover circle {
+    fill: #fee2e2;
+  }
+
+  .defaults {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .defaults h4 {
+    margin: 14px 0 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .defaults h4:first-child {
+    margin-top: 0;
+  }
+
+  .save-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .save-row input {
+    flex: 1;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 13px;
+    color: #0f172a;
+    box-sizing: border-box;
+  }
+
+  .save-row input:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  }
+
+  .action {
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+  }
+
+  .action:hover:not(:disabled) {
+    background: #f1f5f9;
+  }
+
+  .action.primary {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #ffffff;
+  }
+
+  .action.primary:hover:not(:disabled) {
+    background: #1d4ed8;
+  }
+
+  .action.danger {
+    border-color: #fecaca;
+    color: #b91c1c;
+  }
+
+  .action.danger:hover {
+    background: #fef2f2;
+  }
+
+  .action:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  .default-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+  }
+
+  .default-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .default-list li + li {
+    border-top: 1px solid #eef2f7;
+  }
+
+  .default-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: #0f172a;
+  }
+
+  .default-meta {
+    font-size: 12px;
+    color: #94a3b8;
+  }
+
+  .defaults-empty {
+    margin: 0;
+    padding: 14px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    font-size: 12.5px;
+    color: #64748b;
+  }
+
+  .label-input {
+    position: absolute;
+    z-index: 5;
+    padding: 0 6px;
+    border: 1.5px solid #2563eb;
+    border-radius: 6px;
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+    font-family: Roboto, 'IBM Plex Sans', Arial, sans-serif;
+    color: #1e293b;
+    box-sizing: border-box;
+  }
+
+  .label-input:focus {
+    outline: none;
   }
 </style>
 
 <title>Auto Settings</title>
 
-{#snippet fillControls(fill, idPrefix)}
-  <label class="input-group" for="{idPrefix}-fill-mode">
-    <select id="{idPrefix}-fill-mode" bind:value={fill.mode}>
-      <option value="solid">Solid colour</option>
-      <option value="gradient">Gradient</option>
-    </select>
-  </label>
+<svelte:window onkeydown={handleKey} onpointerdown={handleOutside} onpointermove={movePointer} onpointerup={releasePointer}
+               onresize={() => viewportTick += 1}/>
 
+{#snippet colorInput(label, value, set)}
+  <input type="color" aria-label={label} {value} oninput={(e) => set(e.currentTarget.value.toUpperCase())}>
+  <input type="text" aria-label="{label} hex" {value} onchange={(e) => set(readHex(e, value))}>
+{/snippet}
+
+{#snippet fillRow(title, fill)}
+  <div class="setting">
+    <span class="setting-title">{title}</span>
+    <div class="setting-control">
+      <div class="segmented">
+        <button type="button" class:on={fill.mode === "solid"} onclick={() => fill.mode = "solid"}>Solid</button>
+        <button type="button" class:on={fill.mode === "gradient"} onclick={() => fill.mode = "gradient"}>Gradient</button>
+      </div>
+    </div>
+  </div>
   {#if fill.mode === "gradient"}
-    <div class="field-row">
-      <input type="color" bind:value={fill.from} aria-label="Gradient start">
-      <input type="text" value={fill.from} onchange={(e) => fill.from = readHex(e, fill.from)}>
+    <div class="setting">
+      <span class="setting-title">From · to</span>
+      <div class="setting-control">
+        {@render colorInput("Gradient start", fill.from, (value) => fill.from = value)}
+        {@render colorInput("Gradient end", fill.to, (value) => fill.to = value)}
+      </div>
     </div>
-    <div class="field-row">
-      <input type="color" bind:value={fill.to} aria-label="Gradient end">
-      <input type="text" value={fill.to} onchange={(e) => fill.to = readHex(e, fill.to)}>
+    <div class="setting">
+      <span class="setting-title">Angle</span>
+      <div class="setting-control">
+        <input type="range" min="0" max="360" step="15" bind:value={fill.angle} style="width: 140px; --fill: {(fill.angle / 360) * 100}%">
+        <span>{fill.angle}°</span>
+      </div>
     </div>
-    <label class="input-group" for="{idPrefix}-fill-angle">
-      <input id="{idPrefix}-fill-angle" type="range" min="0" max="360" step="15" bind:value={fill.angle}
-             style="--fill: {(fill.angle / 360) * 100}%">
-      <span class="field-hint">{fill.angle}° · 0 sweeps down, 90 sweeps right</span>
-    </label>
   {:else}
-    <div class="field-row">
-      <input type="color" bind:value={fill.color} aria-label="Fill colour">
-      <input type="text" value={fill.color} onchange={(e) => fill.color = readHex(e, fill.color)}>
+    <div class="setting">
+      <span class="setting-title">Colour</span>
+      <div class="setting-control">
+        {@render colorInput("Fill colour", fill.color, (value) => fill.color = value)}
+      </div>
     </div>
   {/if}
 {/snippet}
 
-<svelte:window onclick={closeOnOutsideClick} onkeydown={(e) => { if (e.key === "Escape") showDisplaySettings = false; }}/>
-
 <div class="header">
-  <div class="logo-section">
-    <img class="logo" src="{base}/logo.svg" alt="Auto Settings logo">
-    <div class="title">
-      <div class="title">Auto Settings</div>
-      <div class="subtitle" title="commit {__APP_COMMIT__}">Automatic Settings Generator {__APP_VERSION__}</div>
+  <div class="header-left">
+    <div class="logo-section">
+      <img class="logo" src="{base}/logo.svg" alt="Auto Settings" title="Auto Settings {__APP_VERSION__} · commit {__APP_COMMIT__}">
     </div>
+    <nav class="menus" aria-label="Main menu">
+      <HeaderMenu label="File" items={fileItems} width={270}/>
+    </nav>
+    <span class="header-divider" aria-hidden="true"></span>
+    <span class="app-name">Auto Settings</span>
   </div>
-
-  <div class="display-settings" bind:this={displaySettingsEl}>
-    <button class="display-settings-toggle" class:open={showDisplaySettings} type="button"
-            aria-expanded={showDisplaySettings} aria-controls="display-settings-panel"
-            onclick={() => showDisplaySettings = !showDisplaySettings}>
-      <svg class="display-settings-icon" viewBox="0 0 {GEAR_SIZE} {GEAR_SIZE}" fill="currentColor" aria-hidden="true">
-        <path d={GEAR_PATH}/>
-      </svg>
-      Display Settings
-    </button>
-
-    {#if showDisplaySettings}
-      <div class="display-settings-panel" id="display-settings-panel">
-        <fieldset id="select-element-size" class="field-row">
-          <legend>Input Element Size</legend>
-          <label class="input-group" for="element-width">
-            <span class="field-hint">Width</span>
-            <input id="element-width" type="number" min="40" step="10" bind:value={elementWidth}>
-          </label>
-          <span class="row-sep" aria-hidden="true">x</span>
-          <label class="input-group" for="element-height">
-            <span class="field-hint">Height</span>
-            <input id="element-height" type="number" min="20" step="2" bind:value={elementHeight}>
-          </label>
-        </fieldset>
-
-        <fieldset id="select-font-size" class="field-row">
-          <legend>Font Size</legend>
-          <label class="input-group" for="row-font-size">
-            <span class="field-hint">Label</span>
-            <input id="row-font-size" type="number" min="8" step="1" bind:value={rowFontSize}>
-          </label>
-          <label class="input-group" for="input-font-size">
-            <span class="field-hint">Input</span>
-            <select id="input-font-size" bind:value={inputFontSize}>
-              {#each INPUT_FONT_SIZES as size}
-                <option value={size}>{size}</option>
-              {/each}
-            </select>
-          </label>
-        </fieldset>
-
-        {#if isFull}
-          <fieldset id="select-button-size">
-            <legend>Title Button Size</legend>
-            <label class="input-group" for="button-size">
-              <span class="field-hint">Diameter, in canvas units</span>
-              <input id="button-size" type="number" min="16" step="4" bind:value={buttonSize}>
-            </label>
-          </fieldset>
-
-          <fieldset id="select-canvas-fill">
-            <legend>Canvas Background</legend>
-            {@render fillControls(backgroundFill, "canvas")}
-          </fieldset>
-        {/if}
-
-        <fieldset id="select-settings-fill">
-          <legend>Settings Box</legend>
-          {@render fillControls(settingsFill, "settings")}
-          <label class="input-group" for="settings-stroke">
-            <span class="field-hint">Border</span>
-            <div class="field-row">
-              <input id="settings-stroke" type="color" bind:value={settingsBackgroundStroke}>
-              <input type="text" value={settingsBackgroundStroke}
-                     onchange={(e) => settingsBackgroundStroke = readHex(e, settingsBackgroundStroke)}>
-            </div>
-          </label>
-        </fieldset>
-      </div>
-    {/if}
-  </div>
+  <button class="export-button" class:copied={copySuccess} type="button" onclick={handleConfiguration}>
+    <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      {#if copySuccess}
+        <path d="m5 12 5 5 9-10"/>
+      {:else}
+        <rect x="9" y="9" width="11" height="11" rx="2"/>
+        <path d="M5 15V6a2 2 0 0 1 2-2h9"/>
+      {/if}
+    </svg>
+    {copySuccess ? "Copied" : "Copy to atvise"}
+  </button>
 </div>
 
-
 <div class="app-layout">
-  <div class="selection-section">
-    <fieldset id="select-build-mode">
-      <legend>Build</legend>
-      <select id="build-mode" bind:value={buildMode}>
-        <option value="full">Full display</option>
-        <option value="section">Settings section only</option>
-      </select>
-    </fieldset>
-
-    {#if isFull}
-      <fieldset id="select-title">
-        <legend>Display Title</legend>
-        <input id="title" type="text" bind:value={settingsTitle}>
-      </fieldset>
-
-      <fieldset id="title-buttons">
-        <legend>Title Buttons</legend>
-        <div class="button-secition">
-          <button class="add-setting" type="button" onclick={addButton}>
-            <span class="plus" aria-hidden="true">+</span>
-            Add button
-          </button>
-          <button class="remove-setting" type="button" onclick={removeButton} disabled={buttonsList.length === 0}>
-            <span class="minus" aria-hidden="true">−</span>
-            Remove button
-          </button>
-        </div>
-        {#each buttonsList as button}
-          <div class="field-row setting-row" transition:addRow>
-            <select bind:value={button.type}>
-              <option value="close">Close window</option>
-              <option value="general">Round button</option>
-            </select>
-            <span class="row-sep" aria-hidden="true">:</span>
-            <select bind:value={button.side}>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-            </select>
-          </div>
-        {/each}
-      </fieldset>
-    {/if}
-
-
-    <fieldset id="select-settings-width">
-      <legend>Settings Window Width</legend>
-      <label class="input-group" for="settings-width">
-        <input id="settings-width" type="range" min={settingsWidthMin} max={settingsWidthMax} step="10"
-               bind:value={settingsWidht}
-               style="--fill: {((settingsWidht - settingsWidthMin) / (settingsWidthMax - settingsWidthMin)) * 100}%">
-        <span class="field-hint">{settingsWidht} px wide · canvas {displayWidth} × {displayHeight}</span>
-      </label>
-    </fieldset>
-
-    <fieldset id="settings-list" >
-      <legend>Settings List</legend>
-      <div class="button-secition">
-        <button class="add-setting" type="button" onclick={addSetting}>
-          <span class="plus" aria-hidden="true">+</span>
-          Add setting
-        </button>
-        <button class="remove-setting" type="button" onclick={removeSetting} disabled={settingsList.length === 0}>
-          <span class="minus" aria-hidden="true">−</span>
-          Remove setting
-        </button>
-      </div>
-      {#each settingsList as setting}
-        <div class="field-row setting-row" transition:addRow>
-          <input type="text" bind:value={setting.title}>
-          <span class="row-sep" aria-hidden="true">:</span>
-          <select bind:value={setting.type}>
-            <option value="value">Value</option>
-            <option value="dropdown">Dropdown</option>
-            <option value="switch">Switch</option>
-          </select>
-        </div>
-      {/each}
-    </fieldset>
-
-    <button class="configure" class:copied={copySuccess} type="button" onclick={handleConfiguration}>
-      {copySuccess ? "Copied to Clipboard" : "Configure Display"}
-    </button>
-  </div>
-
   <div class="viewer-section">
-    <h2>Live Preview</h2>
-    <div class="svg-container">
-      <svg class="preview-svg" width="{displayWidth}" height="{previewDisplayHeight}" viewBox="0 0 {displayWidth} {previewDisplayHeight}">
+    <span class="app-version" title="Auto Settings {__APP_VERSION__} · commit {__APP_COMMIT__}">{__APP_VERSION__}</span>
+    <p class="viewer-hint">Hover the display and click + to add. Click a label or the title to rename it, click a control to change its type. Drag a row to reorder it, drag a box's side to resize.</p>
+    <div class="svg-container" class:resizing={!!resizing} bind:this={viewer}>
+      <svg class="preview-svg" class:moving={!!dragging || !!resizing} bind:this={previewSvg} width="{displayWidth}" height="{displayHeight}" viewBox="0 0 {displayWidth} {displayHeight}">
         <defs>
           {#if isFull && backgroundFill.mode === "gradient"}
             {@const axis = gradientAxis(backgroundFill.angle, backgroundFill.start, backgroundFill.end)}
@@ -1126,14 +1714,20 @@
           {/if}
         </defs>
         {#if isFull}
-          <rect x="0" y="0" width="{displayWidth}" height="{previewDisplayHeight}" fill="{backgroundFillRef}"/>
-          <text x={displayWidth / 2} y="{titleBaselineY}" font-family="Roboto" font-size={titleFontSize} font-weight="bold" fill="#1E293B" text-anchor="middle">{settingsTitle}</text>
+          <rect x="0" y="0" width="{displayWidth}" height="{displayHeight}" fill="{backgroundFillRef}"/>
+          <text class="title-text" class:editing={editingTitle} data-hit onpointerdown={startTitleEdit}
+                x={displayWidth / 2} y="{titleBaselineY}" font-family="Roboto" font-size={titleFontSize} font-weight="bold" fill="#1E293B" text-anchor="middle">{settingsTitle || "Untitled"}</text>
         {/if}
-        {#each buttons as entry}
+        {#each buttons as entry (entry.button.key)}
           {@const cx = entry.x + buttonSize / 2}
           {@const cy = entry.y + buttonSize / 2}
           {@const radius = buttonSize * CLOSE_BUTTON.radius}
-          <g transition:appear={{ delay: 60 }}>
+          <g class="title-button" class:selected={selected?.key === entry.button.key} data-hit role="button" tabindex="-1"
+             aria-label="{entry.button.type === "close" ? "Close" : "Round"} button"
+             onclick={() => selectButton(entry.button.key)} onkeydown={(e) => e.key === "Enter" && selectButton(entry.button.key)}
+             onpointerenter={() => hovered = { kind: "button", key: entry.button.key }} onpointerleave={() => hovered = null}
+             transition:appear={{ delay: 60 }}>
+            <rect class="hit" x={entry.x - 4} y={entry.y - 4} width={buttonSize + 8} height={buttonSize + 8} rx="10"/>
             {#if entry.button.type === "close"}
               {@const arm = buttonSize * CLOSE_BUTTON.arm}
               <circle cx={cx} cy={cy} r={radius} fill={CLOSE_BUTTON.fill}/>
@@ -1149,33 +1743,271 @@
             {/if}
           </g>
         {/each}
-        <rect x={settingsX} y={settingsY} fill="{settingsFillRef}" height="{previewSettingsHeight}" id="settings_background" stroke="{settingsBackgroundStroke}" stroke-width="1" rx="10" ry="10" style={settingsShadow} width="{settingsWidht}"/>
-        {#each rows as row, index}
-          <g transition:appear={{ delay: 60 }}>
-            {#if index > 0}
-              <line x1={contentLeft} x2={contentRight} y1={row.dividerY} y2={row.dividerY} stroke="#E2E8F0" stroke-width="1"/>
+
+        {#each layout as entry (entry.section.key)}
+          <g class="section" transition:appear>
+            <rect class="section-box" x={entry.x} fill="{settingsFillRef}" stroke="{settingsBackgroundStroke}" stroke-width="1" rx="10" ry="10" width="{settingsWidht}"
+                  style="{settingsShadow}; y: {entry.y}px; height: {entry.height}px"/>
+            {#each entry.rows as row, index (row.setting.key)}
+              {#if index > 0}
+                <line x1={entry.contentLeft} x2={entry.contentRight} y1={row.dividerY} y2={row.dividerY} stroke="#E2E8F0" stroke-width="1"/>
+              {/if}
+            {/each}
+            {#each entry.rows as row (row.setting.key)}
+              {@const isDragged = dragging?.key === row.setting.key}
+              <g class="row" class:dragging={isDragged} data-hit role="button" tabindex="-1" aria-label={row.setting.title}
+                 style="transform: translate(0px, {row.top + (isDragged ? dragging.offset : 0)}px)"
+                 onpointerdown={(e) => pressRow(e, entry, row)}
+                 onpointerenter={() => hovered = { kind: "setting", key: row.setting.key }} onpointerleave={() => hovered = null}>
+                <g transition:appear={{ delay: 60 }}>
+                  <rect class="hit" x={entry.x + 6} y={-paddingElements / 2 + 2} width={settingsWidht - 12} height={elementHeight + paddingElements - 4} rx="8"/>
+                  <text class="row-label" class:editing={editingLabel === row.setting.key} data-part="label"
+                        x={entry.contentLeft} y={row.baselineY - row.top} font-family="Roboto" font-size={rowFontSize} fill="#1E293B" text-anchor="start">{row.setting.title || "Untitled"}</text>
+                  <g class="row-control" class:selected={selected?.key === row.setting.key} data-part="control">
+                    <rect class="control-outline" x={row.x - 4} y="-4" width={row.width + 8} height={elementHeight + 8} rx="9"/>
+                    <foreignObject x={row.x} y="0" width={row.width} height={elementHeight}>
+                      <div xmlns="http://www.w3.org/1999/xhtml" class="preview-control" style="--input-font-size: {inputFontSize}px">
+                        {#if row.setting.type === "dropdown"}
+                          <div class="fake-input dropdown"><span>Combobox</span><span>▾</span></div>
+                        {:else if row.setting.type === "switch"}
+                          <div class="preview-switch"><span class="knob"></span></div>
+                        {:else}
+                          <div class="fake-input">In/Out Value</div>
+                        {/if}
+                      </div>
+                    </foreignObject>
+                  </g>
+                </g>
+              </g>
+            {/each}
+            {#each ["left", "right"] as side (side)}
+              {@const x = side === "left" ? entry.x : entry.x + settingsWidht}
+              <g class="resize-handle" data-hit role="separator" aria-orientation="vertical" aria-label="Resize the settings box from the {side}"
+                 onpointerdown={(e) => pressResize(e, side)}>
+                <rect class="handle-hit" x={x - HANDLE_WIDTH / 2} y={entry.y} width={HANDLE_WIDTH} height={entry.height}/>
+                <rect class="handle-grip" x={x - 3} y={entry.y + entry.height / 2 - Math.min(24, entry.height / 4)} width="6" height={Math.min(48, entry.height / 2)} rx="3"/>
+              </g>
+            {/each}
+            {#if isFull && layout.length > 1}
+              <g class="section-remove" data-hit role="button" tabindex="0" aria-label="Remove this settings section"
+                 transform="translate({entry.x + settingsWidht} {entry.y})"
+                 onclick={() => removeSection(entry.section.key)} onkeydown={(e) => e.key === "Enter" && removeSection(entry.section.key)}>
+                <circle r="11"/>
+                <path d="M -4 -4 L 4 4 M 4 -4 L -4 4"/>
+              </g>
             {/if}
-            <text x={contentLeft} y={row.baselineY} font-family="Roboto" font-size={rowFontSize} fill="#1E293B" text-anchor="start">{row.setting.title}</text>
-            <foreignObject x={row.x} y={row.top} width={row.width} height={elementHeight}>
-              <div xmlns="http://www.w3.org/1999/xhtml" class="preview-control" style="--input-font-size: {inputFontSize}px">
-                {#if row.setting.type === "dropdown"}
-                  <select bind:value={row.setting.value}>
-                    <option value="">Combobox</option>
-                  </select>
-                {:else if row.setting.type === "switch"}
-                  <button class="preview-switch" class:on={row.setting.value === true} type="button"
-                          role="switch" aria-checked={row.setting.value === true} aria-label={row.setting.title}
-                          onclick={() => row.setting.value = row.setting.value !== true}>
-                    <span class="knob"></span>
-                  </button>
-                {:else}
-                  <input type="text" class="value-field" placeholder="In/Out Value" bind:value={row.setting.value}>
-                {/if}
-              </div>
-            </foreignObject>
+          </g>
+        {/each}
+
+        {#each insertSlots as slot (slot.id)}
+          <g class="insert" data-hit role="button" tabindex="0"
+             aria-label="Add a setting" transform="translate({slot.x} {slot.y})"
+             onclick={() => insertSetting(slot.section, slot.index)}
+             onkeydown={(e) => e.key === "Enter" && insertSetting(slot.section, slot.index)}>
+            <circle class="insert-hit" r={MARKER_RADIUS + 6}/>
+            <circle class="insert-dot" r={MARKER_RADIUS}/>
+            <path d="M -5 0 H 5 M 0 -5 V 5"/>
+          </g>
+        {/each}
+        {#if isFull}
+          {#each columnEnds as end (end.column.key)}
+            <g class="insert add-section" data-hit role="button" tabindex="0" aria-label="Add a settings section below"
+               transform="translate({end.x + settingsWidht / 2} {end.bottom + canvasMargin / 2})"
+               onclick={() => addSection(end.column)} onkeydown={(e) => e.key === "Enter" && addSection(end.column)}>
+              <rect class="insert-hit" x="-38" y="-14" width="76" height="28"/>
+              <rect class="insert-dot" x="-28" y="-8" width="56" height="16" rx="8"/>
+              <path d="M -4 0 H 4 M 0 -4 V 4"/>
+            </g>
+          {/each}
+          {#each ["left", "right"] as side (side)}
+            <g class="insert add-column" data-hit role="button" tabindex="0" aria-label="Add a settings section on the {side}"
+               transform="translate({side === "left" ? -SIDE_OFFSET : displayWidth + SIDE_OFFSET} {settingsY + (displayHeight - canvasMargin - settingsY) / 2})"
+               onclick={() => addColumn(side)} onkeydown={(e) => e.key === "Enter" && addColumn(side)}>
+              <rect class="insert-hit" x="-14" y="-38" width="28" height="76"/>
+              <rect class="insert-dot" x="-8" y="-28" width="16" height="56" rx="8"/>
+              <path d="M -4 0 H 4 M 0 -4 V 4"/>
+            </g>
+          {/each}
+        {/if}
+        {#each buttonSlots as slot (slot.side)}
+          <g class="insert button-slot" class:active={picker?.side === slot.side} data-hit role="button" tabindex="0"
+             aria-label="Add a title button on the {slot.side}" transform="translate({slot.x} {slot.y})"
+             onclick={() => openPicker({ side: slot.side, x: slot.x, y: slot.y })}
+             onkeydown={(e) => e.key === "Enter" && openPicker({ side: slot.side, x: slot.x, y: slot.y })}>
+            <circle class="insert-hit" r={buttonSize * 0.42}/>
+            <circle class="insert-dot" r={buttonSize * 0.3}/>
+            <path d="M -6 0 H 6 M 0 -6 V 6"/>
           </g>
         {/each}
       </svg>
+
+      <div class="canvas-chip top-left">
+        <span>Build</span>
+        <div class="segmented">
+          <button type="button" class:on={isFull} onclick={() => buildMode = "full"}>Full display</button>
+          <button type="button" class:on={!isFull} onclick={() => { buildMode = "section"; closeOverlays(); }}>Settings section only</button>
+        </div>
+      </div>
+
+      <div class="canvas-chip bottom-right">
+        <output>{displayWidth} × {displayHeight} px</output>
+      </div>
+
+      {#if editingTitle && isFull && previewSvg && viewer}
+        {@const anchor = toLocal(displayWidth / 2, titleBaselineY)}
+        <input class="title-input" type="text" aria-label="Display title" bind:value={settingsTitle} use:focusInput
+               style="left: {anchor.left}px; top: {anchor.top - titleFontSize * anchor.scale}px; font-size: {titleFontSize * anchor.scale}px; height: {titleFontSize * 1.5 * anchor.scale}px"
+               onkeydown={(e) => { if (e.key === "Enter" || e.key === "Escape") editingTitle = false; }} onblur={() => editingTitle = false}>
+      {/if}
+
+      {#if labelRow && previewSvg && viewer}
+        {@const anchor = toLocal(labelRow.labelX, labelRow.baselineY)}
+        {@const end = toLocal(labelRow.x - 12, labelRow.baselineY)}
+        <input class="label-input" type="text" aria-label="Setting title" value={labelRow.setting.title} use:focusInput
+               oninput={(e) => labelRow.setting.title = e.currentTarget.value}
+               style="left: {anchor.left - 7}px; top: {anchor.top - rowFontSize * anchor.scale * 1.05}px; width: {Math.max(80, end.left - anchor.left + 7)}px; font-size: {rowFontSize * anchor.scale}px; height: {rowFontSize * 1.45 * anchor.scale}px"
+               onkeydown={(e) => { if (e.key === "Enter" || e.key === "Escape") editingLabel = null; }} onblur={() => editingLabel = null}>
+      {/if}
+
+      {#if picker && previewSvg && viewer}
+        {@const anchor = toLocal(picker.x, picker.y)}
+        <div class="canvas-popover picker below" style="left: {anchor.left}px; top: {anchor.top + 22}px">
+          <span class="popover-title">Add a title button ({picker.side})</span>
+          <div class="pick-list">
+            {#each BUTTON_TYPES as option (option.id)}
+              <button type="button" class="pick" onclick={() => addButtonOn(picker.side, option.id)}>{option.label}</button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if selectedRow && previewSvg && viewer}
+        {@const anchor = toLocal(selectedRow.x + selectedRow.width / 2, selectedRow.top + elementHeight)}
+        <div class="canvas-popover panel below" style="left: {anchor.left}px; top: {anchor.top + 10}px">
+          <div class="panel-head">
+            <span class="popover-title">{selectedRow.setting.title || "Setting"}</span>
+            <button type="button" class="panel-close" aria-label="Close" onclick={() => selected = null}>&times;</button>
+          </div>
+          <div class="options">
+            <span class="option-name">Type</span>
+            <div class="segmented">
+              {#each SETTING_TYPES as option (option.id)}
+                <button type="button" class:on={selectedRow.setting.type === option.id} onclick={() => selectedRow.setting.type = option.id}>{option.label}</button>
+              {/each}
+            </div>
+          </div>
+          <button type="button" class="panel-remove" onclick={() => removeSetting(selectedRow.setting.key)}>Remove setting</button>
+        </div>
+      {/if}
+
+      {#if selectedButton && previewSvg && viewer}
+        {@const anchor = toLocal(selectedButton.x + buttonSize / 2, selectedButton.y + buttonSize)}
+        <div class="canvas-popover panel below" style="left: {anchor.left}px; top: {anchor.top + 10}px">
+          <div class="panel-head">
+            <span class="popover-title">Title button</span>
+            <button type="button" class="panel-close" aria-label="Close" onclick={() => selected = null}>&times;</button>
+          </div>
+          <div class="options">
+            <span class="option-name">Type</span>
+            <div class="segmented">
+              {#each BUTTON_TYPES as option (option.id)}
+                <button type="button" class:on={selectedButton.button.type === option.id} onclick={() => selectedButton.button.type = option.id}>{option.label}</button>
+              {/each}
+            </div>
+            <span class="option-name">Side</span>
+            <div class="segmented">
+              <button type="button" class:on={selectedButton.button.side === "left"} onclick={() => selectedButton.button.side = "left"}>Left</button>
+              <button type="button" class:on={selectedButton.button.side === "right"} onclick={() => selectedButton.button.side = "right"}>Right</button>
+            </div>
+          </div>
+          <button type="button" class="panel-remove" onclick={() => removeButton(selectedButton.button.key)}>Remove button</button>
+        </div>
+      {/if}
     </div>
   </div>
 </div>
+
+{#if defaultsOpen}
+  <Modal title="Defaults" subtitle="Saved displays to start from, kept in this browser" width={520} onclose={() => defaultsOpen = false}>
+    <div class="defaults">
+      <h4>Save the current display</h4>
+      <form class="save-row" onsubmit={(e) => { e.preventDefault(); saveDefault(); }}>
+        <input type="text" placeholder="Name, for example Fan coil unit" aria-label="Default name" bind:value={defaultName}>
+        <button type="submit" class="action primary" disabled={!defaultName.trim()}>Save</button>
+      </form>
+      <h4>Saved defaults</h4>
+      {#if savedDefaults.length}
+        <ul class="default-list">
+          {#each savedDefaults as entry (entry.name)}
+            <li>
+              <span class="default-name">{entry.name}</span>
+              <span class="default-meta">{settingCount(entry.display)} settings</span>
+              <button type="button" class="action" onclick={() => applyDefault(entry)}>Load</button>
+              <button type="button" class="action danger" onclick={() => deleteDefault(entry)}>Delete</button>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="defaults-empty">No defaults saved yet. Build a display, give it a name above and save it.</p>
+      {/if}
+    </div>
+  </Modal>
+{/if}
+
+{#if settingsOpen}
+  <Modal title="Settings" subtitle="Sizes, fonts and colours of the generated display" width={560} onclose={() => settingsOpen = false}>
+    <div class="settings">
+      <h4>Inputs</h4>
+      <div class="settings-card">
+        <div class="setting">
+          <span class="setting-title">Input element size</span>
+          <div class="setting-control">
+            <input type="number" aria-label="Input width" min="40" step="10" bind:value={elementWidth}>
+            <span>×</span>
+            <input type="number" aria-label="Input height" min="20" step="2" bind:value={elementHeight}>
+            <span>px</span>
+          </div>
+        </div>
+        <div class="setting">
+          <span class="setting-title">Label font size</span>
+          <div class="setting-control">
+            <input type="number" aria-label="Label font size" min="8" step="1" bind:value={rowFontSize}>
+          </div>
+        </div>
+        <div class="setting">
+          <span class="setting-title">Input font size</span>
+          <div class="setting-control">
+            <select aria-label="Input font size" bind:value={inputFontSize}>
+              {#each INPUT_FONT_SIZES as size (size)}
+                <option value={size}>{size}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <h4>Settings box</h4>
+      <div class="settings-card">
+        {@render fillRow("Fill", settingsFill)}
+        <div class="setting">
+          <span class="setting-title">Border</span>
+          <div class="setting-control">
+            {@render colorInput("Border colour", settingsBackgroundStroke, (value) => settingsBackgroundStroke = value)}
+          </div>
+        </div>
+      </div>
+
+      <h4>Full display</h4>
+      <div class="settings-card">
+        <div class="setting">
+          <span class="setting-title">Title button size</span>
+          <div class="setting-control">
+            <input type="number" aria-label="Title button size" min="16" step="4" bind:value={buttonSize}>
+            <span>px</span>
+          </div>
+        </div>
+        {@render fillRow("Canvas background", backgroundFill)}
+      </div>
+    </div>
+  </Modal>
+{/if}
