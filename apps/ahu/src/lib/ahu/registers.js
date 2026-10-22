@@ -32,6 +32,11 @@ const ACCESS_HEATING = {
     pumpFault: ".ALM_Malfunction_Sequence_A"
 };
 
+const ACCESS_ELECTRIC_HEATING = {
+    power: ".Status_Heating_Sequence_A",
+    alarm: ".ALM_Malfunction_Sequence_A"
+};
+
 const SUPPLY_FAN = {
     speed: ".Status_Fan_Supply_Modulating",
     pressure: ".Status_Pressure_Supply",
@@ -77,12 +82,12 @@ export const CONTROLLERS = {
             "ret-co2-sensor": { co2: ".Status_Air_Quality_CO2" },
             "sup-frost-thermostat": { temperature: ".Status_Temperature_Frost_Protection", alarm: ".ALM_Frost_Protection_Thermostat" },
             "exh-frost-thermostat": { alarm: ".ALM_Frost_Protection_Thermostat" },
-            "sup-humidifier": (el) => ({ position: el.signalType === "continious" ? ".Status_Humidifier_Modulating" : ".Status_Humidifier", alarm: ".ALM_Humidifier" }),
+            "sup-humidifier": (el) => ({ output: el.signalType === "continious" ? ".Status_Humidifier_Modulating" : ".Status_Humidifier", status: ".Status_Humidifier", alarm: ".ALM_Humidifier" }),
             "sup-preheat-hot-water-coils": { position: ".Status_Valve_Preheat_Modulating", temperature: ".Status_Temperature_Coil_Preheat_Water", alarm: ".ALM_Coil_Preheat_Water_Temperature", pump: ".Status_Pump_Preheat_1", pumpFault: ".ALM_Pump_Preheat_1_Overload" },
             "sup-reheat-hot-water-coils": { position: ".Status_Valve_Reheat_Modulating", temperature: ".Status_Temperature_Coil_Reheat_Water", alarm: ".ALM_Coil_Reheat_Water_Temperature", pump: ".Status_Pump_Reheat_1", pumpFault: ".ALM_Pump_Reheat_1_Overload" },
             "sup-cold-water-coils": { position: ".Status_Valve_Cooling_Modulating", temperature: ".Status_Temperature_Coil_Cooling_Water", alarm: ".ALM_Coil_Cooling_Water_Temperature", pump: ".Status_Pump_Cooling_1", pumpFault: ".ALM_Pump_Cooling_1_Overload" },
-            "sup-preheat-electric-heater": { position: ".Status_Heater_Preheat_Modulating", alarm: ".ALM_Heater_Preheat" },
-            "sup-reheat-electric-heater": { position: ".Status_Heater_Reheat_Modulating", alarm: ".ALM_Heater_Reheat" },
+            "sup-preheat-electric-heater": { power: ".Status_Heater_Preheat_Modulating", alarm: ".ALM_Heater_Preheat" },
+            "sup-reheat-electric-heater": { power: ".Status_Heater_Reheat_Modulating", alarm: ".ALM_Heater_Reheat" },
             "sup-pressure-sensor": { pressure: ".Status_Pressure_Supply", "setpoint:pressure": ".CMD_Pressure_Setpoint_Supply" },
             "ret-pressure-sensor": { pressure: ".Status_Pressure_Return", "setpoint:pressure": ".CMD_Pressure_Setpoint_Return" },
             "sup-flow-sensor": { flow: ".Status_Air_Flow_Supply" },
@@ -156,8 +161,8 @@ export const CONTROLLERS = {
             "sup-after-recovery-temp-sensor": { temperature: ".Status_Efficiency_Temperature" },
             "sup-preheat-hot-water-coils": ACCESS_HEATING,
             "sup-reheat-hot-water-coils": ACCESS_HEATING,
-            "sup-preheat-electric-heater": ACCESS_HEATING,
-            "sup-reheat-electric-heater": ACCESS_HEATING,
+            "sup-preheat-electric-heater": ACCESS_ELECTRIC_HEATING,
+            "sup-reheat-electric-heater": ACCESS_ELECTRIC_HEATING,
             "sup-cold-water-coils": { position: ".Status_Cooling_Sequence_C", alarm: ".ALM_Malfunction_Sequence_C", pump: ".Status_Cooling_Pump", pumpFault: ".ALM_Malfunction_Sequence_C" },
             "sup-pressure-sensor": { pressure: ".Status_Supply_Air_Pressure" },
             "ret-pressure-sensor": { pressure: ".Status_Extract_Air_Pressure" },

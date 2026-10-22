@@ -8,6 +8,8 @@ export const MEASURES = {
     pressure: { label: "p:", name: "Pressure", unit: "Pa", decimals: 0 },
     flow: { label: "q:", name: "Flow", unit: "m³/h", decimals: 0 },
     position: { label: "Y:", name: "Position", unit: "%", decimals: 0 },
+    output: { label: "Y:", name: "Output", unit: "%", decimals: 0 },
+    power: { label: "P:", name: "Power", unit: "%", decimals: 0 },
     speed: { label: "n:", name: "Speed", unit: "%", decimals: 0 },
     voc: { label: "VOC:", name: "VOC", unit: "%", decimals: 0 },
     efficiency: { label: "η:", name: "Efficiency", unit: "%", decimals: 0 }
@@ -16,7 +18,7 @@ export const MEASURES = {
 export const INDICATORS = {
     dpSwitch: { name: "ΔP switch", sprite: "dpSwitch", width: 32, height: 32, scale: 1.25 },
     alarm: { name: "Alarm", sprite: "alarm", width: 80, height: 80, scale: 0.7 },
-    status: { name: "Status", sprite: "statusIndicator", width: 30, height: 30, scale: 1.2 }
+    status: { name: "Status", sprite: "statusIndicator", width: 30, height: 30, scale: 28 / 30 }
 };
 
 export const FITTINGS = {
@@ -38,8 +40,8 @@ export const ELEMENT_TYPES = {
     co2Sensor: { name: "CO₂ sensor", sprite: "co2Sensor", width: 32, height: 32, scale: 1.25, measures: ["co2"], setpoints: ["co2"], indicators: [] },
     hotWaterCoils: { name: "Hot water coil", sprite: "hotWaterCoils", width: 103, height: 203, measures: ["position", "temperature"], setpoints: [], indicators: ["alarm"], fittings: ["pump", "valve"], water: { supply: "#EF4444", return: "#830B0B" } },
     coldWaterCoils: { name: "Cold water coil", sprite: "coldWaterCoils", width: 103, height: 203, measures: ["position", "temperature"], setpoints: [], indicators: ["alarm"], fittings: ["pump", "valve"], water: { supply: "#3B82F6", return: "#063888" } },
-    electricHeater: { name: "Electric heater", sprite: "hotWaterCoils", width: 103, height: 203, measures: ["position"], setpoints: [], indicators: ["alarm"] },
-    humidifier: { name: "Humidifier", sprite: "humidifier", width: 103, height: 221, axis: 101.5, measures: ["position"], setpoints: [], indicators: ["alarm"] },
+    electricHeater: { name: "Electric heater", sprite: "electricHeater", width: 103, height: 203, measures: ["power"], setpoints: [], indicators: ["alarm"] },
+    humidifier: { name: "Humidifier", sprite: "humidifier", width: 103, height: 221, axis: 101.5, measures: ["output"], setpoints: [], indicators: ["status", "alarm"] },
     frostThermostat: { name: "Frost thermostat", sprite: "frostThermostat", width: 32, height: 32, scale: 1.25, measures: ["temperature"], setpoints: [], indicators: ["alarm"] }
 };
 
@@ -62,7 +64,7 @@ export const DEFAULT_ICON_NAMES = {
     silencer: "",
     hotWaterCoils: "Grelec",
     coldWaterCoils: "Hladilec",
-    electricHeater: "Grelec",
+    electricHeater: "",
     humidifier: "Vlazilec",
     frostThermostat: "Varnostni_Termostat",
     dpSwitch: "Delta_P",

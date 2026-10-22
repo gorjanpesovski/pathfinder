@@ -51,14 +51,19 @@
   let recuperationOptions = $state({ bypass: false, mixing: false, readouts: [], indicators: [] });
   let unitOptions = $state({ room: [], status: [] });
   let unitOpen = $state(false);
-  const centerExtremeLeft = $derived(xCenter - (recuperationUnitWidth / 2) - (recuperationOptions.bypass ? 60 : elementPadding));
-  const centerExtremeRight = $derived(xCenter + (recuperationUnitWidth / 2) + (recuperationOptions.bypass ? 60 : elementPadding));
+  let selectedRecuperation = $state("rotary-heat-exchanger");
+  const hasRecuperation = $derived(selectedRecuperation !== "none");
+  const unitWidth = $derived(hasRecuperation ? recuperationUnitWidth : 0);
+  const centerGap = $derived(hasRecuperation && recuperationOptions.bypass ? 60 : elementPadding);
+
+  const centerExtremeLeft = $derived(xCenter - (unitWidth / 2) - centerGap);
+  const centerExtremeRight = $derived(xCenter + (unitWidth / 2) + centerGap);
   const rightExtreme = $derived(xRight - LINE_END_PADDING);
 
-  let selectedRecuperation = $state("rotary-heat-exchanger");
-
+  const ductY = $derived((yTop + yBottom) / 2);
+  const supplyY = $derived(hasRecuperation ? yBottom : ductY);
   const exhaustY = $derived(selectedRecuperation === "plate-heat-exchanger" ? yBottom : yTop);
-  const intakeY = $derived(selectedRecuperation === "plate-heat-exchanger" ? yTop : yBottom);
+  const intakeY = $derived(!hasRecuperation ? ductY : selectedRecuperation === "plate-heat-exchanger" ? yTop : yBottom);
 
   const ELEMENT_SCALE_MIN = 0.5;
   const ELEMENT_SCALE_MAX = 1;
@@ -388,25 +393,26 @@
   }
 
   const lineSpecs = $derived({
-      exh: { elements: placements.exh, start: leftExtreme, end: centerExtremeLeft, y: exhaustY, pipeStart: xLeft, pipeEnd: xCenter - recuperationUnitWidth / 2 },
-      int: { elements: placements.int, start: leftExtreme, end: centerExtremeLeft, y: intakeY, pipeStart: xLeft, pipeEnd: xCenter - recuperationUnitWidth / 2 },
-      ret: { elements: placements.ret, start: centerExtremeRight, end: rightExtreme, y: yTop, pipeStart: xCenter + recuperationUnitWidth / 2, pipeEnd: xRight },
-      sup: { elements: placements.sup, start: centerExtremeRight, end: rightExtreme, y: yBottom, pipeStart: xCenter + recuperationUnitWidth / 2, pipeEnd: xRight }
+      exh: { elements: hasRecuperation ? placements.exh : [], hidden: !hasRecuperation, start: leftExtreme, end: centerExtremeLeft, y: exhaustY, pipeStart: xLeft, pipeEnd: xCenter - unitWidth / 2 },
+      int: { elements: placements.int, start: leftExtreme, end: centerExtremeLeft, y: intakeY, pipeStart: xLeft, pipeEnd: xCenter - unitWidth / 2 },
+      ret: { elements: hasRecuperation ? placements.ret : [], hidden: !hasRecuperation, start: centerExtremeRight, end: rightExtreme, y: yTop, pipeStart: xCenter + unitWidth / 2, pipeEnd: xRight },
+      sup: { elements: placements.sup, start: centerExtremeRight, end: rightExtreme, y: supplyY, pipeStart: xCenter + unitWidth / 2, pipeEnd: xRight }
   });
 
   const DIRECTION = { exh: -1, int: 1, ret: -1, sup: 1 };
   const PARTNER = { exh: "int", int: "exh", ret: "sup", sup: "ret" };
 
   function leadOf(line) {
-      return recuperationOptions.mixing && (line === "ret" || line === "sup") ? mixingLead(elementScale) : null;
+      return hasRecuperation && recuperationOptions.mixing && (line === "ret" || line === "sup") ? mixingLead(elementScale) : null;
   }
 
-  const mixingCenter = $derived(recuperationOptions.mixing
+  const mixingCenter = $derived(hasRecuperation && recuperationOptions.mixing
       ? sideCenters(placements.ret, placements.sup, centerExtremeRight, rightExtreme, elementScale, leadOf("ret")).get(MIXING_KEY)
       : null);
 
   function buildLine(line, lists = {}) {
-      const { start, end, y } = lineSpecs[line];
+      const { start, end, y, hidden } = lineSpecs[line];
+      if (hidden) return [];
       const elements = lists[line] ?? lineSpecs[line].elements;
       const centers = sideCenters(elements, lists[PARTNER[line]] ?? lineSpecs[PARTNER[line]].elements, start, end, elementScale, leadOf(line));
       return lineItems({ elements, y, centers, direction: DIRECTION[line], outward: y === yTop ? -1 : 1, scale: elementScale, controller: selectModbusTable, prefix: nodePathPrefix });
@@ -417,21 +423,21 @@
   }
 
   const frameBase = $derived(frameItems({
-      xLeft, xRight, xCenter, exhaustY, intakeY, returnY: yTop, supplyY: yBottom, topY: yTop, displayWidth, displayHeight,
+      xLeft, xRight, xCenter, exhaustY, intakeY, returnY: yTop, supplyY, topY: yTop, displayWidth, displayHeight,
       recuperation: selectedRecuperation, recuperationWidth: recuperationUnitWidth, recuperationHeight: recuperationUnitHeight
   }));
 
   const recuperationExtras = $derived(recuperationItems({
       cx: xCenter, width: recuperationUnitWidth, height: recuperationUnitHeight, displayHeight, recuperation: selectedRecuperation,
-      options: recuperationOptions, intakeY, supplyY: yBottom, returnY: yTop, controller: selectModbusTable, prefix: nodePathPrefix, scale: elementScale, mixingCenter
+      options: recuperationOptions, intakeY, supplyY, returnY: yTop, controller: selectModbusTable, prefix: nodePathPrefix, scale: elementScale, mixingCenter
   }));
 
   const frame = $derived({
       under: [...frameBase.under, ...recuperationExtras.under],
       over: [
-          frameBase.over[0],
+          ...frameBase.over.filter((item) => item.owner === RECUPERATION),
           ...recuperationExtras.over.map((item) => ({ ...item, owner: RECUPERATION })),
-          ...frameBase.over.slice(1),
+          ...frameBase.over.filter((item) => item.owner !== RECUPERATION),
           ...unitItems({ displayWidth, options: unitOptions, controller: selectModbusTable, prefix: nodePathPrefix })
       ]
   });
@@ -555,6 +561,7 @@
   const boxes = $derived(new Map(sceneGroups.filter((group) => group.box && group.owner !== RECUPERATION).map((group) => [group.owner, group.box])));
 
   const insertSlots = $derived(Object.fromEntries(Object.entries(lineSpecs).map(([line, spec]) => {
+      if (spec.hidden) return [line, []];
       const placed = spec.elements.filter((element) => boxes.has(element.key));
       const edges = [leadOf(line) && mixingCenter !== null ? mixingCenter + mixingLead(elementScale).width / 2 : spec.pipeStart + 6, ...placed.flatMap((element) => {
           const box = boxes.get(element.key);
@@ -1017,7 +1024,8 @@
       node.select();
   }
 
-  const recuperationBox = $derived(sceneGroups.find((group) => group.owner === RECUPERATION)?.box ?? null);
+  const recuperationBox = $derived(sceneGroups.find((group) => group.owner === RECUPERATION)?.box
+      ?? (hasRecuperation ? null : { x: xCenter - 14, y: ductY - 28, width: 28, height: 56 }));
 
   function handleKey(event) {
       if (fileKeydown(event)) return;
@@ -1042,7 +1050,7 @@
   }
 
   function startMove(event) {
-      if (event.target.closest(".insert, .remove")) return;
+      if (event.target.closest(".insert, .remove, .recovery-slot")) return;
       if (event.target.closest(".title-text")) {
           event.preventDefault();
           picker = null;
@@ -1166,7 +1174,7 @@
               <atv:argument name="animation_type" value="Background"/>
               <atv:argument name="hover_color" value="#2A7A53"/>
               </svg>
-              <text atv:refpx="960" atv:refpy="65.5" fill="#1E293B" font-family="Roboto" font-size="46" font-weight="bold" id="title" x="765.5" y="81.5">${escapeXml(displayTitle)}</text>
+              <text atv:refpx="${displayWidth / 2}" atv:refpy="65.5" fill="#1E293B" font-family="Roboto" font-size="46" font-weight="bold" id="title" text-anchor="middle" x="${displayWidth / 2}" y="81.5">${escapeXml(displayTitle)}</text>
               <svg atv:refpx="55.0001" atv:refpy="65.3353" height="121" id="back_button" transform="matrix(0.6667,0,0,0.6667,0,0)" width="121" x="21.996" xlink:href="SYSTEM.LIBRARY.PROJECT.OBJECTDISPLAYS.4.%20Gumbi.Round_Buttons.Button" y="37.498">
               <atv:argument name="animation_type" value="Background"/>
               <atv:argument name="hover_color" value="#A32A3A"/>
@@ -1720,6 +1728,51 @@
     }
   }
 
+  svg.preview-svg .recovery-slot {
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  svg.preview-svg .recovery-slot:hover,
+  svg.preview-svg .recovery-slot.shown,
+  svg.preview-svg .recovery-slot.active {
+    opacity: 1;
+  }
+
+  svg.preview-svg .recovery-hit {
+    fill: transparent;
+  }
+
+  svg.preview-svg .recovery-outline {
+    fill: #ffffff;
+    stroke: #94a3b8;
+    stroke-width: 2;
+    stroke-dasharray: 5 4;
+    vector-effect: non-scaling-stroke;
+    transition: fill 0.15s ease, stroke 0.15s ease;
+  }
+
+  svg.preview-svg .recovery-slot path {
+    pointer-events: none;
+    stroke: #64748b;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+    transition: stroke 0.15s ease;
+  }
+
+  svg.preview-svg .recovery-slot:hover .recovery-outline,
+  svg.preview-svg .recovery-slot.active .recovery-outline {
+    fill: #eff6ff;
+    stroke: #2563eb;
+  }
+
+  svg.preview-svg .recovery-slot:hover path,
+  svg.preview-svg .recovery-slot.active path {
+    stroke: #2563eb;
+  }
+
   .canvas-popover {
     position: absolute;
     z-index: 5;
@@ -2265,6 +2318,16 @@
             {/if}
           </g>
         {/each}
+        {#if !hasRecuperation && !moving}
+          <g class="recovery-slot" class:active={selected === RECUPERATION} class:shown={hoverLine === "int" || hoverLine === "sup"} role="button" tabindex="0" aria-label="Add heat recovery"
+             transform="translate({xCenter}, {ductY})"
+             onclick={() => { picker = null; unitOpen = false; selected = selected === RECUPERATION ? null : RECUPERATION; }}
+             onkeydown={(e) => e.key === "Enter" && (selected = RECUPERATION)}>
+            <rect class="recovery-hit" x="-22" y="-40" width="44" height="80" rx="10"/>
+            <rect class="recovery-outline" x="-14" y="-28" width="28" height="56" rx="8"/>
+            <path d="M -6 0 H 6 M 0 -6 V 6"/>
+          </g>
+        {/if}
         {#if !moving}
           {#each Object.entries(insertSlots) as [line, slots] (line)}
             {#if hoverLine === line || picker?.line === line}
@@ -2314,7 +2377,7 @@
         {@const fitsRight = topRight.left + 16 + 300 <= viewer.clientWidth - 8}
         <div class="canvas-popover panel side" style="left: {fitsRight ? topRight.left + 16 : topLeft.left - 316}px; top: {Math.max(8, topRight.top)}px">
           <div class="panel-head">
-            <span class="popover-title">Heat exchanger</span>
+            <span class="popover-title">{hasRecuperation ? "Heat exchanger" : "Heat recovery"}</span>
             <button type="button" class="panel-close" aria-label="Close" onclick={() => selected = null}>&times;</button>
           </div>
           <div class="element-options">
@@ -2322,7 +2385,9 @@
             <div class="segmented" role="group" aria-label="Heat exchanger type">
               <button type="button" class:on={selectedRecuperation === "plate-heat-exchanger"} onclick={() => selectedRecuperation = "plate-heat-exchanger"}>Plate</button>
               <button type="button" class:on={selectedRecuperation === "rotary-heat-exchanger"} onclick={() => selectedRecuperation = "rotary-heat-exchanger"}>Rotary</button>
+              <button type="button" class:on={!hasRecuperation} onclick={() => selectedRecuperation = "none"}>None</button>
             </div>
+            {#if hasRecuperation}
             <span class="option-name">Dampers</span>
             <div class="toggles">
               {#each RECUPERATION_OPTIONS.dampers as entry (entry.id)}
@@ -2345,6 +2410,7 @@
             <div class="toggles">
               <button type="button" class="toggle" onclick={() => recuperationUnitX = displayWidth / 2}>Centre</button>
             </div>
+            {/if}
           </div>
         </div>
       {/if}
@@ -2361,6 +2427,12 @@
               <button type="button" class="panel-close" aria-label="Close" onclick={() => unitOpen = false}>&times;</button>
             </div>
             <div class="element-options">
+              <span class="option-name">Recovery</span>
+              <div class="segmented" role="group" aria-label="Heat recovery">
+                <button type="button" class:on={selectedRecuperation === "rotary-heat-exchanger"} onclick={() => selectedRecuperation = "rotary-heat-exchanger"}>Rotary</button>
+                <button type="button" class:on={selectedRecuperation === "plate-heat-exchanger"} onclick={() => selectedRecuperation = "plate-heat-exchanger"}>Plate</button>
+                <button type="button" class:on={!hasRecuperation} onclick={() => { selectedRecuperation = "none"; selected = null; }}>None</button>
+              </div>
               <span class="option-name">Room</span>
               <div class="toggles">
                 {#each UNIT_OPTIONS.room as entry (entry.id)}

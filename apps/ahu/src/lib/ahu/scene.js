@@ -328,6 +328,7 @@ function ductFromCenter(center, scale){
 }
 
 export function recuperationItems({ cx, width, height, displayHeight, recuperation, options, intakeY, supplyY, returnY, controller, prefix, scale = 1, mixingCenter = null }){
+    if (!RECUPERATION_TYPES[recuperation]) return { under: [], over: [] };
     const registers = groupRegisters(controller, "recuperation");
     const top = displayHeight / 2 - height / 2;
     const bottom = displayHeight / 2 + height / 2;
@@ -401,7 +402,8 @@ export function unitItems({ displayWidth, options, controller, prefix, scale = 1
     const statuses = UNIT_OPTIONS.status.filter((entry) => !entry.text && options.status.includes(entry.id));
     if (statuses.length) {
         const size = 18;
-        const dot = INDICATORS.status.width * 0.9;
+        const k = (INDICATORS.status.width * 0.9 - 8) / INDICATORS.status.width;
+        const dot = INDICATORS.status.width * k;
         const widths = statuses.map((entry) => dot + 10 + textWidth(entry.label, size));
         const gap = 40;
         let x = displayWidth / 2 - (widths.reduce((sum, width) => sum + width, 0) + gap * (statuses.length - 1)) / 2;
@@ -409,7 +411,7 @@ export function unitItems({ displayWidth, options, controller, prefix, scale = 1
         statuses.forEach((entry, index) => {
             const target = address(prefix, registers[entry.id]);
             items.push(iconItem({
-                id: `unit_${entry.id}`, sprite: "statusIndicator", slot: "status", cx: x + dot / 2, cy: y, k: 0.9,
+                id: `unit_${entry.id}`, sprite: "statusIndicator", slot: "status", cx: x + dot / 2, cy: y, k,
                 width: INDICATORS.status.width, height: INDICATORS.status.height, args: { ...(target ? { base: target } : {}), trueColor: entry.color, ...(extraArgs[entry.id] ?? {}) }
             }));
             items.push({ kind: "text", id: `unit_${entry.id}_label`, text: entry.label, x: x + dot + 10, y: y + size * 0.35, size, anchor: "start", color: INK });
@@ -436,25 +438,29 @@ function chevron(tipX, y, direction){
 }
 
 export function frameItems({ xLeft, xRight, xCenter, exhaustY, intakeY, returnY, supplyY, topY, displayWidth, displayHeight, recuperation, recuperationWidth, recuperationHeight }){
+    const withUnit = !!RECUPERATION_TYPES[recuperation];
     const ends = [
-        { line: "exhaust", y: exhaustY, side: "left", direction: -1 },
+        withUnit && { line: "exhaust", y: exhaustY, side: "left", direction: -1 },
         { line: "intake", y: intakeY, side: "left", direction: 1 },
-        { line: "return", y: returnY, side: "right", direction: -1 },
+        withUnit && { line: "return", y: returnY, side: "right", direction: -1 },
         { line: "supply", y: supplyY, side: "right", direction: 1 }
-    ];
+    ].filter(Boolean);
 
     const under = ends.map(({ line, y, side }) => ({
         kind: "polyline", id: `${line}_line`, points: `${side === "left" ? xLeft : xRight},${y} ${xCenter},${y}`, color: LINES[line].color, width: 10
     }));
 
-    const icon = ICONS[RECUPERATION_TYPES[recuperation].sprite];
-    const over = [{
-        ...iconItem({
-            id: "recuperation_unit", sprite: RECUPERATION_TYPES[recuperation].sprite, slot: recuperation,
-            cx: xCenter, cy: displayHeight / 2, k: recuperationWidth / icon.width, width: icon.width, height: icon.height
-        }),
-        owner: "recuperation", center: xCenter
-    }];
+    const over = [];
+    if (withUnit) {
+        const icon = ICONS[RECUPERATION_TYPES[recuperation].sprite];
+        over.push({
+            ...iconItem({
+                id: "recuperation_unit", sprite: RECUPERATION_TYPES[recuperation].sprite, slot: recuperation,
+                cx: xCenter, cy: displayHeight / 2, k: recuperationWidth / icon.width, width: icon.width, height: icon.height
+            }),
+            owner: "recuperation", center: xCenter
+        });
+    }
 
     for (const { line, y, side, direction } of ends) {
         const tip = side === "left"

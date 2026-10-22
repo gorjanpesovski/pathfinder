@@ -14,11 +14,14 @@ function git(args, fallback) {
 	}
 }
 
-// The patch number is the commit count, so every commit bumps the version.
+// The patch number counts the commits made after the one that last changed the
+// version in package.json, so bumping major or minor starts the patch at 0 again.
 // Major and minor stay hand-managed in package.json.
-// Note: CI must check out with fetch-depth 0, or the count is always 1.
+// Note: CI must check out with fetch-depth 0, or the count is always 0.
 const [major, minor] = JSON.parse(readFileSync('./package.json', 'utf8')).version.split('.');
-const APP_VERSION = `v${major}.${minor}.${git('rev-list --count HEAD', '0')}`;
+const versionCommit = git('log -1 --format=%H -Gversion -- package.json', '');
+const patch = versionCommit ? git(`rev-list --count ${versionCommit}..HEAD`, '0') : git('rev-list --count HEAD', '0');
+const APP_VERSION = `v${major}.${minor}.${patch}`;
 const APP_COMMIT = git('rev-parse --short HEAD', 'dev');
 
 export default defineConfig({
