@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.0//EN' 'http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd'>
+<!-- Generator: Adobe Illustrator 14.0.0, SVG Export Plug-In . SVG Version: 6.00 Build 43363)  -->
+<svg enable-background="new 0 0 53 234" height="500" id="Livello_3" version="1.0" width="150" x="0px" xml:space="preserve" y="0px" xmlns="http://www.w3.org/2000/svg" xmlns:atv="http://webmi.atvise.com/2007/svgext" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs/>
+ <metadata>
+  <atv:gridconfig enabled="false" gridstyle="lines" height="20" width="20"/>
+  <atv:snapconfig enabled="false" height="10" width="10"/>
+ </metadata>
+ <script atv:desc="" atv:name="" type="text/ecmascript"/>
+ <rect atv:refpx="75" atv:refpy="250" fill="#ffffff" height="495" id="id_0" rx="5" ry="5" stroke="#1E293B" stroke-linejoin="round" stroke-width="3" width="145" x="2.5" y="2.5"/>
+ <polyline atv:refpx="75" atv:refpy="250" fill="#ffffff" id="id_1" points="5,2.5 145,497.5" stroke="#1E293B" stroke-linejoin="round" stroke-width="3"/>
+ <polyline atv:refpx="75" atv:refpy="250" fill="#ffffff" id="id_5" points="145,2.5 4.999,497.499" stroke="#1E293B" stroke-linejoin="round" stroke-width="3"/>
+ <rect atv:refpx="75.004" atv:refpy="250.002" fill="#ffffff" height="100" id="id_3" rx="50" ry="50" stroke="#1E293B" stroke-linejoin="round" stroke-width="3" width="100" x="25" y="200"/>
+ <path atv:refpx="369" atv:refpy="334" d="M101.26,242.5L102.187,242.5C103.745,242.5 104.999,241.246 104.999,239.687L104.999,222.812C104.999,221.675 104.319,220.645 103.264,220.21C102.209,219.777 101.002,220.023 100.195,220.82L94.136,226.891C88.945,222.59 82.264,220 74.999,220C59.882,220 47.378,231.179 45.303,245.722C45.01,247.773 46.429,249.671 48.479,249.964C50.53,250.257 52.429,248.828 52.721,246.789C54.28,235.879 63.667,227.5 74.999,227.5C80.201,227.5 84.983,229.257 88.792,232.222L83.319,237.695C82.51,238.503 82.276,239.71 82.709,240.765C83.144,241.82 84.175,242.5 85.311,242.5ZM104.705,254.277C104.999,252.226 103.569,250.328 101.53,250.035C99.491,249.742 97.581,251.171 97.288,253.21C95.729,264.108 86.343,272.488 75.01,272.488C69.807,272.488 65.025,270.73 61.217,267.765L66.679,262.304C67.487,261.495 67.721,260.289 67.288,259.233C66.854,258.178 65.823,257.5 64.687,257.5L47.811,257.5C46.252,257.5 45,258.752 45,260.312L45,277.187C45,278.324 45.679,279.354 46.733,279.789C47.788,280.222 48.995,279.976 49.803,279.179L55.874,273.108C61.053,277.409 67.733,280 74.999,280C90.116,280 102.62,268.82 104.695,254.277Z" fill="#1E293B" id="id_4" stroke="#ffffff" stroke-width="5"/>
+</svg>
