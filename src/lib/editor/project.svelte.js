@@ -2,10 +2,8 @@ import { cleanDocumentName, defaultDocumentName, serializeDocument, highestId, f
 import { ROOM_STYLE } from "@pathfinder/floorplan/rooms.js";
 import { defaultCategoryColors } from "@pathfinder/floorplan/categories.js";
 import { WALL_STYLE } from "@pathfinder/floorplan/walls.js";
-import { HYDRONIC_STYLE } from "@pathfinder/diagram/elements.js";
-import { PGD_TAGS } from "@pathfinder/hydronic/pgd.js";
 import { targetsOf } from "@pathfinder/diagram/target.js";
-import { PAPERS, DEFAULT_PAPER } from "@pathfinder/diagram/electric/sheet.js";
+import { PAPERS } from "@pathfinder/diagram/electric/sheet.js";
 import { normalizePower } from "@pathfinder/wiring/power.js";
 import { normalizeControl } from "@pathfinder/wiring/control.js";
 import { hashText, fileAccess, rememberFile, recallFile } from "@pathfinder/core/fileStore.js";
@@ -16,8 +14,9 @@ import { migrateBranches } from "@pathfinder/diagram/branch.js";
 import { importablePages, shiftIds, imageIdsIn, shiftImageId } from "@pathfinder/core/importPages.js";
 import { APP_DATA, readDocument, blankPart, partText, appLabel } from "./documents.js";
 import { addRecent, takeQueuedOpen } from "$lib/main/recent.js";
+import { preferences } from "$lib/main/preferences.svelte.js";
 
-const CANVAS = { width: 1920, height: 1080, fill: "#FFFFFF" };
+const CANVAS_FILL = "#FFFFFF";
 const SESSION_KEYS = ["documentName", "canvasWidth", "canvasHeight", "canvasFill", "fileHandle", "fileAccessState", "autosaveFile", "savedHash"];
 
 export function createProject(ctx){
@@ -68,10 +67,10 @@ export function createProject(ctx){
     const grid = settings?.grid ?? {};
     const drawing = settings?.drawing ?? {};
     const rooms = settings?.rooms ?? {};
-    ctx.gridSize = number(grid.size, 20);
+    ctx.gridSize = number(grid.size, preferences.gridSize);
     ctx.majorEvery = number(grid.majorEvery, 5);
     ctx.showGrid = flag(grid.show, true);
-    ctx.snapToGrid = flag(grid.snap, true);
+    ctx.snapToGrid = flag(grid.snap, preferences.snapToGrid);
     ctx.gridMinorColor = text(grid.minorColor, "#E2E8F0");
     ctx.gridMajorColor = text(grid.majorColor, "#CBD5E1");
     ctx.lineColor = text(drawing.lineColor, "#2563EB");
@@ -90,12 +89,12 @@ export function createProject(ctx){
     ctx.roomWallWidth = number(rooms.roomWallWidth, ROOM_STYLE.roomWidth);
     ctx.wallStroke = text(rooms.wallStroke, WALL_STYLE.stroke);
     ctx.wallWidth = number(rooms.wallWidth, WALL_STYLE.width);
-    ctx.hydronicLibrary = text(settings?.hydronic?.library, HYDRONIC_STYLE.library);
-    ctx.nodePrefix = typeof settings?.hydronic?.nodePrefix === "string" ? settings.hydronic.nodePrefix : "";
-    ctx.pgdPrefix = typeof settings?.hydronic?.pgdPrefix === "string" ? settings.hydronic.pgdPrefix : PGD_TAGS.prefix;
+    ctx.hydronicLibrary = text(settings?.hydronic?.library, preferences.library);
+    ctx.nodePrefix = typeof settings?.hydronic?.nodePrefix === "string" ? settings.hydronic.nodePrefix : preferences.nodePrefix;
+    ctx.pgdPrefix = typeof settings?.hydronic?.pgdPrefix === "string" ? settings.hydronic.pgdPrefix : preferences.pgdPrefix;
     ctx.exportTargets = targetsOf(settings?.hydronic?.targets);
-    ctx.pgdFloat = text(settings?.hydronic?.pgdFloat, PGD_TAGS.float);
-    ctx.wiringPaper = PAPERS[settings?.wiring?.paper] ? settings.wiring.paper : DEFAULT_PAPER;
+    ctx.pgdFloat = text(settings?.hydronic?.pgdFloat, preferences.pgdFloat);
+    ctx.wiringPaper = PAPERS[settings?.wiring?.paper] ? settings.wiring.paper : preferences.paper;
   }
 
   function appContent(appId){
@@ -170,9 +169,9 @@ export function createProject(ctx){
     }
     ctx.loadStashed(ctx.stashKey(appId));
     const canvas = part.canvas ?? {};
-    ctx.canvasWidth = canvas.width > 0 ? canvas.width : CANVAS.width;
-    ctx.canvasHeight = canvas.height > 0 ? canvas.height : CANVAS.height;
-    ctx.canvasFill = typeof canvas.fill === "string" ? canvas.fill : CANVAS.fill;
+    ctx.canvasWidth = canvas.width > 0 ? canvas.width : preferences.canvasWidth;
+    ctx.canvasHeight = canvas.height > 0 ? canvas.height : preferences.canvasHeight;
+    ctx.canvasFill = typeof canvas.fill === "string" ? canvas.fill : CANVAS_FILL;
     ctx.documentName = part.name ?? null;
     applySettings(part.settings);
     if (owns("wiring") && !part.settings?.wiring && part.shapes.length) ctx.wiringPaper = "A3";

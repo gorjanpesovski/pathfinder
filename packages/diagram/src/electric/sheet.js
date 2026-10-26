@@ -122,10 +122,11 @@ export function sheetSvg(index, count, meta = {}, paper = paperOf()){
   TITLE_CELLS.forEach((cell, position) => {
     if (position > 0) parts.push(line(left, FRAME.bottom, left, FRAME.footer));
     if (cell.key === "company") {
-      const height = 46;
-      const width = height * LOGO.width / LOGO.height;
-      parts.push(`<image x="${left + (paper.cells[cell.key] - width) / 2}" y="${FRAME.bottom + 4}" width="${width}" height="${height}" href="${LOGO.href}"/>`);
-      parts.push(text(left + paper.cells[cell.key] / 2, FRAME.bottom + 62, "T3-TECH storitve, d.o.o.", { size: 11, anchor: "middle" }));
+      const logo = meta.logo ?? LOGO;
+      const height = Math.min(46, (paper.cells[cell.key] - 12) * logo.height / logo.width);
+      const width = height * logo.width / logo.height;
+      parts.push(`<image x="${left + (paper.cells[cell.key] - width) / 2}" y="${FRAME.bottom + 4 + (46 - height) / 2}" width="${width}" height="${height}" href="${logo.href}"/>`);
+      parts.push(text(left + paper.cells[cell.key] / 2, FRAME.bottom + 62, meta.company ?? "T3-TECH storitve, d.o.o.", { size: 11, anchor: "middle" }));
     } else {
       parts.push(text(left + 6, FRAME.bottom + 14, cell.label, { size: 9, fill: "#475569" }));
       parts.push(text(left + paper.cells[cell.key] / 2, FRAME.bottom + 46, values[cell.key], { size: cell.key === "project" ? 15 : 13, anchor: "middle" }));

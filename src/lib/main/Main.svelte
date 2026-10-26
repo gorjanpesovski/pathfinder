@@ -8,6 +8,7 @@
   import { SUITE, suiteEntry } from "./suite.js";
   import { recentFiles, removeRecent, queueOpen } from "./recent.js";
   import { resumeRoute } from "./session.js";
+  import PreferencesDialog from "./PreferencesDialog.svelte";
 
   const versions = __APP_VERSIONS__;
   const FILE_TYPES = [{ description: "Pathfinder drawing", accept: { "application/json": [".json"] } }];
@@ -15,6 +16,7 @@
   let ready = $state(false);
   let recent = $state.raw([]);
   let notice = $state("");
+  let preferencesOpen = $state(false);
 
   onMount(() => {
     const route = resumeRoute();
@@ -115,6 +117,10 @@
           <span class="brand-tagline">atvise Engineering Tools {__APP_VERSION__}</span>
         </span>
       </a>
+      <button type="button" class="preferences" onclick={() => preferencesOpen = true}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 2.6h3.4l.5 2.6c.6.2 1.2.6 1.7 1l2.5-.9 1.7 2.9-2 1.7c.1.6.1 1.3 0 1.9l2 1.7-1.7 2.9-2.5-.9c-.5.4-1.1.8-1.7 1l-.5 2.6h-3.4l-.5-2.6c-.6-.2-1.2-.6-1.7-1l-2.5.9-1.7-2.9 2-1.7c-.1-.6-.1-1.3 0-1.9l-2-1.7 1.7-2.9 2.5.9c.5-.4 1.1-.8 1.7-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        Preferences
+      </button>
     </header>
 
     <section class="tools" aria-label="Apps">
@@ -169,6 +175,10 @@
   </div>
 {/if}
 
+{#if preferencesOpen}
+  <PreferencesDialog onclose={() => preferencesOpen = false}/>
+{/if}
+
 <style>
   .main {
     box-sizing: border-box;
@@ -187,6 +197,31 @@
     justify-content: space-between;
     max-width: 1100px;
     margin: 0 auto;
+  }
+
+  .preferences {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #ffffff;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+  }
+
+  .preferences:hover {
+    background: #f8fafc;
+  }
+
+  .preferences svg {
+    width: 16px;
+    height: 16px;
   }
 
   .brand {

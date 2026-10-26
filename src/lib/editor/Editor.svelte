@@ -1,5 +1,7 @@
 <script>
   import { base } from "$app/paths";
+  import PreferencesDialog from "$lib/main/PreferencesDialog.svelte";
+  import { preferences, titleLogo } from "$lib/main/preferences.svelte.js";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { untrack } from "svelte";
@@ -422,10 +424,9 @@
     wallStroke,
     wallWidth: wallWidth || WALL_STYLE.width
   });
-  let showToolHints = $state(loadFlag("pathfinder.showToolHints", true));
-  $effect(() => saveFlag("pathfinder.showToolHints", showToolHints));
-  let viewsOnHover = $state(loadFlag("pathfinder.viewBarOnHover", true));
-  $effect(() => saveFlag("pathfinder.viewBarOnHover", viewsOnHover));
+  let showToolHints = $derived(preferences.toolHints);
+  let viewsOnHover = $derived(preferences.viewsOnHover);
+  let preferencesOpen = $state(false);
   let elementsOpen = $state(loadFlag("pathfinder.elementsOpen", false));
   $effect(() => saveFlag("pathfinder.elementsOpen", elementsOpen));
   let variablePanel = $state(loadFlag("pathfinder.variablePanel", false));
@@ -799,7 +800,7 @@
     }
     return titles;
   });
-  let sheetMeta = $derived({ project: documentName ?? "", date: sheetDate(), pages: sheetTitles, notes: sheetTitles.map((title) => title === "NAPAJANJE" ? supplyNote : "") });
+  let sheetMeta = $derived({ project: documentName ?? "", company: preferences.company, logo: titleLogo(), content: preferences.content, date: sheetDate(), pages: sheetTitles, notes: sheetTitles.map((title) => title === "NAPAJANJE" ? supplyNote : "") });
 
   let listEdit = $derived.by(() => {
     if (app !== "electrical" || selectedShapes.length !== 1) return null;
@@ -893,10 +894,10 @@
   let viewTitle = $derived(ioVisible ? `${currentApp.label} · IO list` : currentApp.label);
 
   let showDisplaySettings = $state(false);
-  let settingsSection = $state("general");
+  let settingsSection = $state("canvas");
 
   const SETTINGS_SECTIONS = [
-    { label: "Options", items: [{ id: "general", label: "General" }, { id: "canvas", label: "Canvas" }, { id: "shapes", label: "Shapes" }] },
+    { label: "Options", items: [{ id: "canvas", label: "Canvas" }, { id: "shapes", label: "Shapes" }] },
     { label: "Views", items: [{ id: "floorplan", label: "Floor plan" }, { id: "hydronic", label: "Hydronic station" }, { id: "wiring", label: "Wiring diagram" }] }
   ];
 
@@ -976,7 +977,8 @@
       ? { toggle: true, label: "Autosave to file", checked: autosaveFile, onchange: setAutosaveFile, hint: autosaveFile ? "Every change is written to the file" : "Write every change to the file" }
       : { note: "This browser can't pick a folder, so projects go to Downloads. Use Chrome or Edge to choose where to save." },
     { separator: true },
-    { label: "Settings…", hint: "Canvas, grid, colours and export paths", onclick: () => showDisplaySettings = true }
+    { label: "Settings…", hint: "Canvas, grid, colours and export paths of this file", onclick: () => showDisplaySettings = true },
+    { label: "Preferences…", hint: "Title block, defaults for new files and interface, for every app", onclick: () => preferencesOpen = true }
   ]);
 
   let importItems = $derived([
@@ -2614,14 +2616,7 @@
       </nav>
 
       <div class="settings-content">
-        {#if settingsSection === "general"}
-          <h3>General</h3>
-          <p class="settings-note">Saved in this browser, for every project.</p>
-          <div class="settings-card">
-            {@render toggleRow("Tool hints", "Explain each tool and its shortcuts in the toolbar tooltips.", showToolHints, (value) => showToolHints = value)}
-            {@render toggleRow("View bar on hover", "Keep the view bar hidden at the left edge until you hover it. Turn off to always show the icon rail.", viewsOnHover, (value) => viewsOnHover = value)}
-          </div>
-        {:else if settingsSection === "canvas"}
+        {#if settingsSection === "canvas"}
           <h3>Canvas</h3>
           <p class="settings-note">Saved with the project.</p>
           <div class="settings-card">
@@ -2831,6 +2826,10 @@
       <button type="submit" class="modal-button primary" form="atvise-prefix-form">Copy to atvise</button>
     {/snippet}
   </Modal>
+{/if}
+
+{#if preferencesOpen}
+  <PreferencesDialog onclose={() => preferencesOpen = false}/>
 {/if}
 
 {#if saveDialog}
