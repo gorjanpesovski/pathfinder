@@ -1,7 +1,8 @@
+import { scaleItems } from "./target.js";
 import { svgElement, escapeXml } from "../export/atvise.js";
 import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE } from "./elements.js";
 import { arrowPoints } from "./route.js";
-import { buildScene, showsIn } from "./scene.js";
+import { buildScene, positionalIds, showsIn } from "./scene.js";
 
 const IN_OUT_VALUE = "SYSTEM.LIBRARY.ATVISE.OBJECTDISPLAYS.Advanced.in_out_value";
 const IN_OUT_NATIVE = { width: 100, height: 40 };
@@ -70,7 +71,7 @@ function reference(item, style){
   if (spec.primitive) return meterSensor(item);
   const native = spec.native ?? style.native?.[item.type] ?? { width: spec.width, height: spec.height };
   const sx = item.width / native.width * (item.mirror?.x ? -1 : 1);
-  const sy = (spec.inline ? item.width / native.width : item.height / native.height) * (item.mirror?.y ? -1 : 1);
+  const sy = (native.frameHeight ? item.height / native.frameHeight : spec.inline && !spec.stretch ? item.width / native.width : item.height / native.height) * (item.mirror?.y ? -1 : 1);
   const lift = native.axisY === undefined ? 0 : (native.axisY - native.height / 2) * sy;
   const turn = item.rotation * Math.PI / 180;
   return svgElement("svg", {
@@ -216,8 +217,8 @@ const RENDER = {
   }, escapeXml(item.text))
 };
 
-export function hydronicToSvg(shapes, style = HYDRONIC_STYLE){
-  return buildScene(shapes, style)
+export function hydronicToSvg(shapes, style = HYDRONIC_STYLE, fit = null){
+  return scaleItems(positionalIds(buildScene(shapes, style), shapes), fit)
     .filter((item) => showsIn(item, "atvise"))
     .map((item) => RENDER[item.kind](item, style))
     .join("\n");

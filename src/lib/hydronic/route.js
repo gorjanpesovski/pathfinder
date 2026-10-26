@@ -1,4 +1,4 @@
-import { PORT_STEP, HYDRONIC_ELEMENTS } from "./elements.js";
+import { PORT_STEP, HYDRONIC_ELEMENTS, mediumOf } from "./elements.js";
 import { electricPorts } from "../electric/symbols.js";
 
 const NORMALS = {
@@ -57,6 +57,20 @@ export function elementPorts(element){
   for (const offset of offsets(element.width, spacing)) ports.push({ side: "top", offset }, { side: "bottom", offset });
   for (const offset of offsets(element.height, spacing)) ports.push({ side: "left", offset }, { side: "right", offset });
   return ports.map((port) => ({ ...port, ...portPose(element, port) }));
+}
+
+export function dockPort(element, ends, radius){
+  let best = null;
+  for (const port of elementPorts(element)) {
+    for (const end of ends) {
+      const gap = Math.hypot(end.x - port.point.x, end.y - port.point.y);
+      if (gap > radius) continue;
+      const facing = end.near ? (end.near.x - end.x) * port.normal.x + (end.near.y - end.y) * port.normal.y : 1;
+      const score = gap + (facing > 0 ? 0 : radius * 2);
+      if (!best || score < best.score) best = { score, end, port: { id: element.id, side: port.side, offset: port.offset }, shift: { x: end.x - port.point.x, y: end.y - port.point.y } };
+    }
+  }
+  return best;
 }
 
 export function isFreeEnd(end){
@@ -308,7 +322,47 @@ export function pipeRoute(pipe, byId, hostRoute = null){
     const y = Math.max(loose.point.y, port.point.y + 40);
     return port === start ? [port.point, { x: port.point.x, y }] : [{ x: port.point.x, y }, port.point];
   }
-  return manhattanRoute(start, points, end);
+  return manhattanRoute(start, pipe.corners ? alignCorners(start, points, end, pipe.anchors) : points, end);
+}
+
+function alignEnd(pose, corners, atStart, anchor){
+  if (!pose?.normal || !anchor || !corners.length) return corners;
+  const list = corners.map((point) => ({ ...point }));
+  const index = atStart ? 0 : list.length - 1;
+  const corner = list[index];
+  const across = pose.normal.x !== 0 ? "y" : "x";
+  if (Math.abs(corner[across] - anchor[across]) > 0.01) return list;
+  corner[across] = pose.point[across];
+  const ahead = (corner.x - pose.point.x) * pose.normal.x + (corner.y - pose.point.y) * pose.normal.y;
+  if (ahead < STUB) list.splice(index, 1);
+  return list;
+}
+
+export function alignCorners(start, corners, end, anchors = null){
+  const first = alignEnd(start, corners, true, anchors?.from);
+  return simplify(alignEnd(end, first, false, anchors?.to));
+}
+
+export function routeAnchors(route){
+  const first = route[0];
+  const last = route[route.length - 1];
+  return { from: { x: round(first.x), y: round(first.y) }, to: { x: round(last.x), y: round(last.y) } };
+}
+
+export function freezeRoute(route){
+  return simplify(route.map((point) => ({ x: round(point.x), y: round(point.y) }))).slice(1, -1);
+}
+
+export function keepsCorners(pipe){
+  return pipe?.kind === "pipe" && pipe.branchOf === undefined && !mediumOf(pipe.medium).electric;
+}
+
+export function freezePipes(shapes, ids = null){
+  const todo = shapes.filter((shape) => keepsCorners(shape) && (ids ? ids.includes(shape.id) : !shape.corners));
+  if (!todo.length) return shapes;
+  const routes = computeRoutes(shapes);
+  const frozen = new Map(todo.filter((pipe) => routes.get(pipe.id)).map((pipe) => [pipe.id, { points: freezeRoute(routes.get(pipe.id)), anchors: routeAnchors(routes.get(pipe.id)), corners: true }]));
+  return shapes.map((shape) => frozen.has(shape.id) ? { ...shape, ...frozen.get(shape.id) } : shape);
 }
 
 export function computeRoutes(shapes){
@@ -450,6 +504,25 @@ export function storedPoints(path){
   return simplify(path.map((point) => ({ x: round(point.x), y: round(point.y) }))).slice(1, -1);
 }
 
+export function stretchEnd(route, atStart, point){
+  if (route.length < 3) return null;
+  const path = route.map((entry) => ({ x: entry.x, y: entry.y }));
+  const last = path.length - 1;
+  const index = atStart ? 0 : last;
+  const neighbour = atStart ? 1 : last - 1;
+  const old = path[index];
+  const before = { x: Math.sign(path[neighbour].x - old.x), y: Math.sign(path[neighbour].y - old.y) };
+  path[index] = { x: round(point.x), y: round(point.y) };
+  if (neighbour > 0 && neighbour < last) {
+    if (Math.abs(path[neighbour].y - old.y) < 0.01) path[neighbour].y = path[index].y;
+    else if (Math.abs(path[neighbour].x - old.x) < 0.01) path[neighbour].x = path[index].x;
+    const dx = path[neighbour].x - path[index].x;
+    const dy = path[neighbour].y - path[index].y;
+    if (dx * before.x + dy * before.y < STUB) path.splice(neighbour, 1);
+  }
+  return simplify(path).slice(1, -1);
+}
+
 export function dragVertex(path, index, point){
   const next = path.map((entry) => ({ ...entry }));
   const old = path[index];
@@ -480,6 +553,37 @@ export function scaledOffset(offset, oldSize, newSize, spacing = PORT_STEP){
 
 export function routePath(points){
   return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+}
+
+export function legAt(route, t){
+  const total = routeLength(route);
+  let start = 0;
+  for (let index = 1; index < route.length; index += 1) {
+    const length = Math.hypot(route[index].x - route[index - 1].x, route[index].y - route[index - 1].y);
+    if (start + length >= t * total - 0.01) return index;
+    start += length;
+  }
+  return route.length - 1;
+}
+
+export function keepSpot(route, point, horizontal, leg = null){
+  let best = null;
+  let start = 0;
+  for (let index = 1; index < route.length; index += 1) {
+    const a = route[index - 1];
+    const b = route[index];
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    const flat = Math.abs(a.y - b.y) < 0.5;
+    if (length > 0 && flat === horizontal && (flat || Math.abs(a.x - b.x) < 0.5)) {
+      const along = Math.min(length, Math.max(0, ((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / length));
+      const x = a.x + (b.x - a.x) * along / length;
+      const y = a.y + (b.y - a.y) * along / length;
+      const gap = Math.hypot(point.x - x, point.y - y) - (index === leg ? 1e6 : 0);
+      if (!best || gap < best.gap) best = { gap, distance: start + along };
+    }
+    start += length;
+  }
+  return best && start > 0 ? best.distance / start : null;
 }
 
 export function routeLength(points){
@@ -550,11 +654,11 @@ export function ridingPipes(shapes, ids){
     .map((shape) => shape.id);
 }
 
-export function linkPastedPipes(created, idMap, offset = 0){
+export function linkPastedPipes(created, idMap, offset = { x: 0, y: 0 }){
   const relink = (end) => {
     if (!end) return null;
     if (isFreeEnd(end)) return end;
-    if (end.pipe !== undefined) return idMap.has(end.pipe) ? { pipe: idMap.get(end.pipe), x: end.x + offset, y: end.y + offset } : null;
+    if (end.pipe !== undefined) return idMap.has(end.pipe) ? { pipe: idMap.get(end.pipe), x: end.x + offset.x, y: end.y + offset.y } : null;
     return idMap.has(end.id) ? { ...end, id: idMap.get(end.id) } : null;
   };
   const kept = created.filter((shape) => {

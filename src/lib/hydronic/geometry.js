@@ -59,8 +59,7 @@ export function pipeDecorations(pipes, style = HYDRONIC_STYLE, bars = []){
   }
   const junctions = [];
   for (const { pipe, route } of pipes) {
-    const k = pipeScale(pipe, style);
-    const extra = { radius: style.junctionRadius * k, stroke: style.junctionWidth * k };
+    const extra = { radius: style.junctionRadius, stroke: style.junctionWidth };
     if (pipe.from?.pipe !== undefined && pipe.from.fitting === undefined) junctions.push({ pipeId: pipe.id, host: pipe.from.pipe, x: route[0].x, y: route[0].y, ...extra });
     if (pipe.to?.pipe !== undefined && pipe.to.fitting === undefined) junctions.push({ pipeId: pipe.id, host: pipe.to.pipe, x: route[route.length - 1].x, y: route[route.length - 1].y, ...extra });
   }
@@ -75,7 +74,7 @@ export function pipeDecorations(pipes, style = HYDRONIC_STYLE, bars = []){
       ...crossings.filter((crossing) => crossing.upper === pipe.id || crossing.lower === pipe.id),
       ...junctions.filter((junction) => junction.host === pipe.id || junction.pipeId === pipe.id)
     ];
-    const ends = endArrows(pipe, route, size, bars);
+    const ends = pipe.branchOf !== undefined ? [] : endArrows(pipe, route, size, bars);
     const middle = arrowMarks(route, [...avoid, ...ends.map((end) => ({ x: end.x, y: end.y, radius: size * 4 }))], size * 1.8, Math.max(40, 100 * pipeScale(pipe, style)));
     arrows.set(pipe.id, [...ends, ...middle].map((mark) => ({ ...mark, size })));
   }

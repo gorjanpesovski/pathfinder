@@ -176,7 +176,7 @@ export function createBranch(element, nextId){
 }
 
 function autoFitting(nextId, type, t, extra = {}){
-  return { id: nextId(), type, t, auto: true, nameHidden: true, ...extra };
+  return { id: nextId(), type, t, auto: true, ...extra };
 }
 
 function crossPipe(element, legs, role, distance, medium, width, nextId, existing){
@@ -276,9 +276,7 @@ export function branchHeaderParts(element){
   const muted = "#8D8D8E";
   const lines = [
     { text: element.name ?? "", bold: true, color: "#414142" },
-    { text: params.temperature_range, color: muted },
-    { text: params.power, color: muted },
-    { text: params.flow, color: muted }
+    ...[params.temperature_range, params.power, params.flow].filter((text) => String(text ?? "").trim()).map((text) => ({ text, color: muted }))
   ];
   const k = branchScale(element);
   const last = cy - Math.max(outer + stroke / 2 + 10 * k, TEXT.lift * k);
@@ -317,7 +315,7 @@ export function meterWires(shapes, routes){
     if (same) {
       const target = fittingPose(routes.get(valveLeg.id), same);
       const radius = 11 * (same.scale ?? 1);
-      const inner = head.x + inward * (head.half + 4 * k);
+      const inner = head.x + inward * (head.half + 4 * k + 4 * sizeOf(branch));
       const start = head.y + up * 16 * k;
       wires.push([
         { x: head.x + inward * head.half, y: start },
@@ -355,19 +353,6 @@ export function snapBranch(ends, shapes, radius, skip = new Set()){
 export function alignBranch(element, snap){
   const x = element.x + BRANCH_HEADER.supply * branchScale(element);
   return { ...element, x: Math.round((element.x + snap(x) - x) * 1000) / 1000 };
-}
-
-export function branchRiders(shapes, ids){
-  const bars = shapes.filter((shape) => ids.includes(shape.id) && isBar(shape));
-  if (!bars.length) return [];
-  const riders = shapes
-    .filter((shape) => isBranch(shape) && !ids.includes(shape.id))
-    .filter((shape) => {
-      const ends = branchLegEnds(shapes, shape);
-      return bars.some((bar) => (ends.supply && onBar(ends.supply, bar, 1)) || (ends.return && onBar(ends.return, bar, 1)));
-    })
-    .map((shape) => shape.id);
-  return [...riders, ...branchPipeIds(shapes, riders)];
 }
 
 export function refreshBranches(shapes, nextId){

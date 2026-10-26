@@ -23,6 +23,7 @@
     onmedium,
     onpipewidth,
     onreverse,
+    ontidy = null,
     onpipelayer,
     onfittingreadout,
     onmeterreadout,
@@ -568,6 +569,9 @@
       <button type="button" onclick={() => onpipelayer(false)}>Below</button>
       <button type="button" onclick={() => onpipelayer(true)}>Above</button>
     </div>
+    {#if ontidy}
+      <button type="button" class="chip" title="Route the selected pipes again around the equipment, with as few bends as possible" onclick={ontidy}>Tidy route</button>
+    {/if}
   {/if}
   {#if readout}
     <button type="button" class="chip" class:on={readout.value === "on"} class:mixed={readout.value === "mixed"}

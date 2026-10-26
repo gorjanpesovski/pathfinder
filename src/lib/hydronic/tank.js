@@ -3,8 +3,8 @@ import { uprightSize, toCanvasPoint } from "./frame.js";
 
 export const TANK_PROBES = [
   { id: "top", label: "Top", y: 75 },
-  { id: "middle", label: "Middle", y: 165 },
-  { id: "bottom", label: "Bottom", y: 255 }
+  { id: "middle", label: "Middle", y: 151.5 },
+  { id: "bottom", label: "Bottom", y: 228 }
 ];
 
 const PROBE_X = 40;

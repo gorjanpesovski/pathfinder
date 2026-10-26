@@ -16,7 +16,7 @@
   import TextLayer from "$lib/components/TextLayer.svelte";
   import TextEditor from "$lib/components/TextEditor.svelte";
   import RichTextEditor from "$lib/components/RichTextEditor.svelte";
-  import { newText, refitText, describeText, textToSvg, clearRunStyle } from "$lib/tools/text.js";
+  import { newText, refitText, describeText, textToAtvise, clearRunStyle } from "$lib/tools/text.js";
   import PenPreview from "$lib/components/PenPreview.svelte";
   import { samePoint, rectPoints, constrainOrtho, nearestVertex, wouldCross, closingCrosses, removeCollinear, polygonSelfIntersects, polygonBounds, maxCornerRadius, distance, pointInPolygon } from "$lib/tools/polygon.js";
   import { isRoomTool, isPolygonTool, isRoomShape, roomKindLabel, nextRoomName, describeRoom, snapVertices, snapToEdges, labelPoint, roomLabelPoint, layered, roomsToSvg, VERTEX_SNAP_PX, ROOM_STYLE, thermostatFit, thermostatGlobalScale } from "$lib/tools/rooms.js";
@@ -43,13 +43,13 @@
   import HydronicLayer from "$lib/components/HydronicLayer.svelte";
   import PageTabs from "$lib/components/PageTabs.svelte";
   import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, DEFAULT_PROTOCOL, DEFAULT_WIRE, familyOf, isElectricType, mediumOf, isHydronicType, isInlineType, isDeviceType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
-  import { branchDefaults, alignBranch, snapBranch, branchRiders, isBranch, branchParams, createBranch, rebuildBranch, ownedPipes, branchPipeIds, branchLegEnds, migrateBranches, isLeg, keepLegDistances, legSpan } from "$lib/hydronic/branch.js";
+  import { branchDefaults, alignBranch, snapBranch, isBranch, branchParams, createBranch, rebuildBranch, ownedPipes, branchPipeIds, branchLegEnds, migrateBranches, isLeg, keepLegDistances, legSpan } from "$lib/hydronic/branch.js";
   import { connectNetwork, placeDevices, belowAnchor, batchHeight, batchWidth } from "$lib/hydronic/network.js";
   import DeviceBatch from "$lib/components/DeviceBatch.svelte";
   import RegisterEditor from "$lib/components/RegisterEditor.svelte";
   import { readoutLayout, readoutSpec, readoutRows, readoutExtent, readoutScaleOf, meterOptions, meterReadouts } from "$lib/hydronic/readout.js";
   import { placeSensors } from "$lib/hydronic/meter.js";
-  import { findPort, endpointPose, manhattanRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, findPipePoint, cornerLegs, routePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
+  import { findPort, dockPort, endpointPose, manhattanRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, keepSpot, legAt, freezePipes, keepsCorners, freezeRoute, routeAnchors, findPipePoint, cornerLegs, routePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
   import { hydronicToSvg } from "$lib/hydronic/export.js";
   import { orientAngle, fittingPose } from "$lib/hydronic/geometry.js";
   import { isFreeEnd, portStep } from "$lib/hydronic/route.js";
@@ -58,7 +58,10 @@
   import { rotationOf, isTurned, footprint, turnPort } from "$lib/hydronic/frame.js";
   import { fittingBox, fittingTargets } from "$lib/hydronic/fittingAlign.js";
   import { HYDRONIC_SPRITE, ICON_SIZES, ICON_SOURCES } from "$lib/hydronic/iconSprite.js";
-  import { hydronicToPgd } from "$lib/hydronic/pgd.js";
+  import { hydronicToPgd, PGD_TAGS } from "$lib/hydronic/pgd.js";
+  import { copyPageShapes, pageCopyName } from "$lib/pageCopy.js";
+  import { tidyPipe } from "$lib/hydronic/autoroute.js";
+  import { targetsOf, fitTarget, scaleText } from "$lib/hydronic/target.js";
   import HeaderMenu from "$lib/components/HeaderMenu.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import VariableList from "$lib/components/VariableList.svelte";
@@ -85,7 +88,7 @@
   import { summarizeSelection } from "$lib/tools/selectionSummary.js";
   import { junctionMedium } from "$lib/hydronic/inherit.js";
   import { alignToAnchor } from "$lib/hydronic/alignEnd.js";
-  import { fittingLabel, nextFittingName, nameFittings, anchorNames } from "$lib/hydronic/fittingLabel.js";
+  import { fittingLabel, namePlaces, nextFittingName, nameFittings, anchorNames } from "$lib/hydronic/fittingLabel.js";
   import { copyFittings, pasteTargets } from "$lib/hydronic/fittingPaste.js";
   import { elementLabel, elementBox, hasNameLabel, labelCentre, nameAnchorAt, textWidth } from "$lib/hydronic/label.js";
   import { hasTankProbes } from "$lib/hydronic/tank.js";
@@ -106,7 +109,7 @@
   const ELBOW_ORDER = ELBOWS.map((option) => option.id);
 
   let canvasWidth = $state(1920);
-  let canvasHeight = $state(1125);
+  let canvasHeight = $state(1080);
 
   let gridSize = $state(20);
   let majorEvery = $state(5);
@@ -730,8 +733,7 @@
   });
 
   function transformGroup(){
-    const riders = [...selectionIds, ...branchRiders(shapes, selectionIds)];
-    const carried = [...new Set([...riders, ...branchPipeIds(shapes, riders)])];
+    const carried = [...new Set([...selectionIds, ...branchPipeIds(shapes, selectionIds)])];
     const ids = [...new Set([...carried, ...ridingPipes(shapes, carried)])];
     const entries = ids.map(shapeById).filter(Boolean).map((shape) => ({ shape, original: $state.snapshot(shape) }));
     const elements = new Map(entries.filter((entry) => entry.shape.kind === "equipment").map((entry) => [entry.shape.id, entry.original]));
@@ -804,6 +806,8 @@
     const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
     const rigid = !!group?.entries.some((entry) => entry.shape.kind === "equipment" || entry.shape.kind === "pipe");
     const textOnly = !!group?.entries.length && group.entries.every((entry) => entry.shape.kind === "text");
+    const groupIds = new Set((group?.entries ?? []).map((entry) => entry.shape.id));
+    const keepFittings = holdFittings(groupIds);
     history.beginGesture();
     dragPointer(svgEl, event, {
       onmove: (next) => {
@@ -813,6 +817,7 @@
           const raw = (Math.atan2(point.y - center.y, point.x - center.x) - Math.atan2(start.y - center.y, start.x - center.x)) * 180 / Math.PI;
           const step = rigid ? 90 : next.shiftKey ? 15 : 1;
           apply(rotating(center, Math.round(raw / step) * step));
+          keepFittings();
           return;
         }
         const anchor = {
@@ -827,8 +832,12 @@
         t.textScale = textOnly ? next.shiftKey : true;
         apply(t);
         if (branchSelected && group) scaleBranchFittings(group, corner ? sx : 1);
+        keepFittings();
       },
-      onend: () => history.endGesture()
+      onend: () => {
+        settleCorners([...groupIds].filter((id) => shapeById(id)?.kind === "pipe" && shapeById(id)?.corners));
+        history.endGesture();
+      }
     });
   }
 
@@ -1076,14 +1085,39 @@
 
     const start = toCanvas(event);
     if (!start) return true;
-    const riders = [...selectionIds, ...branchRiders(shapes, selectionIds)];
-    const carried = [...new Set([...riders, ...branchPipeIds(shapes, riders)])];
+    const carried = [...new Set([...selectionIds, ...branchPipeIds(shapes, selectionIds)])];
     const group = [...new Set([...carried, ...ridingPipes(shapes, carried)])].map(shapeById).map((entry) => ({ shape: entry, original: $state.snapshot(entry) }));
     const movingIds = new Set(group.map((entry) => entry.shape.id));
     const solids = group.filter((entry) => entry.shape.kind !== "pipe");
     const lonelyBranch = solids.length === 1 && isBranch(solids[0].shape) ? solids[0] : null;
     const lonelyEnds = lonelyBranch ? branchLegEnds(shapes, lonelyBranch.shape) : {};
     const resting = lonelyBranch ? shapes.filter((entry) => !group.some((member) => member.shape === entry)) : [];
+    const docker = app === "hydronic" && solids.length === 1 && solids[0].shape.kind === "equipment" && !isBranch(solids[0].shape)
+      && HYDRONIC_ELEMENTS[solids[0].shape.type] && !HYDRONIC_ELEMENTS[solids[0].shape.type].electric ? solids[0] : null;
+    const looseEnds = docker ? shapes.filter((entry) => entry.kind === "pipe" && !movingIds.has(entry.id) && !mediumOf(entry.medium).electric).flatMap((entry) => {
+      const route = pipeRoutes.get(entry.id);
+      return ["from", "to"].filter((end) => isFreeEnd(entry[end])).map((end) => ({
+        pipe: entry, end, x: entry[end].x, y: entry[end].y, original: { x: entry[end].x, y: entry[end].y },
+        near: route?.length > 1 ? (end === "from" ? route[1] : route[route.length - 2]) : null
+      }));
+    }) : [];
+    let docked = null;
+    const stretched = shapes.filter((entry) => entry.kind === "pipe" && !movingIds.has(entry.id) && !mediumOf(entry.medium).electric && entry.branchOf === undefined
+      && pipeRoutes.get(entry.id) && movingIds.has(entry.from?.id) !== movingIds.has(entry.to?.id)).map((entry) => {
+      const route = pipeRoutes.get(entry.id);
+      const atStart = movingIds.has(entry.from?.id);
+      const end = atStart ? route[0] : route[route.length - 1];
+      const next = atStart ? route[1] : route[route.length - 2];
+      const flat = Math.abs(end.y - next.y) < 0.01;
+      const onFirst = (point) => flat
+        ? Math.abs(point.y - end.y) < 0.5 && point.x >= Math.min(end.x, next.x) - 0.5 && point.x <= Math.max(end.x, next.x) + 0.5
+        : Math.abs(point.x - end.x) < 0.5 && point.y >= Math.min(end.y, next.y) - 0.5 && point.y <= Math.max(end.y, next.y) + 0.5;
+      const joints = route.length >= 3 ? shapes.filter((other) => other.kind === "pipe" && other !== entry && !movingIds.has(other.id)).flatMap((other) =>
+        ["from", "to"].filter((key) => other[key]?.pipe === entry.id && other[key].fitting === undefined && onFirst(other[key]))
+          .map((key) => ({ pipe: other, key, x: other[key].x, y: other[key].y, route: pipeRoutes.get(other.id), points: structuredClone($state.snapshot(other.points ?? [])) }))) : [];
+      return { pipe: entry, route, atStart, end, flat, joints, points: structuredClone($state.snapshot(entry.points ?? [])) };
+    });
+    const keepFittings = holdFittings(movingIds);
     const framed = group.filter((entry) => entry.shape.kind !== "pipe").map((entry) => shapeBox(entry.original));
     const box = framed.length ? unionBox(framed) : null;
     const step = snapToGrid ? gridSize : 1;
@@ -1117,9 +1151,25 @@
           for (const [role, end] of Object.entries(lonelyEnds)) ends[role] = { x: end.x + delta.dx, y: end.y + delta.dy };
           delta = { dx: delta.dx, dy: delta.dy + snapBranch(ends, resting, snapRadius) };
         }
+        if (looseEnds.length) {
+          const found = dockPort({ ...docker.original, ...translateShape(docker.original, delta.dx, delta.dy) }, looseEnds, snapRadius);
+          if (docked && docked.end !== found?.end) docked.end.pipe[docked.end.end] = { ...docked.end.original };
+          docked = found;
+          if (docked) {
+            delta = { dx: round2(delta.dx + docked.shift.x), dy: round2(delta.dy + docked.shift.y) };
+            docked.end.pipe[docked.end.end] = docked.port;
+          }
+        }
         if (delta.dx !== 0 || delta.dy !== 0) moved = true;
         for (const entry of group) Object.assign(entry.shape, translateShape(entry.original, delta.dx, delta.dy, movingIds));
         for (const slider of sliders) slider.pipe[slider.end] = { ...slider.pipe[slider.end], x: Math.min(slider.max, Math.max(slider.min, slider.x + delta.dx)) };
+        for (const entry of stretched) {
+          for (const joint of entry.joints) {
+            const point = { x: entry.flat ? joint.x : round2(joint.x + delta.dx), y: entry.flat ? round2(joint.y + delta.dy) : joint.y };
+            joint.pipe[joint.key] = { ...joint.pipe[joint.key], ...point };
+          }
+        }
+        keepFittings();
       },
       onend: () => {
         history.endGesture();
@@ -1550,6 +1600,7 @@
 
   const CLIPBOARD_PREFIX = "pathfinder-shapes:";
   let clipboardShapes = null;
+  let clipboardBox = null;
   let clipboardToken = "";
   let pasteCount = 0;
   let clipboardFurniture = null;
@@ -1727,8 +1778,10 @@
     clipboardFittings = null;
     const owned = branchPipeIds(shapes, selectionIds).filter((id) => !selectionIds.includes(id)).map(shapeById);
     clipboardShapes = $state.snapshot([...selectedShapes, ...owned]);
+    clipboardBox = transformBox ? { ...transformBox } : null;
     clipboardToken = `${Date.now()}`;
     pasteCount = 0;
+    pasteKey = null;
     event.clipboardData?.setData("text/plain", CLIPBOARD_PREFIX + clipboardToken);
     event.preventDefault();
   }
@@ -1752,15 +1805,24 @@
 
   function pasteShapes(){
     const present = clipboardShapes.some((source) => shapes.some((shape) => shape.id === source.id));
-    pasteCount += 1;
     const step = (snapToGrid ? gridSize : 20) * 2;
-    const offset = step * (present ? pasteCount : pasteCount - 1);
+    const grid = snapToGrid ? gridSize : 1;
+    const origin = pointer && clipboardBox ? { x: Math.round(pointer.x / grid) * grid, y: Math.round(pointer.y / grid) * grid } : null;
+    const key = origin ? `${origin.x}:${origin.y}` : "source";
+    if (key !== pasteKey) {
+      pasteKey = key;
+      pasteCount = 0;
+    }
+    pasteCount += 1;
+    const ring = step * (origin || !present ? pasteCount - 1 : pasteCount);
+    const base = origin ? { x: origin.x - Math.round((clipboardBox.x + clipboardBox.width / 2) / grid) * grid, y: origin.y - Math.round((clipboardBox.y + clipboardBox.height / 2) / grid) * grid } : { x: 0, y: 0 };
+    const offset = { x: base.x + ring, y: base.y + ring };
     const groups = new Map();
     const created = [];
     const idMap = new Map();
 
     for (const source of clipboardShapes) {
-      const copy = { ...structuredClone(source), ...translateShape(source, offset, offset), id: nextId++ };
+      const copy = { ...structuredClone(source), ...translateShape(source, offset.x, offset.y), id: nextId++ };
       idMap.set(source.id, copy.id);
       if (copy.fittings) copy.fittings = copy.fittings.map((item) => ({ ...item, id: nextId++ }));
       delete copy.locked;
@@ -2253,6 +2315,9 @@
   });
   let hydronicLibrary = $state(HYDRONIC_STYLE.library);
   let nodePrefix = $state("");
+  let pgdPrefix = $state(PGD_TAGS.prefix);
+  let exportTargets = $state(targetsOf(null));
+  let pgdFloat = $state(PGD_TAGS.float);
   let freshPipes = $state([]);
   let selectedFitting = $state(null);
   let extraFittings = $state([]);
@@ -2305,6 +2370,47 @@
     setTimeout(() => freshPipes = freshPipes.filter((entry) => entry !== id), 1200);
   }
 
+  function holdFittings(skip = new Set()){
+    const held = shapes.filter((entry) => entry.kind === "pipe" && !skip.has(entry.id) && entry.fittings?.length && pipeRoutes.get(entry.id)).map((entry) => {
+      const route = pipeRoutes.get(entry.id);
+      return { pipe: entry, spots: new Map(entry.fittings.map((fitting) => {
+        const spot = routePoint(route, fitting.t);
+        return [fitting.id, { x: spot.x, y: spot.y, horizontal: spot.angle === 0 || Math.abs(spot.angle) === 180, leg: legAt(route, fitting.t), legs: route.length }];
+      })) };
+    });
+    return () => {
+      if (!held.length) return;
+      const routes = computeRoutes(shapes);
+      for (const entry of held) {
+        const route = routes.get(entry.pipe.id);
+        if (!route) continue;
+        for (const fitting of entry.pipe.fittings ?? []) {
+          const spot = entry.spots.get(fitting.id);
+          const t = spot ? keepSpot(route, spot, spot.horizontal, route.length === spot.legs ? spot.leg : null) : null;
+          if (t !== null) fitting.t = round4(Math.min(0.98, Math.max(0.02, t)));
+        }
+      }
+    };
+  }
+
+  function settleCorners(ids){
+    const routes = computeRoutes(shapes);
+    for (const id of ids) {
+      const pipe = shapeById(id);
+      const route = keepsCorners(pipe) ? routes.get(id) : null;
+      if (!route) continue;
+      pipe.points = freezeRoute(route);
+      pipe.anchors = routeAnchors(route);
+      pipe.corners = true;
+    }
+  }
+
+  function markCorners(pipe, path){
+    if (!keepsCorners(pipe) || path.length < 2) return;
+    pipe.anchors = routeAnchors(path);
+    pipe.corners = true;
+  }
+
   function finishRewire(snapshot, end){
     const pipe = shapeById(snapshot.rewire.pipeId);
     pipeDraft = null;
@@ -2316,6 +2422,8 @@
       pipe.from = end;
       pipe.points = [...snapshot.points].reverse();
     }
+    pipe.corners = false;
+    settleCorners([pipe.id]);
     flashPipe(pipe.id);
   }
 
@@ -2354,6 +2462,7 @@
       fittings: []
     });
     pipeDraft = null;
+    settleCorners([id]);
     flashPipe(id);
   }
 
@@ -2525,6 +2634,7 @@
   } : null);
 
   let readoutBoxes = $derived(app === "hydronic" ? readoutLayout(shapes, pipeRoutes, { width: canvasWidth, height: canvasHeight }) : new Map());
+  let fittingNames = $derived(app === "hydronic" ? namePlaces(shapes, pipeRoutes, readoutBoxes) : new Map());
 
   function setFittingReadout(value){
     if (!activeFitting) return;
@@ -2791,7 +2901,7 @@
     const target = fittingId === null ? owner : owner.fittings?.find((entry) => entry.id === fittingId);
     if (!target) return;
     const frame = () => fittingId === null ? elementBox(owner) : fittingBox(pipeRoutes.get(owner.id), target);
-    const label = fittingId === null ? elementLabel(owner) : fittingLabel(pipeRoutes.get(owner.id), target);
+    const label = fittingId === null ? elementLabel(owner) : fittingLabel(pipeRoutes.get(owner.id), target, fittingNames.get(target.id));
     const width = event.target instanceof SVGGraphicsElement ? event.target.getBBox().width : textWidth(target.name, label.size);
     if (fittingId === null) {
       if (!selectionIds.includes(owner.id)) selectShape(owner.id);
@@ -2860,8 +2970,24 @@
       pipe.from = $state.snapshot(pipe.to);
       pipe.to = from;
       pipe.points = $state.snapshot(pipe.points ?? []).reverse();
+      if (pipe.anchors) pipe.anchors = { from: $state.snapshot(pipe.anchors.to), to: $state.snapshot(pipe.anchors.from) };
       pipe.fittings = (pipe.fittings ?? []).map((fitting) => ({ ...$state.snapshot(fitting), t: round4(1 - fitting.t) }));
     }
+  }
+
+  function tidyPipes(){
+    const ids = selectedShapes.filter((shape) => keepsCorners(shape)).map((shape) => shape.id);
+    if (!ids.length) return;
+    const keepFittings = holdFittings();
+    let done = 0;
+    for (const id of ids) {
+      const result = tidyPipe($state.snapshot(shapes), id);
+      if (!result) continue;
+      Object.assign(shapeById(id), result);
+      done += 1;
+    }
+    keepFittings();
+    showFileNotice(done === ids.length ? `Tidied ${done} pipe${done === 1 ? "" : "s"}` : `Tidied ${done} of ${ids.length} pipes · the others have no free path around the equipment`);
   }
 
   function setFittingNameSize(value){
@@ -2899,6 +3025,7 @@
     const top = corner.includes("n");
     const anchor = { x: left ? original.x + original.width : original.x, y: top ? original.y + original.height : original.y };
     const entries = attachedEnds(element);
+    const keepFittings = holdFittings();
     const free = !!HYDRONIC_ELEMENTS[element.type]?.noPorts;
     const size = (value) => free ? Math.max(8, Math.round(value)) : Math.max(40, snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value));
 
@@ -2921,6 +3048,7 @@
           height
         });
         remapEnds(element, entries, original);
+        keepFittings();
       },
       onend: () => history.endGesture()
     });
@@ -3097,15 +3225,20 @@
     const route = pipeRoutes.get(pipe.id);
     if (!route) return;
     const path = editablePath(route);
+    const keepFittings = holdFittings();
     if (event.altKey) {
       pipe.points = storedPoints(path.filter((_, entry) => entry !== index));
+      markCorners(pipe, path);
       return;
     }
     history.beginGesture();
     dragPointer(svgEl, event, {
       onmove: (next) => {
         const raw = toCanvas(next);
-        if (raw) pipe.points = storedPoints(dragVertex(path, index, snapPoint(raw)));
+        if (!raw) return;
+        pipe.points = storedPoints(dragVertex(path, index, snapPoint(raw)));
+        markCorners(pipe, path);
+        keepFittings();
       },
       onend: () => history.endGesture()
     });
@@ -3116,6 +3249,7 @@
     const start = toCanvas(event);
     if (!route || !start) return;
     const path = editablePath(route);
+    const keepFittings = holdFittings();
     const step = snapToGrid ? gridSize : 1;
     history.beginGesture();
     dragPointer(svgEl, event, {
@@ -3124,6 +3258,8 @@
         if (!point) return;
         const delta = { x: Math.round((point.x - start.x) / step) * step, y: Math.round((point.y - start.y) / step) * step };
         pipe.points = storedPoints(dragEdge(path, index, delta));
+        markCorners(pipe, path);
+        keepFittings();
       },
       onend: () => history.endGesture()
     });
@@ -3608,7 +3744,7 @@
   });
   let fittingRenamePosition = $derived.by(() => {
     if (!renamingFittingEntry) return null;
-    const label = fittingLabel(renamingFittingEntry.route, renamingFittingEntry.fitting);
+    const label = fittingLabel(renamingFittingEntry.route, renamingFittingEntry.fitting, fittingNames.get(renamingFittingEntry.fitting.id));
     return viewport.toScreen({ x: label.center, y: label.middle });
   });
 
@@ -3936,6 +4072,30 @@
     loadStashed(stashKey(app));
   }
 
+  function movePage(pageId, index){
+    const list = pageSets[app]?.list;
+    if (!list) return;
+    const from = list.findIndex((page) => page.id === pageId);
+    if (from < 0 || index < 0 || index >= list.length || index === from) return;
+    const [page] = list.splice(from, 1);
+    list.splice(index, 0, page);
+  }
+
+  function duplicatePage(pageId){
+    const set = pageSets[app];
+    if (!set) return;
+    const index = set.list.findIndex((page) => page.id === pageId);
+    const source = set.list[index];
+    if (!source) return;
+    const copied = copyPageShapes(storedShapes(app, pageId), () => nextId++);
+    const id = newPageId();
+    stashCurrent();
+    set.list.splice(index + 1, 0, { id, name: pageCopyName(source.name, set.list) });
+    set.active = id;
+    documents[`${app}:${id}`] = { shapes: copied, history: null };
+    loadStashed(stashKey(app));
+  }
+
   function renamePage(pageId, name){
     const page = pageSets[app]?.list.find((entry) => entry.id === pageId);
     if (page) page.name = name;
@@ -3965,7 +4125,7 @@
         roomFill, roomStroke, labelColor: roomLabelColor, floorFill, floorStroke, categoryColors: $state.snapshot(categoryColors),
         furnitureOpacity, floorWallWidth, roomWallWidth, wallStroke, wallWidth
       },
-      hydronic: { library: hydronicLibrary, nodePrefix },
+      hydronic: { library: hydronicLibrary, nodePrefix, pgdPrefix, pgdFloat, targets: $state.snapshot(exportTargets) },
       wiring: { paper: wiringPaper }
     };
   }
@@ -4001,6 +4161,9 @@
     wallWidth = number(rooms.wallWidth, WALL_STYLE.width);
     hydronicLibrary = text(settings?.hydronic?.library, HYDRONIC_STYLE.library);
     nodePrefix = typeof settings?.hydronic?.nodePrefix === "string" ? settings.hydronic.nodePrefix : "";
+    pgdPrefix = typeof settings?.hydronic?.pgdPrefix === "string" ? settings.hydronic.pgdPrefix : PGD_TAGS.prefix;
+    exportTargets = targetsOf(settings?.hydronic?.targets);
+    pgdFloat = text(settings?.hydronic?.pgdFloat, PGD_TAGS.float);
     wiringPaper = PAPERS[settings?.wiring?.paper] ? settings.wiring.paper : DEFAULT_PAPER;
   }
 
@@ -4236,7 +4399,7 @@
   }
 
   function prepareShapes(list){
-    return anchorNames(nameFittings(migrateBranches(Array.isArray(list) ? list : [], () => nextId++)));
+    return freezePipes(anchorNames(nameFittings(migrateBranches(Array.isArray(list) ? list : [], () => nextId++))));
   }
 
   async function readProjectFile(){
@@ -4307,7 +4470,7 @@
     const filled = Object.values(apps).some((list) => list.length) || Object.values(pages).some((set) => set.list.some((page) => page.shapes.length)) || ioPoints.length > 0;
     const pending = unsaved && filled && !(autosaveFile && fileHandle && fileAccessState === "granted");
     if (pending && !window.confirm(`Start a new project? Unsaved changes in "${projectTitle}" will be lost.`)) return;
-    applyDocument({ app, apps: {}, pages: null, settings: null, images: {}, io: { points: [], others: [] }, name: null, canvas: { width: 1920, height: 1125, fill: "#FFFFFF" } });
+    applyDocument({ app, apps: {}, pages: null, settings: null, images: {}, io: { points: [], others: [] }, name: null, canvas: { width: 1920, height: 1080, fill: "#FFFFFF" } });
     linkFile(null);
     savedHash = "";
     showFileNotice("New project");
@@ -4597,7 +4760,7 @@
   ]);
 
   let exportItems = $derived([
-    app !== "electrical" ? { label: "Copy SVG", hint: "atvise SVG of this page, to the clipboard", disabled: shapes.length === 0, onclick: handleExport } : null,
+    app !== "electrical" ? { label: app === "floorplan" ? "Copy SVG" : "Copy SVG…", hint: "atvise SVG of this page, to the clipboard", disabled: shapes.length === 0, onclick: startExport } : null,
     currentApp.exports.includes("pgd") ? { label: "Copy pGD page", hint: "pGD page code (wgtPage), to the clipboard", disabled: shapes.length === 0, onclick: copyPgd } : null,
     currentApp.exports.includes("pgd") ? { label: "Download pGD images", hint: "Images this page uses, for the project's images folder", disabled: shapes.length === 0, onclick: downloadPgdImages } : null,
     app === "network" ? { label: "atvise connect configuration…", hint: "Modbus connections for all topology pages", disabled: pageShapes("network").length === 0, onclick: () => connectOpen = true } : null,
@@ -4613,7 +4776,8 @@
   }
 
   function buildPgd(){
-    return hydronicToPgd(shapes, { ...hydronicStyle, iconSources: ICON_SOURCES }, { width: canvasWidth, height: canvasHeight, name: "Page1" });
+    const target = exportTargets.pgd;
+    return hydronicToPgd(shapes, { ...hydronicStyle, iconSources: ICON_SOURCES }, { width: target.width, height: target.height, design: { width: canvasWidth, height: canvasHeight }, minFont: target.minFont, name: "Page1", tags: { prefix: pgdPrefix, float: pgdFloat } });
   }
 
   async function copyPgd(){
@@ -4640,11 +4804,15 @@
   }
 
   function buildSvg(){
-    const texts = shapes.filter((shape) => shape.kind === "text").map(textToSvg);
-    if (app === "hydronic" || app === "network") return atviseDocument(canvasWidth, canvasHeight, [hydronicToSvg(shapes, hydronicStyle), ...texts].filter(Boolean).join("\n"));
+    if (app === "hydronic" || app === "network") {
+      const target = exportTargets.atvise;
+      const fit = fitTarget({ width: canvasWidth, height: canvasHeight }, target);
+      const scaledTexts = shapes.filter((shape) => shape.kind === "text").map((shape) => textToAtvise(scaleText(shape, fit)));
+      return atviseDocument(target.width, target.height, [hydronicToSvg(shapes, hydronicStyle, fit), ...scaledTexts].filter(Boolean).join("\n"));
+    }
     const body = [roomsToSvg(shapes, roomStyle, canvasFill), ...layered(shapes).filter((shape) => !isRoomShape(shape) && shape.kind !== "image" && shape.kind !== "wall").map((shape) => {
       if (shape.kind === "curve") return curveToSvg(shape, lineColor);
-      if (shape.kind === "text") return textToSvg(shape);
+      if (shape.kind === "text") return textToAtvise(shape);
       if (shape.kind === "line") {
         return `<path d="${pathFor(shape.points)}" fill="none" id="trace_${shape.id}" stroke="${lineColor}" stroke-linecap="square" stroke-linejoin="miter" stroke-width="${lineWidth}"/>`;
       }
@@ -4653,6 +4821,19 @@
 
     return atviseDocument(canvasWidth, canvasHeight, body);
 
+  }
+
+  let atviseDialog = $state(false);
+
+  function startExport(){
+    if (app === "hydronic" || app === "network") atviseDialog = true;
+    else handleExport();
+  }
+
+  function confirmAtvise(prefix){
+    nodePrefix = String(prefix ?? "").trim();
+    atviseDialog = false;
+    handleExport();
   }
 
   async function handleExport(){
@@ -5083,6 +5264,11 @@
     background: transparent;
     font: inherit;
     color: #0f172a;
+  }
+
+  .save-hint {
+    font-size: 12px;
+    color: #64748b;
   }
 
   .save-name-row span {
@@ -5951,7 +6137,7 @@
                    fitting={fittingOptions} medium={pipeMedium} onmedium={setMedium}
                    pipewidth={pipeThickness} onpipewidth={setPipeWidth} onedittext={editSelectedText} ontextstyle={setTextStyle}
                    onfittingflip={flipFitting} onfittingturn={turnFitting} onvariables={linkTarget ? () => linksOpen = true : null} ondelete={deleteSelected} registers={registerInfo} onregisters={() => registersOpen = true}
-                   onfittingscale={setFittingScale} onreverse={reversePipes} onpipelayer={pipeLayer}
+                   onfittingscale={setFittingScale} onreverse={reversePipes} ontidy={tidyPipes} onpipelayer={pipeLayer}
                    onresetsize={resetElementSize}
                    onfittingreadout={setFittingReadout} onmeterreadout={setMeterReadout} onreadoutreset={resetReadoutPosition} onbranchparam={setBranchParam} onbranchname={setBranchName} ondeviceparam={setDeviceParam} listedit={listEdit ? { ...listEdit, onchange: editFromDrawing, onreset: resetFromDrawing } : null}
                    network={networkSelection} onconnect={connectSelected} onadddevices={addDevices}
@@ -6019,7 +6205,7 @@
                        selectedFitting={activeFitting ? { pipeId: activeFitting.pipe.id, fittingId: activeFitting.fitting.id } : null}
                        selectedFittings={fittingGroup.map((entry) => ({ pipeId: entry.pipe.id, fittingId: entry.fitting.id }))}
                        {placement} style={hydronicStyle} hidden={pipeDraft?.rewire?.pipeId ?? null}
-                       showPorts={!!pipeDraft?.rewire} readouts={readoutBoxes} renaming={renamingElementId} renamingFitting={renamingFitting} guide={pipeAim.guide} {branchEditing}
+                       showPorts={!!pipeDraft?.rewire} readouts={readoutBoxes} names={fittingNames} renaming={renamingElementId} renamingFitting={renamingFitting} guide={pipeAim.guide} {branchEditing}
                        linking={draggingVariable ? { hover: linkHover } : null} focus={canvasFocus}/>
 
         <TextLayer {shapes} selectedIds={selectionIds} interactive={tool === "select"} zoom={viewport.zoom} hidden={editingTextId}/>
@@ -6198,7 +6384,7 @@
 
     {#if pageSet && !ioVisible}
       <PageTabs pages={pageSet.list} active={pageSet.active} onselect={selectPage} onadd={addPage} onrename={renamePage} ondelete={deletePage}
-                version={__APP_VERSION__} build={__APP_COMMIT__}
+                onmove={movePage} onduplicate={duplicatePage} version={__APP_VERSION__} build={__APP_COMMIT__}
                 marked={markedPages} position={cursor ? `${draft ? `${draft.start.x}, ${draft.start.y} → ` : ""}${cursor.x}, ${cursor.y}` : ""}/>
     {/if}
   </div>
@@ -6362,6 +6548,13 @@
           <div class="settings-card">
             {@render textRow("atvise object folder", "Library path of the object displays that elements reference in the atvise export.", hydronicLibrary, (value) => hydronicLibrary = value || HYDRONIC_STYLE.library)}
             {@render textRow("Variable node path", "Written in front of each linked variable name, into the base parameter of the exported element.", nodePrefix, (value) => nodePrefix = value, "AGENT.OBJECTS.Toplotne_Postaje.Celica_1")}
+            {@render numberRow("atvise screen width", "The drawing is scaled to fit this screen in the atvise export, and centred if the shape differs.", exportTargets.atvise.width, (value) => exportTargets.atvise.width = value, 100, 7680, 10, "px")}
+            {@render numberRow("atvise screen height", "", exportTargets.atvise.height, (value) => exportTargets.atvise.height = value, 100, 4320, 10, "px")}
+            {@render numberRow("pGD screen width", "The drawing is scaled to fit this screen in the pGD export, e.g. 800 × 480 for the pGDx or 272 × 480.", exportTargets.pgd.width, (value) => exportTargets.pgd.width = value, 100, 1920, 1, "px")}
+            {@render numberRow("pGD screen height", "", exportTargets.pgd.height, (value) => exportTargets.pgd.height = value, 100, 1920, 1, "px")}
+            {@render numberRow("pGD smallest text", "Text is never exported smaller than this, so names stay readable on the small screen.", exportTargets.pgd.minFont, (value) => exportTargets.pgd.minFont = value, 0, 24, 1, "px")}
+            {@render textRow("pGD tag prefix", "Written in front of each variable name in the pGD export, as the tags are named in the c.pGD tag manager.", pgdPrefix, (value) => pgdPrefix = value.trim(), PGD_TAGS.prefix)}
+            {@render textRow("pGD analog tag type", "Data type of the value fields in the pGD export, with the word order of the controller.", pgdFloat, (value) => pgdFloat = value.trim() || PGD_TAGS.float, PGD_TAGS.float)}
           </div>
         {:else if settingsSection === "wiring"}
           <h3>Wiring diagram</h3>
@@ -6463,6 +6656,22 @@
 
 {#if wiringOpen}
   <WiringActions points={ioPoints} {shapes} ongenerate={generateWiring} onclose={() => wiringOpen = false}/>
+{/if}
+
+{#if atviseDialog}
+  <Modal title="Copy to atvise" subtitle="Where this page's readouts and indicators read from" width={460} onclose={() => atviseDialog = false}>
+    <form class="save-name" id="atvise-prefix-form" onsubmit={(e) => { e.preventDefault(); confirmAtvise(new FormData(e.currentTarget).get("prefix")); }}>
+      <label for="atvise-prefix-input">Node path prefix</label>
+      <div class="save-name-row">
+        <input id="atvise-prefix-input" name="prefix" type="text" value={nodePrefix} placeholder="AGENT.OBJECTS.Toplotne_Postaje.Celica_1" spellcheck="false" autocomplete="off" use:focusName>
+      </div>
+      <small class="save-hint">Written in front of every variable name, for example AGENT.OBJECTS.Toplotne_Postaje.Celica_1</small>
+    </form>
+    {#snippet footer()}
+      <button type="button" class="modal-button" onclick={() => atviseDialog = false}>Cancel</button>
+      <button type="submit" class="modal-button primary" form="atvise-prefix-form">Copy to atvise</button>
+    {/snippet}
+  </Modal>
 {/if}
 
 {#if saveDialog}

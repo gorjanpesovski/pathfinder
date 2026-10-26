@@ -7,7 +7,7 @@ import { readoutLayout, readoutRowBoxes, READOUT } from "./readout.js";
 import { rotationOf, uprightSize } from "./frame.js";
 import { tankParts } from "./tank.js";
 import { elementLabel, hasNameLabel, labelBox, textWidth } from "./label.js";
-import { fittingLabel } from "./fittingLabel.js";
+import { fittingLabel, namePlaces, showsName } from "./fittingLabel.js";
 import { nodePath } from "./variables.js";
 import { fittingPose, fittingSize, pipeDecorations, pipeWidthOf } from "./geometry.js";
 import { electricSvg } from "../electric/symbols.js";
@@ -271,10 +271,12 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
     }
   }
 
+  const readouts = options.readouts ?? readoutLayout(shapes, routes, style.bounds ?? null);
+  const places = options.names ?? namePlaces(shapes, routes, readouts);
   for (const { pipe, route } of pipes) {
     for (const fitting of pipe.fittings ?? []) {
-      if (!fitting.name || fitting.nameHidden || !HYDRONIC_ELEMENTS[fitting.type]) continue;
-      const label = fittingLabel(route, fitting);
+      if (!showsName(fitting)) continue;
+      const label = fittingLabel(route, fitting, places.get(fitting.id));
       const width = Math.max(label.anchor === "middle" ? 160 * label.size / 13 : 0, textWidth(fitting.name, label.size) + 8);
       items.push({
         kind: "label", id: `${fitting.type}_${fitting.id}_name`, text: fitting.name, x: label.x, y: label.y, size: label.size, anchor: label.anchor, color: INK,
@@ -302,7 +304,6 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
     items.push({ kind: "label", id: `pipe_${group[0].pipe.id}_protocol`, owner: group[0].pipe.id, ...label, color: "#414142" });
   }
 
-  const readouts = options.readouts ?? readoutLayout(shapes, routes, style.bounds ?? null);
   const fittingById = new Map(pipes.flatMap(({ pipe }) => (pipe.fittings ?? []).map((fitting) => [fitting.id, fitting])));
   for (const [fittingId, box] of readouts) {
     if (box.pipeId === options.hidden) continue;
@@ -318,13 +319,63 @@ export function buildScene(shapes, style = HYDRONIC_STYLE, options = {}){
     }
   }
 
-  return stacked(items, byId);
+  return stacked(uniformFields(items), byId);
+}
+
+const ROW = 10;
+
+function byPosition(a, b){
+  return Math.abs(a.y - b.y) > ROW ? a.y - b.y : a.x - b.x;
+}
+
+export function positionalIds(items, shapes){
+  const groups = new Map();
+  const add = (name, prefixes, x, y) => {
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push({ prefixes, x, y });
+  };
+  for (const shape of shapes) {
+    if (shape.kind !== "equipment" || !HYDRONIC_ELEMENTS[shape.type]) continue;
+    add(shape.type, [[`${shape.type}_${shape.id}`, ""], [`bar_${shape.id}`, ""]], shape.x + shape.width / 2, shape.y + shape.height / 2);
+  }
+  for (const item of items) {
+    if (item.kind === "icon" && item.fittingId !== undefined) add(item.type, [[`${item.type}_${item.fittingId}`, ""], [`readout_${item.fittingId}`, "readout_"]], item.cx, item.cy);
+    if (item.kind === "pipe" && !item.overlay && item.pipeId !== undefined) {
+      const top = item.points.reduce((best, point) => byPosition(point, best) < 0 ? point : best, item.points[0]);
+      add("pipe", [[`pipe_${item.pipeId}`, ""]], top.x, top.y);
+    }
+  }
+  const renames = new Map();
+  for (const [name, list] of groups) {
+    list.sort(byPosition).forEach((entry, index) => {
+      for (const [old, lead] of entry.prefixes) renames.set(old, `${lead}${name}_${index + 1}`);
+    });
+  }
+  const keys = [...renames.keys()].sort((a, b) => b.length - a.length);
+  return items.map((item) => {
+    const key = keys.find((prefix) => item.id === prefix || item.id.startsWith(`${prefix}_`));
+    return key ? { ...item, id: renames.get(key) + item.id.slice(key.length) } : item;
+  });
 }
 
 export function layerOf(shape, byId){
   if (Number.isFinite(shape?.z)) return shape.z;
   if (shape?.branchOf !== undefined) return byId.get(shape.branchOf)?.z ?? 0;
   return 0;
+}
+
+function uniformFields(items){
+  const fields = items.filter((item) => item.kind === "field" && item.width > 0 && item.height > 0);
+  if (fields.length < 2) return items;
+  const scale = Math.min(...fields.map((item) => Math.min(item.width / READOUT.boxWidth, item.height / READOUT.rowHeight)));
+  const width = Math.round(READOUT.boxWidth * scale * 100) / 100;
+  const height = Math.round(READOUT.rowHeight * scale * 100) / 100;
+  return items.map((item) => {
+    if (!fields.includes(item)) return item;
+    const x = Math.round((item.x + (item.width - width) / 2) * 100) / 100;
+    const y = Math.round((item.y + (item.height - height) / 2) * 100) / 100;
+    return { ...item, x, y, width, height };
+  });
 }
 
 function stacked(items, byId){

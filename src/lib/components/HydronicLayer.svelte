@@ -26,6 +26,7 @@
     hidden = null,
     showPorts = false,
     readouts = new Map(),
+    names = null,
     renaming = null,
     renamingFitting = null,
     guide = null,
@@ -45,7 +46,7 @@
   let equipment = $derived(shapes.filter((shape) => shape.kind === "equipment" && HYDRONIC_ELEMENTS[shape.type]));
   let pipes = $derived(shapes.filter((shape) => shape.kind === "pipe" && shape.id !== hidden && routes.get(shape.id)));
   let editing = $derived(interactive && selectedIds.length === 1 ? pipes.find((pipe) => pipe.id === selectedIds[0]) : null);
-  let scene = $derived(buildScene(shapes, style, { routes, readouts, hidden }));
+  let scene = $derived(buildScene(shapes, style, { routes, readouts, hidden, ...(names ? { names } : {}) }));
   let lengths = $derived(new Map(scene.filter((item) => item.kind === "pipe").map((item) => [item.pipeId, routeLength(item.points)])));
   let editPath = $derived(editing ? editablePath(routes.get(editing.id)) : []);
   let byId = $derived(new Map(shapes.map((shape) => [shape.id, shape])));

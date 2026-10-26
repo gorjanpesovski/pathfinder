@@ -207,3 +207,40 @@ export function textToSvg(shape){
   ].filter(Boolean).join(" ");
   return `<text atv:refpx="${round(shape.x + shape.width / 2)}" atv:refpy="${round(shape.y + shape.height / 2)}" ${attributes} xml:space="preserve" id="text_${shape.id}">${spans}</text>`;
 }
+
+function styleAttributes(style){
+  return [
+    `fill="${style.color}"`,
+    `font-family="${TEXT_FONT}"`,
+    `font-size="${style.size}"`,
+    style.bold ? `font-weight="bold"` : "",
+    style.italic ? `font-style="italic"` : "",
+    style.underline ? `text-decoration="underline"` : ""
+  ].filter(Boolean).join(" ");
+}
+
+export function textToAtvise(shape){
+  const layout = layoutText(shape);
+  const parts = [];
+  layout.lines.forEach((line) => {
+    const y = round(shape.y + line.baseline);
+    const middle = round(shape.y + line.top + line.advance / 2);
+    if (line.segments.length === 1) {
+      const segment = line.segments[0];
+      const x = round(shape.x + layout.offset);
+      const centre = layout.anchor === "middle" ? x : layout.anchor === "end" ? round(x - segment.width / 2) : round(x + segment.width / 2);
+      parts.push({ x, y, centre, middle, style: segment.style, text: segment.text, anchor: layout.anchor });
+      return;
+    }
+    let x = shape.x + (layout.align === "center" ? (layout.width - line.width) / 2 : layout.align === "right" ? layout.width - line.width : 0);
+    for (const segment of line.segments) {
+      parts.push({ x: round(x), y, centre: round(x + segment.width / 2), middle, style: segment.style, text: segment.text, anchor: "start" });
+      x += segment.width;
+    }
+  });
+  return parts.filter((part) => part.text.trim()).map((part, index) => {
+    const id = index ? `text_${shape.id}_${index + 1}` : `text_${shape.id}`;
+    const anchor = part.anchor === "start" ? "" : ` text-anchor="${part.anchor}"`;
+    return `<text atv:refpx="${part.centre}" atv:refpy="${part.middle}" ${styleAttributes(part.style)}${anchor} xml:space="preserve" id="${id}" x="${part.x}" y="${part.y}">${escapeXml(part.text)}</text>`;
+  }).join("\n");
+}

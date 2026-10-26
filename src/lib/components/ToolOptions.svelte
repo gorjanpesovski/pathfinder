@@ -46,6 +46,7 @@
     onedittext,
     ontextstyle,
     onreverse,
+    ontidy = null,
     onpipelayer,
     onresetsize,
     onlinewidth,
@@ -289,7 +290,7 @@
     {/if}
     {#if groups}
       <SelectionOptions {groups} bind:keepRatio {onelementsize} {onelementrotate} {onresetsize} {onnamesize} {ontankprobe}
-                        {onbranchparam} {onbranchname} {ondeviceparam} {listedit} {network} {onconnect} {onadddevices} {onmedium} {onpipewidth} {onreverse} {onpipelayer} {onfittingreadout} {onmeterreadout} {onreadoutreset}
+                        {onbranchparam} {onbranchname} {ondeviceparam} {listedit} {network} {onconnect} {onadddevices} {onmedium} {onpipewidth} {onreverse} {ontidy} {onpipelayer} {onfittingreadout} {onmeterreadout} {onreadoutreset}
                         {onfittingflip} {onfittingturn} {onvariables} {onfittingscale} {onfittingnamesize} {onreadoutscale} {onfittingname} {onedittext} {ontextstyle} {ondelete} {registers} {onregisters}/>
     {:else if furniture}
       <span>{furniture.label} · {furniture.roomName}</span>

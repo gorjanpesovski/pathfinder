@@ -3,6 +3,7 @@ import { HYDRONIC_STYLE } from "./elements.js";
 import { DRAIN_SVG } from "./branch.js";
 import { layoutText } from "../tools/text.js";
 import { buildScene, showsIn } from "./scene.js";
+import { fitTarget, scaleItems, scaleText } from "./target.js";
 
 export const PGD_VERSION = { ver: "020900744", v: "02.09.00.744" };
 
@@ -74,10 +75,14 @@ function genericSvg(width, height){
 const PUMP_OFF = "#1E293B";
 const PUMP_ON = "#018E42";
 
-function pumpPartSvg(part){
-  const shape = part === "ring"
-    ? `<circle cx="26" cy="26" r="23.5" fill="#FFFFFF" stroke="${PUMP_OFF}" stroke-width="4"/>`
-    : `<polygon points="15.25,7.4 47.5,26 15.25,44.6" fill="${PUMP_OFF}"/>`;
+function pumpRingSvg(){
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="23.5" fill="#FFFFFF" stroke="${PUMP_OFF}" stroke-width="4"/></svg>
+`;
+}
+
+function pumpArrowSvg(color = PUMP_OFF){
+  const shape = `<polygon points="15.25,7.4 47.5,26 15.25,44.6" fill="${color}"/>`;
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 52 52">${shape}</svg>\n`;
 }
 
@@ -85,28 +90,30 @@ const LED_OFF = "#475569";
 const LED_ON = "#22C55E";
 const ALARM_FILL = "#FBBF24";
 
-function partSvg(width, height, body){
+function alarmSvg(){
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${body}</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><polygon points="20,4 37,34.5 3,34.5" fill="${ALARM_FILL}" stroke="${PUMP_OFF}" stroke-linejoin="round" stroke-width="4"/><rect x="18.3" y="13" width="3.4" height="11.5" rx="1.7" fill="${PUMP_OFF}"/><circle cx="20" cy="29" r="2.1" fill="${PUMP_OFF}"/></svg>
 `;
 }
 
-function alarmPartSvg(part){
-  return partSvg(40, 40, part === "body"
-    ? `<polygon points="20,4 37,34.5 3,34.5" fill="${ALARM_FILL}" stroke="${ALARM_FILL}" stroke-linejoin="round" stroke-width="4"/>`
-    : `<polygon points="20,4 37,34.5 3,34.5" fill="none" stroke="${PUMP_OFF}" stroke-linejoin="round" stroke-width="4"/><rect x="18.3" y="13" width="3.4" height="11.5" rx="1.7" fill="${PUMP_OFF}"/><circle cx="20" cy="29" r="2.1" fill="${PUMP_OFF}"/>`);
+export const PGD_TAGS = { prefix: "1_", float: "float(swap4,swap2)" };
+
+export function pgdTag(name, prefix = ""){
+  const tag = String(name ?? "").trim().replace(/\./g, "_");
+  return tag && prefix && !tag.startsWith(prefix) ? `${prefix}${tag}` : tag;
 }
 
-export function pgdTag(name){
-  return String(name ?? "").trim().replace(/\./g, "_");
-}
-
-function dataLink(name, tagType, attribute, palette = null){
+function linkEntry(name, tagType, attribute, palette, prefix){
   const transform = palette
     ? `\n   <xForms>\n    <xForm class="ColorPaletteCustomXForm" ColorPaletteCustom="${palette.join(";")}" name="ColorPaletteCustom"/>\n   </xForms>\n  `
     : "";
-  const body = `<dataLink class="TagMgrWgt" tagType="${tagType}" sourceType="Tag" tag="${escapeXml(pgdTag(name))}" dataSource="_TagMgr" tagIndex="-1" widgetType="Project" readWrite="R" attribute="${attribute}"`;
-  return ` <dataLinks>\n  ${body}${palette ? `>${transform}</dataLink>` : "/>"}\n </dataLinks>\n`;
+  const body = `<dataLink class="TagMgrWgt" tagType="${tagType}" sourceType="Tag" tag="${escapeXml(pgdTag(name, prefix))}" dataSource="_TagMgr" tagIndex="-1" widgetType="Project" readWrite="R" attribute="${attribute}"`;
+  return `  ${body}${palette ? `>${transform}</dataLink>` : "/>"}\n`;
+}
+
+function dataLink(name, tagType, attribute, palette = null, prefix = "", extra = []){
+  const entries = [[attribute, palette], ...extra].map(([key, colors]) => linkEntry(name, tagType, key, colors, prefix)).join("");
+  return ` <dataLinks>\n${entries} </dataLinks>\n`;
 }
 
 function junctionSvg(style){
@@ -119,6 +126,9 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
   const width = page.width ?? 272;
   const height = page.height ?? 480;
   const pageName = page.name ?? "Page1";
+  const floatType = page.tags?.float || PGD_TAGS.float;
+  const prefix = page.tags?.prefix ?? PGD_TAGS.prefix;
+  const link = (name, tagType, attribute, palette = null, extra = []) => dataLink(name, tagType, attribute, palette, prefix, extra);
   const icons = style.iconSources ?? {};
   const texts = [];
   const images = new Map();
@@ -150,6 +160,12 @@ export function hydronicToPgd(shapes, style = HYDRONIC_STYLE, page = {}){
 </object>`);
   };
 
+  const ellipse = (cx, cy, w, h, fill, stroke, strokeWidth, links) => {
+    objects.push(`<object class="ShapeWgt" id="${nextId("circle")}">
+ <wgtStyle ${attributes({ ry: h / 2, x: cx - w / 2, y: cy - h / 2, "stroke-width": strokeWidth, cx: w / 2, cy: h / 2, stroke: rgb(stroke), width: w, height: h, fill: rgb(fill), nodeName: "ellipse", forcePaint: 136, rx: w / 2 })}/>
+${links}</object>`);
+  };
+
   const image = (name, data, cx, cy, w, h, rotation = 0, extra = {}, links = "") => {
     const turned = rotation % 360 === 0 ? null : rotationMatrix(w, h, rotation);
     const boxW = turned ? turned.width : w;
@@ -166,7 +182,7 @@ ${links}</object>`);
  <wgtStyle ${attributes({
    "font-bold": options.bold ? "true" : undefined,
    marker: "true",
-   "font-family": FONT,
+   "font-family": options.font ?? FONT,
    "font-sizepx": Math.round(sizePx),
    cx: w / 2,
    cy: h / 2,
@@ -183,7 +199,7 @@ ${links}</object>`);
  })}/>
  <links>
   <lang class="MLTextLink" textid="${id}">
-   <MLFontFamily L1="${FONT}"/>
+   <MLFontFamily L1="${options.font ?? FONT}"/>
   </lang>
  </links>
 </object>`);
@@ -226,8 +242,11 @@ ${links}</object>`);
    form: "Numeric",
    frameColor: rgb(PANEL)
  })}/>
-${variable ? dataLink(variable, "float", "value") : ""}</object>`);
-    if (unit) label(` ${unit}`, x + fieldWidth, y, unitWidth, h, Math.max(8, Math.round(h * 0.4)), { bold: true, color: PANEL });
+${variable ? link(variable, floatType, "value") : ""}</object>`);
+    if (unit) {
+      shape(x + fieldWidth, y, unitWidth, h, PANEL);
+      label(` ${unit}`, x + fieldWidth, y, unitWidth, h, fontPx, { bold: true, color: "#FFFFFF", font: "Tahoma" });
+    }
   };
 
   shape(0, 0, width, height, style.background ?? "#FFFFFF");
@@ -269,22 +288,18 @@ ${variable ? dataLink(variable, "float", "value") : ""}</object>`);
     },
     icon: (item) => {
       if (item.type === "pump" && item.variable) {
-        image("pf_pump_ring", pumpPartSvg("ring"), item.cx, item.cy, item.width, item.height, item.rotation);
-        image("pf_pump_arrow", pumpPartSvg("arrow"), item.cx, item.cy, item.width, item.height, item.rotation, { fill: rgb(PUMP_OFF) },
-          dataLink(item.variable, "boolean", "fill", [PUMP_OFF, PUMP_ON]));
+        image("pf_pump_ring", pumpRingSvg(), item.cx, item.cy, item.width, item.height, item.rotation);
+        image("pf_pump_arrow", pumpArrowSvg(), item.cx, item.cy, item.width, item.height, item.rotation);
+        image("pf_pump_arrow_on", pumpArrowSvg(PUMP_ON), item.cx, item.cy, item.width, item.height, item.rotation, {}, link(item.variable, "boolean", "visibility"));
         return;
       }
       if (item.type === "statusLed" && item.variable) {
-        image("pf_status_led", partSvg(30, 30, `<circle cx="15" cy="15" r="15" fill="${LED_OFF}"/>`), item.cx, item.cy, item.width, item.height, item.rotation, { fill: rgb(LED_OFF) },
-          dataLink(item.variable, "boolean", "fill", [LED_OFF, LED_ON]));
+        ellipse(item.cx, item.cy, item.width, item.height, LED_OFF, LED_OFF, 0, link(item.variable, "boolean", "fill", [LED_OFF, LED_ON]));
         return;
       }
       if (item.type === "alarm" && item.variable) {
-        const hidden = style.background ?? "#FFFFFF";
-        image("pf_alarm_body", alarmPartSvg("body"), item.cx, item.cy, item.width, item.height, item.rotation, { fill: rgb(hidden) },
-          dataLink(item.variable, "boolean", "fill", [hidden, ALARM_FILL]));
-        image("pf_alarm_mark", alarmPartSvg("mark"), item.cx, item.cy, item.width, item.height, item.rotation, { fill: rgb(hidden) },
-          dataLink(item.variable, "boolean", "fill", [hidden, PUMP_OFF]));
+        image("pf_alarm", alarmSvg(), item.cx, item.cy, item.width, item.height, item.rotation, {},
+          link(item.variable, "boolean", "visibility", null, [["blink", null]]));
         return;
       }
       iconImage(item.type, item.cx, item.cy, item.width, item.height, item.rotation);
@@ -298,11 +313,14 @@ ${variable ? dataLink(variable, "float", "value") : ""}</object>`);
     label: caption
   };
 
-  for (const item of buildScene(shapes, { ...style, bounds: style.bounds ?? { width, height } })) {
+  const design = page.design ?? { width, height };
+  const fit = fitTarget(design, { width, height, minFont: page.minFont ?? 0 });
+  for (const item of scaleItems(buildScene(shapes, { ...style, bounds: style.bounds ?? design }), fit)) {
     if (showsIn(item, "pgd")) RENDER[item.kind](item);
   }
 
-  for (const text of shapes.filter((entry) => entry.kind === "text")) {
+  for (const source of shapes.filter((entry) => entry.kind === "text")) {
+    const text = scaleText(source, fit);
     const layout = layoutText(text);
     for (const line of layout.lines) {
       const first = line.segments[0]?.style;

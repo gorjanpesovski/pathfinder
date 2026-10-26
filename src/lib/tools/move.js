@@ -10,6 +10,7 @@ export function translateShape(shape, dx, dy, moving = null){
     const moved = { points: shape.points.map((point) => ({ x: point.x + dx, y: point.y + dy })) };
     if (shape.furniture) moved.furniture = shape.furniture.map((item) => ({ ...item, cx: item.cx + dx, cy: item.cy + dy }));
     if (shape.kind === "pipe") {
+      if (shape.anchors) moved.anchors = { from: { x: shape.anchors.from.x + dx, y: shape.anchors.from.y + dy }, to: { x: shape.anchors.to.x + dx, y: shape.anchors.to.y + dy } };
       for (const end of ["from", "to"]) {
         const point = shape[end];
         if (point && point.id === undefined && point.pipe === undefined) moved[end] = { x: point.x + dx, y: point.y + dy };

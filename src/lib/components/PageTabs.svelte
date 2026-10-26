@@ -1,10 +1,81 @@
 <script>
+  import { tick } from "svelte";
+  import { flip } from "svelte/animate";
   import { portal } from "$lib/actions/portal.js";
 
-  let { pages, active, onselect, onadd, onrename, ondelete, version = "", build = "", position = "", marked = new Set() } = $props();
+  let { pages, active, onselect, onadd, onrename, ondelete, onmove, onduplicate, version = "", build = "", position = "", marked = new Set() } = $props();
+
+  const DRAG_THRESHOLD = 5;
 
   let editing = $state(null);
   let menu = $state(null);
+  let press = null;
+  let dragging = $state(null);
+  let shift = $state(0);
+  let tabNodes = $state({});
+  let strip;
+
+  function pressTab(event, page){
+    if (event.button !== 0 || editing) return;
+    const node = tabNodes[page.id];
+    press = { id: page.id, startX: event.clientX, startLeft: node.offsetLeft, pointer: event.pointerId, target: event.currentTarget };
+  }
+
+  async function dragTab(event){
+    if (!press || event.pointerId !== press.pointer) return;
+    const delta = event.clientX - press.startX;
+    if (!dragging) {
+      if (Math.abs(delta) < DRAG_THRESHOLD) return;
+      dragging = press.id;
+      menu = null;
+      try { press.target.setPointerCapture(event.pointerId); } catch {}
+    }
+    const index = pages.findIndex((page) => page.id === dragging);
+    const target = targetIndex(event.clientX, index);
+    if (target !== index) {
+      onmove(dragging, target);
+      await tick();
+    }
+    const node = tabNodes[dragging];
+    if (node) shift = delta - (node.offsetLeft - press.startLeft);
+  }
+
+  function targetIndex(clientX, index){
+    const x = clientX - strip.getBoundingClientRect().left + strip.scrollLeft;
+    let target = index;
+    pages.forEach((page, position) => {
+      if (page.id === dragging) return;
+      const node = tabNodes[page.id];
+      if (!node) return;
+      const middle = node.offsetLeft + node.offsetWidth / 2;
+      if (position < index && x < middle) target = Math.min(target, position);
+      if (position > index && x > middle) target = Math.max(target, position);
+    });
+    return target;
+  }
+
+  function releaseTab(event){
+    if (!press || event.pointerId !== press.pointer) return;
+    press = null;
+    dragging = null;
+    shift = 0;
+  }
+
+  function indexOf(page){
+    return pages.findIndex((entry) => entry.id === page.id);
+  }
+
+  function move(step){
+    const page = menu.page;
+    menu = null;
+    onmove(page.id, indexOf(page) + step);
+  }
+
+  function duplicate(){
+    const id = menu.page.id;
+    menu = null;
+    onduplicate(id);
+  }
 
   function openMenu(event, page){
     event.preventDefault();
@@ -56,6 +127,7 @@
 
 <style>
   .page-tabs {
+    position: relative;
     display: flex;
     align-items: stretch;
     flex: none;
@@ -82,6 +154,21 @@
     color: #94a3b8;
   }
 
+
+  .tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-right: 10px;
+  }
+
+  .tab {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    color: #475569;
+  }
+
   .position {
     font-variant-numeric: tabular-nums;
     color: #64748b;
@@ -97,18 +184,16 @@
     vertical-align: 2px;
   }
 
-  .tools {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    margin-right: 10px;
+  .tab.dragging {
+    position: relative;
+    z-index: 2;
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+    cursor: grabbing;
   }
 
-  .tab {
-    display: inline-flex;
-    align-items: center;
-    flex: none;
-    color: #475569;
+  .tab.dragging:not(.active) {
+    background: #ffffff;
   }
 
   .tab.active {
@@ -238,19 +323,22 @@
   }
 </style>
 
-<div class="page-tabs" role="tablist" aria-label="Pages">
+<div class="page-tabs" role="tablist" aria-label="Pages" bind:this={strip}>
   <div class="tools">
     <button type="button" class="icon" aria-label="Add page" title="Add page" onclick={onadd}>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3 V13 M3 8 H13"/></svg>
     </button>
   </div>
   {#each pages as page (page.id)}
-    <div class="tab" class:active={page.id === active}>
+    <div class="tab" class:active={page.id === active} class:dragging={dragging === page.id} bind:this={tabNodes[page.id]}
+         style={dragging === page.id ? `transform: translateX(${shift}px)` : undefined}
+         animate:flip={{ duration: dragging === page.id ? 0 : 160 }}>
       {#if editing === page.id}
         <input type="text" value={page.name} aria-label="Page name" use:focus
                onkeydown={(e) => editKey(e, page)} onblur={(e) => commit(page, e.currentTarget.value)}>
       {:else}
-        <button type="button" class="name" role="tab" aria-selected={page.id === active} title="Double-click to rename · right-click for more"
+        <button type="button" class="name" role="tab" aria-selected={page.id === active} title="Double-click to rename · drag to reorder · right-click for more"
+                onpointerdown={(e) => pressTab(e, page)} onpointermove={dragTab} onpointerup={releaseTab} onpointercancel={releaseTab}
                 onclick={() => onselect(page.id)} ondblclick={() => editing = page.id} oncontextmenu={(e) => openMenu(e, page)}>{page.name}{#if marked.has(page.id)}<span class="mark" title="Has matches for the variable search"></span>{/if}</button>
         {#if page.id === active}
           <button type="button" class="caret" aria-label="{page.name} options" title="Page options" onclick={(e) => menuAt(e, { page })}>
@@ -269,6 +357,9 @@
 {#if menu}
   <div class="page-menu" role="menu" aria-label="{menu.page.name} options" use:portal style="left: {menu.x}px; top: {menu.y - 4}px">
     <button type="button" role="menuitem" onclick={rename}>Rename</button>
+    <button type="button" role="menuitem" onclick={duplicate}>Duplicate</button>
+    <button type="button" role="menuitem" disabled={indexOf(menu.page) === 0} onclick={() => move(-1)}>Move left</button>
+    <button type="button" role="menuitem" disabled={indexOf(menu.page) === pages.length - 1} onclick={() => move(1)}>Move right</button>
     <button type="button" role="menuitem" class="danger" disabled={pages.length < 2} title={pages.length < 2 ? "The only page can't be deleted" : undefined} onclick={remove}>Delete</button>
   </div>
 {/if}

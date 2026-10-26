@@ -64,16 +64,17 @@ export function placeSensors(entries, hostId, fitting){
   const { u, v } = axes(vertical);
   const step = SENSOR_DISTANCE / Math.max(1, routeLength(host.route));
   const spots = [{ pipeId: hostId, t: round4(fitting.t + step <= 0.98 ? fitting.t + step : Math.max(0.02, fitting.t - step)) }];
+  const beside = routePoint(host.route, spots[0].t);
   let best = null;
   for (const entry of entries) {
     if (entry.pipe.id === hostId || mediumOf(entry.pipe.medium).network || mediumOf(entry.pipe.medium).electric) continue;
     for (let index = 1; index < entry.route.length; index += 1) {
       const a = entry.route[index - 1];
       const b = entry.route[index];
-      if (Math.abs(a[u] - b[u]) > 0.5 || spot[v] < Math.min(a[v], b[v]) || spot[v] > Math.max(a[v], b[v])) continue;
+      if (Math.abs(a[u] - b[u]) > 0.5 || beside[v] < Math.min(a[v], b[v]) || beside[v] > Math.max(a[v], b[v])) continue;
       const gap = Math.abs(a[u] - spot[u]);
       if (gap < 1 || gap > REACH || (best && gap >= best.gap)) continue;
-      best = { entry, gap, point: at(vertical, a[u], spot[v]) };
+      best = { entry, gap, point: at(vertical, a[u], beside[v]) };
     }
   }
   if (best) {
@@ -103,6 +104,9 @@ export function calorimeterWires(shapes, routes){
     const poses = sensors.map((entry) => fittingPose(entry.route, entry.fitting));
     const across = poses.find((pose) => Math.abs(pose[u] - centre[u]) >= 1);
     const outward = (across ? Math.sign(across[u] - centre[u]) : 0) || 1;
+    const besideIndex = poses.findIndex((pose) => Math.abs(pose[u] - centre[u]) < 1);
+    const beside = besideIndex >= 0 ? poses[besideIndex] : null;
+    const shared = beside && across && Math.abs(across[v] - beside[v]) < 1 ? Math.sign(beside[v] - centre[v]) || 1 : 0;
     sensors.forEach((sensor, index) => {
       const pose = poses[index];
       const radius = SENSOR_RADIUS * (sensor.fitting.scale ?? 1);
@@ -111,6 +115,12 @@ export function calorimeterWires(shapes, routes){
         const out = centre[u] + outward * (half + WIRE_OUT);
         const from = centre[v] + direction * quarter;
         wires.push([at(vertical, centre[u] + outward * half, from), at(vertical, out, from), at(vertical, out, pose[v]), at(vertical, pose[u] + outward * radius, pose[v])]);
+        return;
+      }
+      if (shared) {
+        const out = centre[u] + outward * (half + WIRE_OUT);
+        const from = centre[v] + shared * quarter;
+        wires.push([at(vertical, centre[u] + outward * half, from), at(vertical, out, from), at(vertical, out, pose[v]), at(vertical, pose[u] - outward * radius, pose[v])]);
         return;
       }
       const side = Math.sign(pose[u] - centre[u]);
