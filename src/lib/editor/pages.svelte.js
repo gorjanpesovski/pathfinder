@@ -1,4 +1,3 @@
-import { APPS } from "$lib/apps/index.js";
 import { copyPageShapes, pageCopyName } from "$lib/core/pageCopy.js";
 
 export function createPages(ctx){
@@ -27,22 +26,6 @@ export function createPages(ctx){
     const set = ctx.pageSets[appId];
     if (!set) return appId === ctx.app ? ctx.shapes : ctx.documents[appId]?.shapes ?? [];
     return set.list.flatMap((page) => appId === ctx.app && page.id === set.active ? ctx.shapes : ctx.documents[`${appId}:${page.id}`]?.shapes ?? []);
-  }
-
-  function currentApps(){
-    const apps = {};
-    const pages = {};
-    const ids = new Set([...APPS.map((entry) => entry.id), ...Object.keys(ctx.documents).map((key) => key.split(":")[0])]);
-    for (const appId of ids) {
-      const set = ctx.pageSets[appId];
-      if (set) {
-        pages[appId] = { active: set.active, list: set.list.map((page) => ({ id: page.id, name: page.name, shapes: storedShapes(appId, page.id) })) };
-        apps[appId] = storedShapes(appId, set.active);
-      } else {
-        apps[appId] = appId === ctx.app ? $state.snapshot(ctx.shapes) : ctx.documents[appId]?.shapes ?? [];
-      }
-    }
-    return { apps, pages };
   }
 
   function resetInteraction(){
@@ -139,11 +122,10 @@ export function createPages(ctx){
 
   function switchApp(id){
     if (id === ctx.app) return;
-    stashCurrent();
-    ensurePages(id);
-    loadStashed(stashKey(id));
+    ctx.leaveApp();
     ctx.app = id;
+    ctx.enterApp(id);
   }
 
-  return { newPageId, ensurePages, stashKey, storedShapes, pageShapes, currentApps, resetInteraction, stashCurrent, loadStashed, selectPage, addPage, movePage, duplicatePage, renamePage, deletePage, switchApp };
+  return { newPageId, ensurePages, stashKey, storedShapes, pageShapes, resetInteraction, stashCurrent, loadStashed, selectPage, addPage, movePage, duplicatePage, renamePage, deletePage, switchApp };
 }

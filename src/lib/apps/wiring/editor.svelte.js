@@ -1,3 +1,5 @@
+import { readDocument } from "$lib/editor/documents.js";
+import { cleanDocumentName } from "$lib/core/document.js";
 import { pageLeft } from "$lib/diagram/electric/sheet.js";
 import { powerPageCount, isPowerShape, drawPower, shiftShapes, POLES as POWER_POLES } from "$lib/apps/wiring/power.js";
 import { collectEdits, stamp, applyEdits, ownerOf, resetShape } from "$lib/apps/wiring/edits.js";
@@ -109,12 +111,26 @@ export function createWiring(ctx){
   }
 
   function generateWiring(options){
-    const result = wiringFromIo($state.snapshot(ctx.ioPoints), $state.snapshot(ctx.shapes), () => ctx.nextId++, { ...options, paper: ctx.wiringPaper });
+    const result = wiringFromIo(ctx.wiringIo?.points ?? [], $state.snapshot(ctx.shapes), () => ctx.nextId++, { ...options, paper: ctx.wiringPaper });
     if (!result.shapes.length) return;
     ctx.shapes.push(...result.shapes);
     ctx.selectedId = null;
     ctx.selectedIds = [];
     ctx.showFileNotice(`Added ${result.points} IO point${result.points === 1 ? "" : "s"} on ${result.pages} page${result.pages === 1 ? "" : "s"}`);
+  }
+
+  async function pickIoSource(){
+    try {
+      const file = await ctx.readProjectFile();
+      const part = readDocument(file.text, cleanDocumentName(file.name)).parts.hydronic;
+      if (!part) {
+        ctx.showFileNotice(`${file.name} is not a Hydronic station file`);
+        return;
+      }
+      ctx.wiringIo = { name: file.name, points: part.io?.points ?? [] };
+    } catch (error) {
+      if (error?.name !== "AbortError") ctx.showFileNotice(`Could not read the IO list: ${error.message}`);
+    }
   }
 
   function printWiring(){
@@ -126,5 +142,5 @@ export function createWiring(ctx){
     ctx.showFileNotice("Downloaded the DXF drawing");
   }
 
-  return { showSheet, drawPowerPages, listFields, editFromDrawing, resetFromDrawing, generateWiring, printWiring, exportDxf };
+  return { showSheet, drawPowerPages, listFields, editFromDrawing, resetFromDrawing, generateWiring, printWiring, exportDxf, pickIoSource };
 }

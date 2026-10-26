@@ -1,6 +1,5 @@
 const DATABASE = "pathfinder";
 const STORE = "handles";
-const KEY = "project";
 
 function openDatabase(){
   return new Promise((resolve, reject) => {
@@ -26,15 +25,15 @@ function run(mode, action){
   }));
 }
 
-export async function rememberFile(handle){
+export async function rememberFile(handle, slot){
   try {
-    await run("readwrite", (store) => handle ? store.put(handle, KEY) : store.delete(KEY));
+    await run("readwrite", (store) => handle ? store.put(handle, slot) : store.delete(slot));
   } catch {}
 }
 
-export async function recallFile(){
+export async function recallFile(slot){
   try {
-    return await run("readonly", (store) => store.get(KEY)) ?? null;
+    return await run("readonly", (store) => store.get(slot)) ?? null;
   } catch {
     return null;
   }

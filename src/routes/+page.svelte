@@ -42,7 +42,6 @@
   import RegisterEditor from "$lib/apps/network/components/RegisterEditor.svelte";
   import { readoutLayout, readoutSpec } from "$lib/diagram/readout.js";
   import { endpointPose, manhattanRoute, computeRoutes, cornerLegs, routePoint, sameEnd, endOf } from "$lib/diagram/route.js";
-  import { loadAutosave, saveAutosave } from "$lib/core/document.js";
   import { HYDRONIC_SPRITE, ICON_SIZES } from "$lib/diagram/iconSprite.js";
   import { PGD_TAGS } from "$lib/apps/hydronic/pgd.js";
   import { targetsOf } from "$lib/diagram/target.js";
@@ -54,7 +53,6 @@
   import VariableLinks from "$lib/apps/hydronic/components/VariableLinks.svelte";
   import { elementSlots, fittingSlots, variableUsage } from "$lib/diagram/variables.js";
   import ProjectCrumb from "$lib/core/components/ProjectCrumb.svelte";
-  import { recallFile, fileAccess } from "$lib/core/fileStore.js";
   import IoView from "$lib/apps/hydronic/components/IoView.svelte";
   import ConnectExport from "$lib/apps/network/components/ConnectExport.svelte";
   import WiringActions from "$lib/apps/wiring/components/WiringActions.svelte";
@@ -68,7 +66,6 @@
   import { alignToAnchor } from "$lib/diagram/alignEnd.js";
   import { fittingLabel, namePlaces } from "$lib/diagram/fittingLabel.js";
   import { elementLabel } from "$lib/diagram/label.js";
-  import { defaultDocumentName, cleanDocumentName } from "$lib/core/document.js";
   import { loadFlag, saveFlag, loadText, saveText } from "$lib/core/settings.js";
   import { shapeBox, unionBox } from "$lib/core/tools/move.js";
   import { appear, addRow } from "$lib/core/transitions.js";
@@ -304,6 +301,8 @@
     get PAGED_APPS(){ return PAGED_APPS; },
     get pageSets(){ return pageSets; },
     set pageSets(value){ pageSets = value; },
+    get wiringIo(){ return wiringIo; },
+    set wiringIo(value){ wiringIo = value; },
     get ioPoints(){ return ioPoints; },
     set ioPoints(value){ ioPoints = value; },
     get ioOthers(){ return ioOthers; },
@@ -353,8 +352,8 @@
   const { openImagePicker, readImage, fitImage, setImageOpacity } = Object.assign(ctx, createImages(ctx));
   const { commitText, cancelText, editSelectedText, setTextStyle } = Object.assign(ctx, createText(ctx));
   const { startPlacing, rotatePlacing } = Object.assign(ctx, createPlacement(ctx));
-  const { ensurePages, pageShapes, selectPage, addPage, movePage, duplicatePage, renamePage, deletePage, switchApp } = Object.assign(ctx, createPages(ctx));
-  const { confirmSave, currentDocument, applyDocument, projectHash, autosaveToFile, resumeAutosave, setAutosaveFile, saveProject, saveProjectAs, downloadProject, importPages, newProject, openDrawing, renameProject, clearAll } = Object.assign(ctx, createProject(ctx));
+  const { pageShapes, selectPage, addPage, movePage, duplicatePage, renamePage, deletePage, switchApp } = Object.assign(ctx, createPages(ctx));
+  const { confirmSave, currentDocument, projectHash, autosaveToFile, resumeAutosave, setAutosaveFile, saveProject, saveProjectAs, downloadProject, importPages, newProject, openDrawing, renameProject, clearAll, startProject, queueAutosave, untitledName } = Object.assign(ctx, createProject(ctx));
   const { handleKeydown } = Object.assign(ctx, createKeyboard(ctx));
   const { startExport, confirmAtvise } = Object.assign(ctx, createExports(ctx));
   const { cornerCurved, edgeHiddenState, hideEdges, setShapeKind, showRoomNames, setLabelSize, setCornerRadius, pointGroup, thermostatState, setThermostat, resolvePart, partBox, removeParts, commonCategory, setCategory, placeDoors, updateDoor, removeDoor, furnishSelected, clearFurniture, furnishOffices, rotateFurniture, removeFurniture, roomAt, snapFurnitureToWall, doorPlacement, setRoomName, commitRename, commitRoomName } = Object.assign(ctx, createFloorplan(ctx));
@@ -365,7 +364,7 @@
   const { addVariables, linkVariable, variableOver, variableLeave, variableDrop } = Object.assign(ctx, createVariableLinks(ctx));
   const { copyPgd, downloadPgdImages } = Object.assign(ctx, createPgdExport(ctx));
   const { commitDescription, connectSelected, saveRegisters, addDevices, setDeviceParam } = Object.assign(ctx, createNetwork(ctx));
-  const { showSheet, drawPowerPages, listFields, editFromDrawing, resetFromDrawing, generateWiring, printWiring, exportDxf } = Object.assign(ctx, createWiring(ctx));
+  const { showSheet, drawPowerPages, listFields, editFromDrawing, resetFromDrawing, generateWiring, printWiring, exportDxf, pickIoSource } = Object.assign(ctx, createWiring(ctx));
 
   const ELBOWS = [
     { id: "h", label: "Horizontal first" },
@@ -843,17 +842,13 @@
   let documentName = $state(null);
   let saveDialog = $state(null);
 
-  const autosaved = loadAutosave();
-  if (autosaved) applyDocument(autosaved);
-  for (const appId of PAGED_APPS) ensurePages(appId);
-
   let documentText = $derived(currentDocument());
   let documentHash = $derived(projectHash(documentText));
-  let savedHash = $state(loadText("pathfinder.savedHash", ""));
-  $effect(() => saveText("pathfinder.savedHash", savedHash));
+  let savedHash = $state("");
+  $effect(() => saveText(`pathfinder.savedHash.${app}`, savedHash));
   let unsaved = $derived(documentHash !== savedHash);
-  let autosaveFile = $state(loadFlag("pathfinder.autosaveFile", false));
-  $effect(() => saveFlag("pathfinder.autosaveFile", autosaveFile));
+  let autosaveFile = $state(false);
+  $effect(() => saveFlag(`pathfinder.autosaveFile.${app}`, autosaveFile));
   let fileWriting = $state(false);
   let projectTitle = $derived(documentName ?? "Untitled project");
   let projectStatus = $derived(
@@ -871,30 +866,14 @@
     fileTimer = setTimeout(autosaveToFile, 1500);
   });
 
-  let autosaveTimer;
-  let autosaveWarned = false;
-  $effect(() => {
-    const text = documentText;
-    clearTimeout(autosaveTimer);
-    autosaveTimer = setTimeout(() => {
-      if (saveAutosave(text)) return;
-      saveAutosave(currentDocument(false));
-      if (autosaveWarned) return;
-      autosaveWarned = true;
-      showFileNotice("Images are too large for the browser's autosave. Save the project to keep them.");
-    }, 400);
-  });
+  $effect(() => queueAutosave(documentText));
 
   let fileHandle = $state.raw(null);
   let fileAccessState = $state("none");
 
-  recallFile().then(async (handle) => {
-    if (!handle || fileHandle || !canPickFiles || cleanDocumentName(handle.name) !== documentName) return;
-    fileHandle = handle;
-    fileAccessState = await fileAccess(handle);
-  });
-
   const canPickFiles = typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+
+  startProject();
 
   let viewTitle = $derived(ioVisible ? `${currentApp.label} · IO list` : currentApp.label);
 
@@ -968,26 +947,27 @@
   });
 
   let wiringOpen = $state(false);
+  let wiringIo = $state.raw(null);
 
   let fileItems = $derived([
-    { label: "New project", hint: "Start an empty project", onclick: newProject },
+    { label: "New file", hint: `Start an empty ${currentApp.label} file`, onclick: newProject },
     { label: "Open…", shortcut: "Ctrl+O", onclick: openDrawing },
     { separator: true },
-    { label: "Save", shortcut: "Ctrl+S", hint: fileHandle ? "Update the current file" : "Choose where to save the project", onclick: saveProject },
+    { label: "Save", shortcut: "Ctrl+S", hint: fileHandle ? "Update the current file" : `Choose where to save the ${currentApp.label} file`, onclick: saveProject },
     { label: "Save as…", shortcut: "Ctrl+Shift+S", hint: "New name or folder, keep working in the new file", onclick: () => saveProjectAs() },
     { label: "Save a copy…", hint: "Keep working in this file", onclick: () => saveProjectAs(true) },
     { label: "Download", hint: "Put a copy in the Downloads folder", onclick: () => downloadProject() },
     canPickFiles
-      ? { toggle: true, label: "Autosave to file", checked: autosaveFile, onchange: setAutosaveFile, hint: autosaveFile ? "Every change is written to the project file" : "Write every change to the project file" }
+      ? { toggle: true, label: "Autosave to file", checked: autosaveFile, onchange: setAutosaveFile, hint: autosaveFile ? "Every change is written to the file" : "Write every change to the file" }
       : { note: "This browser can't pick a folder, so projects go to Downloads. Use Chrome or Edge to choose where to save." },
     { separator: true },
     { label: "Settings…", hint: "Canvas, grid, colours and export paths", onclick: () => showDisplaySettings = true }
   ]);
 
   let importItems = $derived([
-    { label: "Variable names…", hint: `${variableNames.length ? `${variableNames.length} in the project · ` : ""}names to link in the Hydronic station`, onclick: () => variablesOpen = true },
+    app === "hydronic" ? { label: "Variable names…", hint: `${variableNames.length ? `${variableNames.length} in this file · ` : ""}names to link in the Hydronic station`, onclick: () => variablesOpen = true } : null,
     app !== "electrical" ? { label: "Image…", hint: "A picture or plan on this page (pasting one works too)", onclick: openImagePicker } : null,
-    pageSet ? { label: "Pages from another project…", hint: `Copy the ${currentApp.label} pages of another project file into this one`, onclick: importPages } : null,
+    pageSet ? { label: "Pages from another file…", hint: `Copy the ${currentApp.label} pages of another file into this one`, onclick: importPages } : null,
     app === "electrical" ? { note: "Wiring is drawn from the IO list with From IO list… on the right." } : null
   ]);
 
@@ -2813,7 +2793,7 @@
 {/if}
 
 {#if wiringOpen}
-  <WiringActions points={ioPoints} {shapes} ongenerate={generateWiring} onclose={() => wiringOpen = false}/>
+  <WiringActions source={wiringIo} {shapes} onpick={pickIoSource} ongenerate={generateWiring} onclose={() => wiringOpen = false}/>
 {/if}
 
 {#if atviseDialog}
@@ -2837,7 +2817,7 @@
     <form class="save-name" id="save-name-form" onsubmit={(e) => { e.preventDefault(); confirmSave(new FormData(e.currentTarget).get("name")); }}>
       <label for="save-name-input">File name</label>
       <div class="save-name-row">
-        <input id="save-name-input" name="name" type="text" value={documentName ?? defaultDocumentName()} spellcheck="false" autocomplete="off" use:focusName>
+        <input id="save-name-input" name="name" type="text" value={documentName ?? untitledName()} spellcheck="false" autocomplete="off" use:focusName>
         <span>.pathfinder.json</span>
       </div>
     </form>

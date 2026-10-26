@@ -17,15 +17,13 @@ export function shiftImageId(imageId, offset){
   return match ? `image_${Number(match[1]) + offset}` : `${imageId}_${offset}`;
 }
 
-export function importablePages(doc, appId){
-  const saved = doc.pages?.[appId];
-  if (Array.isArray(saved?.list) && saved.list.length) {
-    return saved.list
+export function importablePages(part){
+  if (Array.isArray(part.pages?.list) && part.pages.list.length) {
+    return part.pages.list
       .map((page, index) => ({ name: typeof page.name === "string" && page.name.trim() ? page.name.trim() : `Page ${index + 1}`, shapes: Array.isArray(page.shapes) ? page.shapes : [] }))
       .filter((page) => page.shapes.length);
   }
-  const shapes = doc.apps?.[appId] ?? [];
-  return shapes.length ? [{ name: "Page 1", shapes }] : [];
+  return part.shapes.length ? [{ name: "Page 1", shapes: part.shapes }] : [];
 }
 
 export function imageIdsIn(shapes){

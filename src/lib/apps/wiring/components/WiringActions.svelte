@@ -2,11 +2,12 @@
   import Modal from "../../../core/components/Modal.svelte";
   import { WIRING_DEFAULTS, missingPoints } from "$lib/apps/wiring/generate.js";
 
-  let { points, shapes, ongenerate, onclose } = $props();
+  let { source, shapes, onpick, ongenerate, onclose } = $props();
 
   const OPTIONS_KEY = "pathfinder.wiringOptions";
 
   let options = $state(read());
+  let points = $derived(source?.points ?? []);
   let missing = $derived(missingPoints(points, shapes));
 
   function read(){
@@ -79,6 +80,46 @@
     cursor: pointer;
   }
 
+  .source {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8fafc;
+  }
+
+  .source span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .source strong {
+    color: #0f172a;
+  }
+
+  .pick {
+    flex: none;
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+  }
+
+  .pick:hover {
+    background: #f1f5f9;
+  }
+
   .go:disabled {
     border-color: #cbd5e1;
     background: #e2e8f0;
@@ -89,8 +130,14 @@
 
 <Modal title="Wiring from the IO list" subtitle="Draw the controller terminals of IO points that are not in the drawing yet" width={520} {onclose}>
   <div class="content">
-    {#if !points.length}
-      <p>The IO list is empty. Add points in Hydronic station → IO list first.</p>
+    <div class="source">
+      <span>{#if source}IO list from <strong>{source.name}</strong>{:else}No Hydronic station file chosen{/if}</span>
+      <button type="button" class="pick" onclick={onpick}>{source ? "Choose another…" : "Choose hydronic file…"}</button>
+    </div>
+    {#if !source}
+      <p>Choose the Hydronic station file whose IO list should be drawn.</p>
+    {:else if !points.length}
+      <p>The IO list in {source.name} is empty. Add points in Hydronic station → IO list first.</p>
     {:else if !missing.length}
       <p>All {points.length} IO points are already in the drawing.</p>
     {:else}

@@ -1,42 +1,48 @@
 export const DOCUMENT_FORMAT = "pathfinder";
-export const DOCUMENT_VERSION = 1;
-export const AUTOSAVE_KEY = "pathfinder.autosave";
+export const DOCUMENT_VERSION = 2;
+const LEGACY_AUTOSAVE_KEY = "pathfinder.autosave";
+const LEGACY_BACKUP_KEY = "pathfinder.autosave.v1";
 
-export function serializeDocument({ app, apps, pages = null, canvas, name = null, io = null, wiring = null, settings = null, images = null, variables = null }){
+export function formatOf(app){
+  return `${DOCUMENT_FORMAT}-${app}`;
+}
+
+export function serializeDocument(app, body){
   return JSON.stringify({
-    format: DOCUMENT_FORMAT,
+    format: formatOf(app),
     version: DOCUMENT_VERSION,
     savedAt: new Date().toISOString(),
-    name,
-    app,
-    canvas,
-    apps,
-    pages,
-    io,
-    wiring,
-    settings,
-    images,
-    variables
+    ...body
   });
 }
 
 export function parseDocument(text){
   const data = JSON.parse(text);
-  if (!data || data.format !== DOCUMENT_FORMAT || typeof data.apps !== "object") throw new Error("This is not a Pathfinder drawing.");
+  if (data?.format === DOCUMENT_FORMAT && data && typeof data.apps === "object") return { legacy: true, data };
+  if (typeof data?.format !== "string" || !data.format.startsWith(`${DOCUMENT_FORMAT}-`)) throw new Error("This is not a Pathfinder drawing.");
   if (data.version > DOCUMENT_VERSION) throw new Error("This drawing was saved by a newer version of Pathfinder.");
-  const apps = Object.fromEntries(Object.entries(data.apps).map(([id, shapes]) => [id, Array.isArray(shapes) ? shapes : []]));
-  const io = {
-    points: Array.isArray(data.io?.points) ? data.io.points : [],
-    others: Array.isArray(data.io?.others) ? data.io.others : []
-  };
-  const pages = data.pages && typeof data.pages === "object" ? data.pages : null;
-  const settings = data.settings && typeof data.settings === "object" ? data.settings : null;
-  const images = data.images && typeof data.images === "object"
-    ? Object.fromEntries(Object.entries(data.images).filter(([, source]) => typeof source === "string" && source.startsWith("data:image/")))
+  return { legacy: false, app: data.format.slice(DOCUMENT_FORMAT.length + 1), data };
+}
+
+export function cleanImages(images){
+  return images && typeof images === "object"
+    ? Object.fromEntries(Object.entries(images).filter(([, source]) => typeof source === "string" && source.startsWith("data:image/")))
     : {};
-  const variables = Array.isArray(data.variables) ? [...new Set(data.variables.filter((name) => typeof name === "string" && name.trim()).map((name) => name.trim()))] : [];
-  const wiring = data.wiring && typeof data.wiring === "object" ? data.wiring : null;
-  return { app: data.app, canvas: data.canvas ?? null, apps, pages, io, wiring, settings, images, variables, name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : null };
+}
+
+export function cleanVariables(variables){
+  return Array.isArray(variables) ? [...new Set(variables.filter((name) => typeof name === "string" && name.trim()).map((name) => name.trim()))] : [];
+}
+
+export function cleanIo(io){
+  return {
+    points: Array.isArray(io?.points) ? io.points : [],
+    others: Array.isArray(io?.others) ? io.others : []
+  };
+}
+
+export function cleanName(name){
+  return typeof name === "string" && name.trim() ? name.trim() : null;
 }
 
 export function highestId(apps){
@@ -52,33 +58,48 @@ export function highestId(apps){
   return highest;
 }
 
-export function loadAutosave(){
+function autosaveKey(app){
+  return `${LEGACY_AUTOSAVE_KEY}.${app}`;
+}
+
+export function loadAutosave(app){
   try {
-    const text = localStorage.getItem(AUTOSAVE_KEY);
-    return text ? parseDocument(text) : null;
+    return localStorage.getItem(autosaveKey(app));
   } catch {
     return null;
   }
 }
 
-export function saveAutosave(text){
+export function saveAutosave(app, text){
   try {
-    localStorage.setItem(AUTOSAVE_KEY, text);
+    localStorage.setItem(autosaveKey(app), text);
     return true;
   } catch {
     return false;
   }
 }
 
-export function documentFileName(date = new Date()){
+export function takeLegacyAutosave(){
+  try {
+    const text = localStorage.getItem(LEGACY_AUTOSAVE_KEY);
+    if (text === null) return null;
+    localStorage.setItem(LEGACY_BACKUP_KEY, text);
+    localStorage.removeItem(LEGACY_AUTOSAVE_KEY);
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+export function documentFileName(label = DOCUMENT_FORMAT, date = new Date()){
   const pad = (value) => String(value).padStart(2, "0");
-  return `pathfinder-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}.pathfinder.json`;
+  return `${label}-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}.pathfinder.json`;
 }
 
 export const FILE_SUFFIX = ".pathfinder.json";
 
-export function defaultDocumentName(date = new Date()){
-  return documentFileName(date).slice(0, -FILE_SUFFIX.length);
+export function defaultDocumentName(label, date = new Date()){
+  return documentFileName(label, date).slice(0, -FILE_SUFFIX.length);
 }
 
 export function cleanDocumentName(name){
@@ -86,6 +107,6 @@ export function cleanDocumentName(name){
   return cleaned || null;
 }
 
-export function fileNameFor(name){
-  return `${cleanDocumentName(name) ?? defaultDocumentName()}${FILE_SUFFIX}`;
+export function fileNameFor(name, label){
+  return `${cleanDocumentName(name) ?? defaultDocumentName(label)}${FILE_SUFFIX}`;
 }
