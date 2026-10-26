@@ -1,4 +1,4 @@
-import { copyPageShapes, pageCopyName } from "$lib/core/pageCopy.js";
+import { copyPageShapes, pageCopyName } from "@pathfinder/core/pageCopy.js";
 
 export function createPages(ctx){
   function newPageId(){

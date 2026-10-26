@@ -1,9 +1,9 @@
 <script>
-  import { ROOM_CATEGORIES } from "$lib/apps/floorplan/categories.js";
-  import { MIN_DOOR_WIDTH, DOOR_TYPES } from "$lib/apps/floorplan/doors.js";
+  import { ROOM_CATEGORIES } from "@pathfinder/floorplan/categories.js";
+  import { MIN_DOOR_WIDTH, DOOR_TYPES } from "@pathfinder/floorplan/doors.js";
   import SelectionOptions from "./SelectionOptions.svelte";
-  import { tooltips } from "$lib/core/actions/tooltips.js";
-  import MediumPicker from "../../diagram/components/MediumPicker.svelte";
+  import { tooltips } from "@pathfinder/core/actions/tooltips.js";
+  import MediumPicker from "@pathfinder/diagram/components/MediumPicker.svelte";
 
   let {
     tool,

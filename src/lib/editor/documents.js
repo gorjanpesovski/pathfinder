@@ -1,5 +1,5 @@
-import { parseDocument, serializeDocument, cleanImages, cleanVariables, cleanIo, cleanName } from "$lib/core/document.js";
-import { APPS } from "$lib/apps/index.js";
+import { parseDocument, serializeDocument, cleanImages, cleanVariables, cleanIo, cleanName } from "@pathfinder/core/document.js";
+import { APPS } from "./apps.js";
 
 export const APP_DATA = { hydronic: ["io", "variables"], electrical: ["wiring"] };
 

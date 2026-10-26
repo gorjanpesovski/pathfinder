@@ -1,0 +1,27 @@
+{
+	"name": "@pathfinder/hydronic",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./*": "./src/*"
+	},
+	"dependencies": {
+		"@pathfinder/core": "^1.0.0",
+		"@pathfinder/diagram": "^1.0.0"
+	},
+	"peerDependencies": {
+		"svelte": "^5.0.0",
+		"@sveltejs/kit": "^2.0.0"
+	},
+	"pathfinder": {
+		"app": "hydronic",
+		"name": "Hydronic station",
+		"paths": [
+			"apps/hydronic",
+			"packages/diagram",
+			"src/lib/apps/hydronic",
+			"src/lib/diagram"
+		]
+	}
+}

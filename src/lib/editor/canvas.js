@@ -1,8 +1,8 @@
-import { describeWall } from "$lib/apps/floorplan/walls.js";
-import { describeHydronic } from "$lib/diagram/elements.js";
-import { isRoomShape, describeRoom } from "$lib/apps/floorplan/rooms.js";
-import { describeCurve } from "$lib/apps/floorplan/curve.js";
-import { describeText } from "$lib/core/tools/text.js";
+import { describeWall } from "@pathfinder/floorplan/walls.js";
+import { describeHydronic } from "@pathfinder/diagram/elements.js";
+import { isRoomShape, describeRoom } from "@pathfinder/floorplan/rooms.js";
+import { describeCurve } from "@pathfinder/floorplan/curve.js";
+import { describeText } from "@pathfinder/core/tools/text.js";
 
 export function createCanvas(ctx){
   function clamp(value, max){

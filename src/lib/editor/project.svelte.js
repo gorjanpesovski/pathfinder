@@ -1,20 +1,20 @@
-import { cleanDocumentName, defaultDocumentName, serializeDocument, highestId, fileNameFor, loadAutosave, saveAutosave, takeLegacyAutosave } from "$lib/core/document.js";
-import { ROOM_STYLE } from "$lib/apps/floorplan/rooms.js";
-import { defaultCategoryColors } from "$lib/apps/floorplan/categories.js";
-import { WALL_STYLE } from "$lib/apps/floorplan/walls.js";
-import { HYDRONIC_STYLE } from "$lib/diagram/elements.js";
-import { PGD_TAGS } from "$lib/apps/hydronic/pgd.js";
-import { targetsOf } from "$lib/diagram/target.js";
-import { PAPERS, DEFAULT_PAPER } from "$lib/diagram/electric/sheet.js";
-import { normalizePower } from "$lib/apps/wiring/power.js";
-import { normalizeControl } from "$lib/apps/wiring/control.js";
-import { hashText, fileAccess, rememberFile, recallFile } from "$lib/core/fileStore.js";
-import { loadText, loadFlag, saveText } from "$lib/core/settings.js";
-import { freezePipes } from "$lib/diagram/route.js";
-import { anchorNames, nameFittings } from "$lib/diagram/fittingLabel.js";
-import { migrateBranches } from "$lib/diagram/branch.js";
-import { importablePages, shiftIds, imageIdsIn, shiftImageId } from "$lib/core/importPages.js";
-import { APP_DATA, readDocument, blankPart, partText, appLabel } from "$lib/editor/documents.js";
+import { cleanDocumentName, defaultDocumentName, serializeDocument, highestId, fileNameFor, loadAutosave, saveAutosave, takeLegacyAutosave } from "@pathfinder/core/document.js";
+import { ROOM_STYLE } from "@pathfinder/floorplan/rooms.js";
+import { defaultCategoryColors } from "@pathfinder/floorplan/categories.js";
+import { WALL_STYLE } from "@pathfinder/floorplan/walls.js";
+import { HYDRONIC_STYLE } from "@pathfinder/diagram/elements.js";
+import { PGD_TAGS } from "@pathfinder/hydronic/pgd.js";
+import { targetsOf } from "@pathfinder/diagram/target.js";
+import { PAPERS, DEFAULT_PAPER } from "@pathfinder/diagram/electric/sheet.js";
+import { normalizePower } from "@pathfinder/wiring/power.js";
+import { normalizeControl } from "@pathfinder/wiring/control.js";
+import { hashText, fileAccess, rememberFile, recallFile } from "@pathfinder/core/fileStore.js";
+import { loadText, loadFlag, saveText } from "@pathfinder/core/settings.js";
+import { freezePipes } from "@pathfinder/diagram/route.js";
+import { anchorNames, nameFittings } from "@pathfinder/diagram/fittingLabel.js";
+import { migrateBranches } from "@pathfinder/diagram/branch.js";
+import { importablePages, shiftIds, imageIdsIn, shiftImageId } from "@pathfinder/core/importPages.js";
+import { APP_DATA, readDocument, blankPart, partText, appLabel } from "./documents.js";
 
 const CANVAS = { width: 1920, height: 1080, fill: "#FFFFFF" };
 const SESSION_KEYS = ["documentName", "canvasWidth", "canvasHeight", "canvasFill", "fileHandle", "fileAccessState", "autosaveFile", "savedHash"];
@@ -409,6 +409,10 @@ export function createProject(ctx){
     return { text, name: pickedFileName, handle: null };
   }
 
+  function readParts(file){
+    return readDocument(file.text, cleanDocumentName(file.name)).parts;
+  }
+
   async function importPages(){
     const set = ctx.pageSets[ctx.app];
     if (!set) return;
@@ -517,5 +521,5 @@ export function createProject(ctx){
     ctx.selectedId = null;
   }
 
-  return { openSaveDialog, confirmSave, untitledName, projectSettings, applySettings, currentDocument, applyDocument, leaveApp, enterApp, startProject, queueAutosave, flushAutosave, projectHash, autosaveToFile, linkFile, ensureAccess, resumeAutosave, setAutosaveFile, FILE_TYPES, PICKER_ID, saveFailed, writeProject, saveProject, saveProjectAs, downloadProject, prepareShapes, readProjectFile, importPages, pickFileText, newProject, openDrawing, renameProject, clearAll };
+  return { openSaveDialog, confirmSave, untitledName, projectSettings, applySettings, currentDocument, applyDocument, leaveApp, enterApp, startProject, queueAutosave, flushAutosave, projectHash, autosaveToFile, linkFile, ensureAccess, resumeAutosave, setAutosaveFile, FILE_TYPES, PICKER_ID, saveFailed, writeProject, saveProject, saveProjectAs, downloadProject, prepareShapes, readProjectFile, readParts, importPages, pickFileText, newProject, openDrawing, renameProject, clearAll };
 }

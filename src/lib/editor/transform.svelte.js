@@ -1,8 +1,8 @@
-import { branchPipeIds, isBranch } from "$lib/diagram/branch.js";
-import { ridingPipes } from "$lib/diagram/route.js";
-import { HYDRONIC_ELEMENTS } from "$lib/diagram/elements.js";
-import { transformShape, transformPort, rotating, scaling, mirroring } from "$lib/diagram/transform.js";
-import { dragPointer } from "$lib/core/tools/move.js";
+import { branchPipeIds, isBranch } from "@pathfinder/diagram/branch.js";
+import { ridingPipes } from "@pathfinder/diagram/route.js";
+import { HYDRONIC_ELEMENTS } from "@pathfinder/diagram/elements.js";
+import { transformShape, transformPort, rotating, scaling, mirroring } from "@pathfinder/diagram/transform.js";
+import { dragPointer } from "@pathfinder/core/tools/move.js";
 
 export function createTransform(ctx){
   function transformGroup(){

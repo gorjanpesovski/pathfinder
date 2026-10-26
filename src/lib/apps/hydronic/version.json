@@ -1,6 +1,0 @@
-{
-  "app": "hydronic",
-  "name": "Hydronic station",
-  "version": "1.0",
-  "paths": ["src/lib/apps/hydronic", "src/lib/diagram"]
-}

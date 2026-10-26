@@ -1,9 +1,9 @@
 <script>
-  import FurnitureShape from "../../apps/floorplan/components/FurnitureShape.svelte";
-  import { FURNITURE, ELEMENT_GROUPS, newFurniture } from "$lib/apps/floorplan/furniture.js";
-  import { HYDRONIC_ELEMENTS } from "$lib/diagram/elements.js";
-  import { DOOR_ELEMENTS } from "$lib/apps/floorplan/doors.js";
-  import { electricSvg, electricDefaults, ELECTRIC_DEFAULTS } from "$lib/diagram/electric/symbols.js";
+  import FurnitureShape from "@pathfinder/floorplan/components/FurnitureShape.svelte";
+  import { FURNITURE, ELEMENT_GROUPS, newFurniture } from "@pathfinder/floorplan/furniture.js";
+  import { HYDRONIC_ELEMENTS } from "@pathfinder/diagram/elements.js";
+  import { DOOR_ELEMENTS } from "@pathfinder/floorplan/doors.js";
+  import { electricSvg, electricDefaults, ELECTRIC_DEFAULTS } from "@pathfinder/diagram/electric/symbols.js";
 
   function electricPreview(type){
     const spec = HYDRONIC_ELEMENTS[type];

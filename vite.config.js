@@ -24,14 +24,15 @@ const APP_VERSION = `v${major}.${minor}.${git('rev-list --count HEAD', '0')}`;
 const APP_COMMIT = git('rev-parse --short HEAD', 'dev');
 
 function appVersions() {
-	const root = './src/lib/apps';
+	const root = './apps';
 	return Object.fromEntries(
 		readdirSync(root, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory() && existsSync(`${root}/${entry.name}/version.json`))
+			.filter((entry) => entry.isDirectory() && existsSync(`${root}/${entry.name}/package.json`))
 			.map((entry) => {
-				const info = JSON.parse(readFileSync(`${root}/${entry.name}/version.json`, 'utf8'));
-				const paths = [...info.paths, ':(exclude,glob)**/CHANGELOG.md'].map((path) => `"${path}"`).join(' ');
-				return [info.app, `v${info.version}.${git(`rev-list --count HEAD -- ${paths}`, '0')}`];
+				const info = JSON.parse(readFileSync(`${root}/${entry.name}/package.json`, 'utf8'));
+				const [major, minor] = info.version.split('.');
+				const paths = [...info.pathfinder.paths, ':(exclude,glob)**/CHANGELOG.md'].map((path) => `"${path}"`).join(' ');
+				return [info.pathfinder.app, `v${major}.${minor}.${git(`rev-list --count HEAD -- ${paths}`, '0')}`];
 			})
 	);
 }

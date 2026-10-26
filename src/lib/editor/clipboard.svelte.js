@@ -1,7 +1,7 @@
-import { branchPipeIds } from "$lib/diagram/branch.js";
-import { nextRoomName } from "$lib/apps/floorplan/rooms.js";
-import { translateShape } from "$lib/core/tools/move.js";
-import { linkPastedPipes } from "$lib/diagram/route.js";
+import { branchPipeIds } from "@pathfinder/diagram/branch.js";
+import { nextRoomName } from "@pathfinder/floorplan/rooms.js";
+import { translateShape } from "@pathfinder/core/tools/move.js";
+import { linkPastedPipes } from "@pathfinder/diagram/route.js";
 
 export function createClipboard(ctx){
   let clipboardBox = null;

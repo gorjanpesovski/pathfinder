@@ -1,4 +1,4 @@
-import { newText, refitText, clearRunStyle } from "$lib/core/tools/text.js";
+import { newText, refitText, clearRunStyle } from "@pathfinder/core/tools/text.js";
 
 export function createText(ctx){
   let freshTextId = null;

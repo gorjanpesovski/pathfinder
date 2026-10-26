@@ -1,7 +1,7 @@
-import { HYDRONIC_ELEMENTS, METER_MEASURES, mediumOf } from "../diagram/elements.js";
-import { TANK_PROBES, hasTankProbes } from "../diagram/tank.js";
-import { meterOptions, meterReadouts, readoutSpec, readoutScaleOf } from "../diagram/readout.js";
-import { hasNameLabel, nameSizeOf } from "../diagram/label.js";
+import { HYDRONIC_ELEMENTS, METER_MEASURES, mediumOf } from "@pathfinder/diagram/elements.js";
+import { TANK_PROBES, hasTankProbes } from "@pathfinder/diagram/tank.js";
+import { meterOptions, meterReadouts, readoutSpec, readoutScaleOf } from "@pathfinder/diagram/readout.js";
+import { hasNameLabel, nameSizeOf } from "@pathfinder/diagram/label.js";
 
 function common(list, read){
   if (!list.length) return null;

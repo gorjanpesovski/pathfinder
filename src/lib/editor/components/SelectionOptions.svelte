@@ -1,11 +1,11 @@
 <script>
-  import { TANK_PROBES } from "$lib/diagram/tank.js";
-  import { HYDRONIC_ELEMENTS } from "$lib/diagram/elements.js";
-  import { formatSlots, parseSlots } from "$lib/diagram/electric/symbols.js";
-  import MediumPicker from "../../diagram/components/MediumPicker.svelte";
-  import NetworkActions from "../../apps/network/components/NetworkActions.svelte";
-  import BranchOptions from "../../apps/hydronic/components/BranchOptions.svelte";
-  import MeterReadouts from "../../diagram/components/MeterReadouts.svelte";
+  import { TANK_PROBES } from "@pathfinder/diagram/tank.js";
+  import { HYDRONIC_ELEMENTS } from "@pathfinder/diagram/elements.js";
+  import { formatSlots, parseSlots } from "@pathfinder/diagram/electric/symbols.js";
+  import MediumPicker from "@pathfinder/diagram/components/MediumPicker.svelte";
+  import NetworkActions from "@pathfinder/network/components/NetworkActions.svelte";
+  import BranchOptions from "@pathfinder/hydronic/components/BranchOptions.svelte";
+  import MeterReadouts from "@pathfinder/diagram/components/MeterReadouts.svelte";
 
   let {
     groups,

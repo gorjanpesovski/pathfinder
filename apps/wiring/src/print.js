@@ -1,0 +1,74 @@
+import { escapeXml } from "@pathfinder/core/export/atvise.js";
+import { buildScene } from "@pathfinder/diagram/scene.js";
+import { HYDRONIC_STYLE } from "@pathfinder/diagram/elements.js";
+import { textToSvg } from "@pathfinder/core/tools/text.js";
+import { paperOf, pageLeft, sheetSvg, usedPages } from "@pathfinder/diagram/electric/sheet.js";
+
+const FONT = "Arial, Helvetica, sans-serif";
+
+function points(list){
+  return list.map((point) => `${point.x},${point.y}`).join(" ");
+}
+
+function itemSvg(item){
+  if (item.kind === "electric") return item.svg;
+  if (item.kind === "pipe") {
+    const dash = item.dashArray ? ` stroke-dasharray="${item.dashArray}"` : "";
+    return `<polyline points="${points(item.points)}" fill="none" stroke="${item.color}" stroke-width="${item.width}" stroke-linejoin="round"${dash}/>`;
+  }
+  if (item.kind === "junction") return `<circle cx="${item.x}" cy="${item.y}" r="${item.radius}" fill="#1E293B"/>`;
+  if (item.kind === "label") {
+    const anchor = item.anchor === "start" ? "" : ` text-anchor="${item.anchor}"`;
+    return `<text x="${item.x}" y="${item.y}" font-family="${FONT}" font-size="${item.size}"${anchor} fill="${item.color}">${escapeXml(item.text)}</text>`;
+  }
+  return "";
+}
+
+function layerOf(item, shapes){
+  if (item.kind === "pipe") return shapes.find((shape) => shape.id === item.pipeId)?.medium === "earth" ? "PE" : "WIRES";
+  if (item.kind === "junction") return "WIRES";
+  if (item.kind === "label") return "TEXT";
+  return "SYMBOLS";
+}
+
+export function sheetParts(shapes, meta = {}, paper = paperOf()){
+  const count = Math.max(1, usedPages(shapes, paper));
+  const body = buildScene(shapes, HYDRONIC_STYLE, { paper }).map((item) => ({ layer: layerOf(item, shapes), svg: itemSvg(item) })).filter((part) => part.svg);
+  for (const shape of shapes) if (shape.kind === "text") body.push({ layer: "NOTES", svg: textToSvg(shape) });
+  const frames = [];
+  for (let index = 0; index < count; index += 1) frames.push(sheetSvg(index, count, meta, paper).replace(/stroke="#CBD5E1"/, 'stroke="none"'));
+  return { count, body, frames };
+}
+
+export function sheetPages(shapes, meta = {}, paper = paperOf()){
+  const { count, body, frames } = sheetParts(shapes, meta, paper);
+  const content = body.map((part) => part.svg).join("");
+  const [width, height] = paper.mm;
+  const pages = [];
+  for (let index = 0; index < count; index += 1) {
+    const left = pageLeft(index, paper);
+    pages.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${left} 0 ${paper.width} ${paper.height}" width="${width}mm" height="${height}mm"><rect x="${left}" y="0" width="${paper.width}" height="${paper.height}" fill="#FFFFFF"/>${content}${frames[index]}</svg>`);
+  }
+  return pages;
+}
+
+export function printSheets(shapes, meta = {}, paper = paperOf()){
+  const pages = sheetPages(shapes, meta, paper);
+  const [width, height] = paper.mm;
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  Object.assign(frame.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0" });
+  document.body.append(frame);
+  const doc = frame.contentDocument;
+  doc.open();
+  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeXml(meta.project || "Vezalna shema")}</title><style>@page { size: ${paper.id} landscape; margin: 0; } html, body { margin: 0; padding: 0; } svg { display: block; width: ${width}mm; height: ${height}mm; break-after: page; page-break-after: always; } svg:last-child { break-after: auto; page-break-after: auto; }</style></head><body>${pages.join("")}</body></html>`);
+  doc.close();
+  const view = frame.contentWindow;
+  const cleanup = () => setTimeout(() => frame.remove(), 1000);
+  view.addEventListener("afterprint", cleanup, { once: true });
+  setTimeout(() => {
+    view.focus();
+    view.print();
+  }, 100);
+  return pages.length;
+}

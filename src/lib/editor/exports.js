@@ -1,9 +1,9 @@
-import { fitTarget, scaleText } from "$lib/diagram/target.js";
-import { textToAtvise } from "$lib/core/tools/text.js";
-import { atviseDocument } from "$lib/core/export/atvise.js";
-import { hydronicToSvg } from "$lib/diagram/export.js";
-import { roomsToSvg, layered, isRoomShape } from "$lib/apps/floorplan/rooms.js";
-import { curveToSvg } from "$lib/apps/floorplan/curve.js";
+import { fitTarget, scaleText } from "@pathfinder/diagram/target.js";
+import { textToAtvise } from "@pathfinder/core/tools/text.js";
+import { atviseDocument } from "@pathfinder/core/export/atvise.js";
+import { hydronicToSvg } from "@pathfinder/diagram/export.js";
+import { roomsToSvg, layered, isRoomShape } from "@pathfinder/floorplan/rooms.js";
+import { curveToSvg } from "@pathfinder/floorplan/curve.js";
 
 export function createExports(ctx){
   function buildSvg(){

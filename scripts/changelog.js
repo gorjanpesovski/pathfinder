@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
-const ROOT = 'src/lib/apps';
+const ROOT = 'apps';
 const EXCLUDE = ':(exclude,glob)**/CHANGELOG.md';
 const FIELD = '\x1f';
 const RECORD = '\x1e';
@@ -58,8 +58,9 @@ function entryText(version, commit) {
 let added = 0;
 for (const folder of readdirSync(ROOT, { withFileTypes: true })) {
 	const dir = `${ROOT}/${folder.name}`;
-	if (!folder.isDirectory() || !existsSync(`${dir}/version.json`)) continue;
-	const info = JSON.parse(readFileSync(`${dir}/version.json`, 'utf8'));
+	if (!folder.isDirectory() || !existsSync(`${dir}/package.json`)) continue;
+	const { version, pathfinder: info } = JSON.parse(readFileSync(`${dir}/package.json`, 'utf8'));
+	const [major, minor] = version.split('.');
 	const file = `${dir}/CHANGELOG.md`;
 	const heading = `# ${info.name} change log`;
 	const existing = existsSync(file) ? readFileSync(file, 'utf8') : `${heading}\n`;
@@ -67,7 +68,7 @@ for (const folder of readdirSync(ROOT, { withFileTypes: true })) {
 		[...existing.matchAll(/^## .* · ([0-9a-f]{7,})$/gm)].map((match) => match[1])
 	);
 	const fresh = commitsFor(info.paths)
-		.map((commit, index) => ({ commit, version: `v${info.version}.${index + 1}` }))
+		.map((commit, index) => ({ commit, version: `v${major}.${minor}.${index + 1}` }))
 		.filter(({ commit }) => !known.has(commit.hash))
 		.reverse();
 	if (!fresh.length) continue;

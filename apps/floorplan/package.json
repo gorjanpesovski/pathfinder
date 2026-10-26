@@ -1,0 +1,24 @@
+{
+	"name": "@pathfinder/floorplan",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./*": "./src/*"
+	},
+	"dependencies": {
+		"@pathfinder/core": "^1.0.0",
+		"@pathfinder/diagram": "^1.0.0"
+	},
+	"peerDependencies": {
+		"svelte": "^5.0.0"
+	},
+	"pathfinder": {
+		"app": "floorplan",
+		"name": "Floor plan",
+		"paths": [
+			"apps/floorplan",
+			"src/lib/apps/floorplan"
+		]
+	}
+}

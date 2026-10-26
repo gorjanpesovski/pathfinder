@@ -3,6 +3,10 @@
 	"private": true,
 	"version": "1.1.0",
 	"type": "module",
+	"workspaces": [
+		"packages/*",
+		"apps/*"
+	],
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
@@ -11,6 +15,14 @@
 		"lint": "prettier --check .",
 		"format": "prettier --write .",
 		"changelog": "node scripts/changelog.js"
+	},
+	"dependencies": {
+		"@pathfinder/core": "^1.0.0",
+		"@pathfinder/diagram": "^1.0.0",
+		"@pathfinder/floorplan": "^1.0.0",
+		"@pathfinder/hydronic": "^1.0.0",
+		"@pathfinder/network": "^1.0.0",
+		"@pathfinder/wiring": "^1.0.0"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^3.0.10",

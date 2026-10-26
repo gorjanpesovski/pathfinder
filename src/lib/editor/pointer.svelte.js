@@ -1,10 +1,10 @@
-import { isRoomTool } from "$lib/apps/floorplan/rooms.js";
-import { isBranch, branchPipeIds, branchLegEnds, snapBranch } from "$lib/diagram/branch.js";
-import { isDeviceType, HYDRONIC_ELEMENTS, mediumOf, isElectricType } from "$lib/diagram/elements.js";
-import { hasNameLabel } from "$lib/diagram/label.js";
-import { ridingPipes, isFreeEnd, dockPort } from "$lib/diagram/route.js";
-import { shapeBox, unionBox, dragPointer, clampDelta, translateShape } from "$lib/core/tools/move.js";
-import { contains } from "$lib/core/tools/align.js";
+import { isRoomTool } from "@pathfinder/floorplan/rooms.js";
+import { isBranch, branchPipeIds, branchLegEnds, snapBranch } from "@pathfinder/diagram/branch.js";
+import { isDeviceType, HYDRONIC_ELEMENTS, mediumOf, isElectricType } from "@pathfinder/diagram/elements.js";
+import { hasNameLabel } from "@pathfinder/diagram/label.js";
+import { ridingPipes, isFreeEnd, dockPort } from "@pathfinder/diagram/route.js";
+import { shapeBox, unionBox, dragPointer, clampDelta, translateShape } from "@pathfinder/core/tools/move.js";
+import { contains } from "@pathfinder/core/tools/align.js";
 
 export function createPointer(ctx){
   function handleMove(event){

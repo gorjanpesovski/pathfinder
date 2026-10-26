@@ -1,6 +1,6 @@
-import { ALIGN_ACTIONS, DISTRIBUTE_ACTIONS } from "$lib/core/tools/align.js";
-import { isBranch } from "$lib/diagram/branch.js";
-import { APPS } from "$lib/apps/index.js";
+import { ALIGN_ACTIONS, DISTRIBUTE_ACTIONS } from "@pathfinder/core/tools/align.js";
+import { isBranch } from "@pathfinder/diagram/branch.js";
+import { APPS } from "./apps.js";
 
 export function createKeyboard(ctx){
   function appKeydown(event){

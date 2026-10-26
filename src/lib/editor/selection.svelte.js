@@ -1,11 +1,11 @@
-import { branchPipeIds, isBranch } from "$lib/diagram/branch.js";
-import { shapeBox, unionBox, translateShape } from "$lib/core/tools/move.js";
-import { layerOf } from "$lib/diagram/scene.js";
-import { pruneDangling } from "$lib/diagram/route.js";
-import { polygonSelfIntersects } from "$lib/core/tools/polygon.js";
-import { outlinePoints } from "$lib/core/tools/path.js";
-import { alignOffsets, distributeOffsets } from "$lib/core/tools/align.js";
-import { fittingBox, fittingTargets } from "$lib/diagram/fittingAlign.js";
+import { branchPipeIds, isBranch } from "@pathfinder/diagram/branch.js";
+import { shapeBox, unionBox, translateShape } from "@pathfinder/core/tools/move.js";
+import { layerOf } from "@pathfinder/diagram/scene.js";
+import { pruneDangling } from "@pathfinder/diagram/route.js";
+import { polygonSelfIntersects } from "@pathfinder/core/tools/polygon.js";
+import { outlinePoints } from "@pathfinder/core/tools/path.js";
+import { alignOffsets, distributeOffsets } from "@pathfinder/core/tools/align.js";
+import { fittingBox, fittingTargets } from "@pathfinder/diagram/fittingAlign.js";
 
 export function createSelection(ctx){
   function shapeById(id){
