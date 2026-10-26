@@ -17,11 +17,13 @@
 		"changelog": "node scripts/changelog.js"
 	},
 	"dependencies": {
+		"@pathfinder/ahu": "^1.1.0",
 		"@pathfinder/core": "^1.0.0",
 		"@pathfinder/diagram": "^1.0.0",
 		"@pathfinder/floorplan": "^1.0.0",
 		"@pathfinder/hydronic": "^1.0.0",
 		"@pathfinder/network": "^1.0.0",
+		"@pathfinder/settings-generator": "^1.1.0",
 		"@pathfinder/wiring": "^1.0.0"
 	},
 	"devDependencies": {

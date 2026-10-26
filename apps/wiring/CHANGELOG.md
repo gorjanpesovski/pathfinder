@@ -1,5 +1,16 @@
 # Wiring diagram change log
 
+## v1.0.4 · 2026-10-26 · c635b03
+
+Split the code into npm workspace packages
+
+- packages/core and packages/diagram, and apps/floorplan, hydronic, network and wiring, each with its own package.json, version and declared dependencies
+- Imports across packages use @pathfinder/<package>/...; only the shell in src (routes and lib/editor) uses $lib
+- The app list moves to src/lib/editor/apps.js and the wiring diagram reads hydronic files through ctx, so no package imports the shell
+- App versions and change logs read apps/*/package.json; the version count includes the old folder paths so the numbers continue
+
+No change in behaviour.
+
 ## v1.0.3 · 2026-10-26 · e3461ed
 
 Give each app its own version and change log

@@ -55,6 +55,18 @@ function entryText(version, commit) {
 	].join('\n');
 }
 
+function versionAt(hash, file) {
+	try {
+		const text = execFileSync('git', ['show', `${hash}:${file}`], {
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore']
+		});
+		return JSON.parse(text).version ?? null;
+	} catch {
+		return null;
+	}
+}
+
 let added = 0;
 for (const folder of readdirSync(ROOT, { withFileTypes: true })) {
 	const dir = `${ROOT}/${folder.name}`;
@@ -68,7 +80,11 @@ for (const folder of readdirSync(ROOT, { withFileTypes: true })) {
 		[...existing.matchAll(/^## .* · ([0-9a-f]{7,})$/gm)].map((match) => match[1])
 	);
 	const fresh = commitsFor(info.paths)
-		.map((commit, index) => ({ commit, version: `v${major}.${minor}.${index + 1}` }))
+		.map((commit, index) => {
+			const [then = major, thenMinor = minor] =
+				versionAt(commit.hash, `${dir}/package.json`)?.split('.') ?? [];
+			return { commit, version: `v${then}.${thenMinor}.${index + 1}` };
+		})
 		.filter(({ commit }) => !known.has(commit.hash))
 		.reverse();
 	if (!fresh.length) continue;
