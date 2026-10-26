@@ -1,103 +1,371 @@
 <script>
   import { base } from "$app/paths";
-  import { prefersReducedMotion } from "svelte/motion";
-  import { cubicOut } from "svelte/easing";
   import { untrack } from "svelte";
-  import Toolbar from "$lib/components/Toolbar.svelte";
-  import ZoomControls from "$lib/components/ZoomControls.svelte";
-  import { Viewport } from "$lib/canvas/viewport.svelte.js";
-  import { MIN_GRID_PX } from "$lib/canvas/coords.js";
-  import { panZoom } from "$lib/canvas/panZoom.js";
-  import RoomLayer from "$lib/components/RoomLayer.svelte";
-  import CurveLayer from "$lib/components/CurveLayer.svelte";
-  import VertexHandles from "$lib/components/VertexHandles.svelte";
-  import ToolOptions from "$lib/components/ToolOptions.svelte";
-  import RoomNameEditor from "$lib/components/RoomNameEditor.svelte";
-  import TextLayer from "$lib/components/TextLayer.svelte";
-  import TextEditor from "$lib/components/TextEditor.svelte";
-  import RichTextEditor from "$lib/components/RichTextEditor.svelte";
-  import { newText, refitText, describeText, textToAtvise, clearRunStyle } from "$lib/tools/text.js";
-  import PenPreview from "$lib/components/PenPreview.svelte";
-  import { samePoint, rectPoints, constrainOrtho, nearestVertex, wouldCross, closingCrosses, removeCollinear, polygonSelfIntersects, polygonBounds, maxCornerRadius, distance, pointInPolygon } from "$lib/tools/polygon.js";
-  import { isRoomTool, isPolygonTool, isRoomShape, roomKindLabel, nextRoomName, describeRoom, snapVertices, snapToEdges, labelPoint, roomLabelPoint, layered, roomsToSvg, VERTEX_SNAP_PX, ROOM_STYLE, thermostatFit, thermostatGlobalScale } from "$lib/tools/rooms.js";
-  import { hasCurves, outlinePoints, segmentCurved } from "$lib/tools/path.js";
-  import { History } from "$lib/history.svelte.js";
-  import { alignOffsets, distributeOffsets, contains, ALIGN_ACTIONS, DISTRIBUTE_ACTIONS } from "$lib/tools/align.js";
-  import { ROOM_CATEGORIES, defaultCategoryColors } from "$lib/tools/categories.js";
-  import { suggestDoor, projectDoor, doorGeometry, maxDoorWidth, MIN_DOOR_WIDTH, DOOR_ELEMENTS, isDoorElement } from "$lib/tools/doors.js";
-  import { furnitureItem } from "$lib/tools/transform.js";
-  import DoorLayer from "$lib/components/DoorLayer.svelte";
-  import ImageLayer from "$lib/components/ImageLayer.svelte";
-  import TransformFrame from "$lib/components/TransformFrame.svelte";
-  import { scaling, rotating, mirroring, transformShape, transformPort } from "$lib/tools/transform.js";
-  import { furnishForCategory, FURNISHABLE, usableRect, wallSides } from "$lib/tools/populate.js";
-  import { FURNITURE, furnitureFits, newFurniture, furnitureCorners } from "$lib/tools/furniture.js";
-  import ElementBar from "$lib/components/ElementBar.svelte";
-  import PlacementGhost from "$lib/components/PlacementGhost.svelte";
-  import ThermostatLayer from "$lib/components/ThermostatLayer.svelte";
-  import WallLayer from "$lib/components/WallLayer.svelte";
-  import ActivityBar from "$lib/components/ActivityBar.svelte";
-  import CanvasNotice from "$lib/components/CanvasNotice.svelte";
-  import { WALL_STYLE, describeWall, openEnds } from "$lib/tools/walls.js";
-  import { APPS, appById, GENERAL_TOOLS } from "$lib/apps.js";
-  import HydronicLayer from "$lib/components/HydronicLayer.svelte";
-  import PageTabs from "$lib/components/PageTabs.svelte";
-  import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, DEFAULT_PROTOCOL, DEFAULT_WIRE, familyOf, isElectricType, mediumOf, isHydronicType, isInlineType, isDeviceType, hydronicLabel, describeHydronic, nextElementName } from "$lib/hydronic/elements.js";
-  import { branchDefaults, alignBranch, snapBranch, isBranch, branchParams, createBranch, rebuildBranch, ownedPipes, branchPipeIds, branchLegEnds, migrateBranches, isLeg, keepLegDistances, legSpan } from "$lib/hydronic/branch.js";
-  import { connectNetwork, placeDevices, belowAnchor, batchHeight, batchWidth } from "$lib/hydronic/network.js";
-  import DeviceBatch from "$lib/components/DeviceBatch.svelte";
-  import RegisterEditor from "$lib/components/RegisterEditor.svelte";
-  import { readoutLayout, readoutSpec, readoutRows, readoutExtent, readoutScaleOf, meterOptions, meterReadouts } from "$lib/hydronic/readout.js";
-  import { placeSensors } from "$lib/hydronic/meter.js";
-  import { findPort, dockPort, endpointPose, manhattanRoute, projectOnRoute, pruneDangling, ridingPipes, linkPastedPipes, computeRoutes, keepSpot, legAt, freezePipes, keepsCorners, freezeRoute, routeAnchors, findPipePoint, cornerLegs, routePoint, sameEnd, endOf, editablePath, storedPoints, dragVertex, dragEdge, scaledOffset } from "$lib/hydronic/route.js";
-  import { hydronicToSvg } from "$lib/hydronic/export.js";
-  import { orientAngle, fittingPose } from "$lib/hydronic/geometry.js";
-  import { isFreeEnd, portStep } from "$lib/hydronic/route.js";
-  import { findValvePort, valveCorner, cornerFlip } from "$lib/hydronic/valvePorts.js";
-  import { serializeDocument, parseDocument, highestId, loadAutosave, saveAutosave } from "$lib/document.js";
-  import { rotationOf, isTurned, footprint, turnPort } from "$lib/hydronic/frame.js";
-  import { fittingBox, fittingTargets } from "$lib/hydronic/fittingAlign.js";
-  import { HYDRONIC_SPRITE, ICON_SIZES, ICON_SOURCES } from "$lib/hydronic/iconSprite.js";
-  import { hydronicToPgd, PGD_TAGS } from "$lib/hydronic/pgd.js";
-  import { copyPageShapes, pageCopyName } from "$lib/pageCopy.js";
-  import { tidyPipe } from "$lib/hydronic/autoroute.js";
-  import { targetsOf, fitTarget, scaleText } from "$lib/hydronic/target.js";
-  import HeaderMenu from "$lib/components/HeaderMenu.svelte";
-  import Modal from "$lib/components/Modal.svelte";
-  import VariableList from "$lib/components/VariableList.svelte";
-  import VariablePanel from "$lib/components/VariablePanel.svelte";
-  import ArrangeMenu from "$lib/components/ArrangeMenu.svelte";
-  import { layerOf } from "$lib/hydronic/scene.js";
-  import VariableLinks from "$lib/components/VariableLinks.svelte";
-  import { elementSlots, fittingSlots, setSlot, variableUsage } from "$lib/hydronic/variables.js";
-  import ProjectCrumb from "$lib/components/ProjectCrumb.svelte";
-  import { rememberFile, recallFile, fileAccess, hashText } from "$lib/fileStore.js";
-  import { shiftIds, shiftImageId, importablePages, imageIdsIn } from "$lib/importPages.js";
-  import IoView from "$lib/components/IoView.svelte";
-  import ConnectExport from "$lib/components/ConnectExport.svelte";
-  import WiringActions from "$lib/components/WiringActions.svelte";
-  import WiringList from "$lib/components/WiringList.svelte";
-  import { drawControl, emptyControl, normalizeControl, crossReference } from "$lib/electric/control.js";
-  import { drawPower, emptyPower, normalizePower, powerPageCount, shiftShapes, isPowerShape, LOADS as POWER_LOADS, POLES as POWER_POLES, SIZING_DEFAULTS } from "$lib/electric/power.js";
-  import { PAPERS, DEFAULT_PAPER, paperOf, pageLeft, boardSize, sheetsSvg, sheetDate } from "$lib/electric/sheet.js";
-  import { wiringFromIo } from "$lib/electric/generate.js";
-  import { printSheets } from "$lib/electric/print.js";
-  import { downloadDxf } from "$lib/electric/dxf.js";
-  import { stamp, collectEdits, applyEdits, editOf, ownerOf, resetShape } from "$lib/electric/edits.js";
-  import { electricSize, electricDefaults, nextElectricName, PROTECTION_KINDS } from "$lib/electric/symbols.js";
-  import { summarizeSelection } from "$lib/tools/selectionSummary.js";
-  import { junctionMedium } from "$lib/hydronic/inherit.js";
-  import { alignToAnchor } from "$lib/hydronic/alignEnd.js";
-  import { fittingLabel, namePlaces, nextFittingName, nameFittings, anchorNames } from "$lib/hydronic/fittingLabel.js";
-  import { copyFittings, pasteTargets } from "$lib/hydronic/fittingPaste.js";
-  import { elementLabel, elementBox, hasNameLabel, labelCentre, nameAnchorAt, textWidth } from "$lib/hydronic/label.js";
-  import { hasTankProbes } from "$lib/hydronic/tank.js";
-  import { defaultDocumentName, cleanDocumentName, fileNameFor } from "$lib/document.js";
-  import { zipFiles } from "$lib/export/zip.js";
-  import { describeCurve, curveToSvg } from "$lib/tools/curve.js";
-  import { loadFlag, saveFlag, loadText, saveText } from "$lib/settings.js";
-  import { shapeBox, translateShape, clampDelta, dragPointer, unionBox } from "$lib/tools/move.js";
-  import { atviseDocument } from "$lib/export/atvise.js";
+  import Toolbar from "$lib/core/components/Toolbar.svelte";
+  import ZoomControls from "$lib/core/components/ZoomControls.svelte";
+  import { Viewport } from "$lib/core/canvas/viewport.svelte.js";
+  import { MIN_GRID_PX } from "$lib/core/canvas/coords.js";
+  import { panZoom } from "$lib/core/canvas/panZoom.js";
+  import RoomLayer from "$lib/apps/floorplan/components/RoomLayer.svelte";
+  import CurveLayer from "$lib/apps/floorplan/components/CurveLayer.svelte";
+  import VertexHandles from "$lib/core/components/VertexHandles.svelte";
+  import ToolOptions from "$lib/editor/components/ToolOptions.svelte";
+  import RoomNameEditor from "$lib/apps/floorplan/components/RoomNameEditor.svelte";
+  import TextLayer from "$lib/core/components/TextLayer.svelte";
+  import TextEditor from "$lib/core/components/TextEditor.svelte";
+  import RichTextEditor from "$lib/core/components/RichTextEditor.svelte";
+  import PenPreview from "$lib/apps/floorplan/components/PenPreview.svelte";
+  import { maxCornerRadius } from "$lib/core/tools/polygon.js";
+  import { isRoomTool, roomKindLabel, roomLabelPoint, ROOM_STYLE } from "$lib/apps/floorplan/rooms.js";
+  import { History } from "$lib/core/history.svelte.js";
+  import { ROOM_CATEGORIES, defaultCategoryColors } from "$lib/apps/floorplan/categories.js";
+  import { maxDoorWidth, MIN_DOOR_WIDTH, DOOR_ELEMENTS, isDoorElement } from "$lib/apps/floorplan/doors.js";
+  import DoorLayer from "$lib/apps/floorplan/components/DoorLayer.svelte";
+  import ImageLayer from "$lib/core/components/ImageLayer.svelte";
+  import TransformFrame from "$lib/core/components/TransformFrame.svelte";
+  import { scaling } from "$lib/diagram/transform.js";
+  import { FURNISHABLE } from "$lib/apps/floorplan/populate.js";
+  import { FURNITURE, furnitureFits, newFurniture } from "$lib/apps/floorplan/furniture.js";
+  import ElementBar from "$lib/editor/components/ElementBar.svelte";
+  import PlacementGhost from "$lib/apps/floorplan/components/PlacementGhost.svelte";
+  import ThermostatLayer from "$lib/apps/floorplan/components/ThermostatLayer.svelte";
+  import WallLayer from "$lib/apps/floorplan/components/WallLayer.svelte";
+  import ActivityBar from "$lib/core/components/ActivityBar.svelte";
+  import CanvasNotice from "$lib/core/components/CanvasNotice.svelte";
+  import { WALL_STYLE } from "$lib/apps/floorplan/walls.js";
+  import { APPS, appById, GENERAL_TOOLS } from "$lib/apps/index.js";
+  import HydronicLayer from "$lib/diagram/components/HydronicLayer.svelte";
+  import PageTabs from "$lib/core/components/PageTabs.svelte";
+  import { HYDRONIC_ELEMENTS, HYDRONIC_STYLE, DEFAULT_MEDIUM, DEFAULT_PROTOCOL, DEFAULT_WIRE, familyOf, mediumOf, isHydronicType, isInlineType, isDeviceType, hydronicLabel } from "$lib/diagram/elements.js";
+  import { isBranch, branchParams, ownedPipes, branchPipeIds } from "$lib/diagram/branch.js";
+  import DeviceBatch from "$lib/apps/network/components/DeviceBatch.svelte";
+  import RegisterEditor from "$lib/apps/network/components/RegisterEditor.svelte";
+  import { readoutLayout, readoutSpec } from "$lib/diagram/readout.js";
+  import { endpointPose, manhattanRoute, computeRoutes, cornerLegs, routePoint, sameEnd, endOf } from "$lib/diagram/route.js";
+  import { loadAutosave, saveAutosave } from "$lib/core/document.js";
+  import { HYDRONIC_SPRITE, ICON_SIZES } from "$lib/diagram/iconSprite.js";
+  import { PGD_TAGS } from "$lib/apps/hydronic/pgd.js";
+  import { targetsOf } from "$lib/diagram/target.js";
+  import HeaderMenu from "$lib/core/components/HeaderMenu.svelte";
+  import Modal from "$lib/core/components/Modal.svelte";
+  import VariableList from "$lib/apps/hydronic/components/VariableList.svelte";
+  import VariablePanel from "$lib/apps/hydronic/components/VariablePanel.svelte";
+  import ArrangeMenu from "$lib/core/components/ArrangeMenu.svelte";
+  import VariableLinks from "$lib/apps/hydronic/components/VariableLinks.svelte";
+  import { elementSlots, fittingSlots, variableUsage } from "$lib/diagram/variables.js";
+  import ProjectCrumb from "$lib/core/components/ProjectCrumb.svelte";
+  import { recallFile, fileAccess } from "$lib/core/fileStore.js";
+  import IoView from "$lib/apps/hydronic/components/IoView.svelte";
+  import ConnectExport from "$lib/apps/network/components/ConnectExport.svelte";
+  import WiringActions from "$lib/apps/wiring/components/WiringActions.svelte";
+  import WiringList from "$lib/apps/wiring/components/WiringList.svelte";
+  import { emptyControl } from "$lib/apps/wiring/control.js";
+  import { emptyPower, powerPageCount, LOADS as POWER_LOADS, SIZING_DEFAULTS } from "$lib/apps/wiring/power.js";
+  import { PAPERS, DEFAULT_PAPER, paperOf, pageLeft, boardSize, sheetsSvg, sheetDate } from "$lib/diagram/electric/sheet.js";
+  import { editOf } from "$lib/apps/wiring/edits.js";
+  import { summarizeSelection } from "$lib/editor/selectionSummary.js";
+  import { junctionMedium } from "$lib/diagram/inherit.js";
+  import { alignToAnchor } from "$lib/diagram/alignEnd.js";
+  import { fittingLabel, namePlaces } from "$lib/diagram/fittingLabel.js";
+  import { elementLabel } from "$lib/diagram/label.js";
+  import { defaultDocumentName, cleanDocumentName } from "$lib/core/document.js";
+  import { loadFlag, saveFlag, loadText, saveText } from "$lib/core/settings.js";
+  import { shapeBox, unionBox } from "$lib/core/tools/move.js";
+  import { appear, addRow } from "$lib/core/transitions.js";
+  import { createCanvas } from "$lib/editor/canvas.js";
+  import { createHistory } from "$lib/editor/history.js";
+  import { createSelection } from "$lib/editor/selection.svelte.js";
+  import { createTransform } from "$lib/editor/transform.svelte.js";
+  import { createPointer } from "$lib/editor/pointer.svelte.js";
+  import { createClipboard } from "$lib/editor/clipboard.svelte.js";
+  import { createImages } from "$lib/editor/images.js";
+  import { createText } from "$lib/editor/text.svelte.js";
+  import { createPlacement } from "$lib/editor/placement.js";
+  import { createPages } from "$lib/editor/pages.svelte.js";
+  import { createProject } from "$lib/editor/project.svelte.js";
+  import { createKeyboard } from "$lib/editor/keyboard.js";
+  import { createExports } from "$lib/editor/exports.js";
+  import { createFloorplan } from "$lib/apps/floorplan/editor.svelte.js";
+  import { createPipes } from "$lib/diagram/editor/pipes.svelte.js";
+  import { createFittings } from "$lib/diagram/editor/fittings.svelte.js";
+  import { createElements } from "$lib/diagram/editor/elements.js";
+  import { createBranches } from "$lib/apps/hydronic/branches.svelte.js";
+  import { createVariableLinks } from "$lib/apps/hydronic/variableLinks.js";
+  import { createPgdExport } from "$lib/apps/hydronic/exports.js";
+  import { createNetwork } from "$lib/apps/network/editor.svelte.js";
+  import { createWiring } from "$lib/apps/wiring/editor.svelte.js";
+
+  const ctx = {
+    get ELBOW_ORDER(){ return ELBOW_ORDER; },
+    get canvasWidth(){ return canvasWidth; },
+    set canvasWidth(value){ canvasWidth = value; },
+    get canvasHeight(){ return canvasHeight; },
+    set canvasHeight(value){ canvasHeight = value; },
+    get gridSize(){ return gridSize; },
+    set gridSize(value){ gridSize = value; },
+    get majorEvery(){ return majorEvery; },
+    set majorEvery(value){ majorEvery = value; },
+    get showGrid(){ return showGrid; },
+    set showGrid(value){ showGrid = value; },
+    get snapToGrid(){ return snapToGrid; },
+    set snapToGrid(value){ snapToGrid = value; },
+    get gridMinorColor(){ return gridMinorColor; },
+    set gridMinorColor(value){ gridMinorColor = value; },
+    get gridMajorColor(){ return gridMajorColor; },
+    set gridMajorColor(value){ gridMajorColor = value; },
+    get canvasFill(){ return canvasFill; },
+    set canvasFill(value){ canvasFill = value; },
+    get lineColor(){ return lineColor; },
+    set lineColor(value){ lineColor = value; },
+    get lineWidth(){ return lineWidth; },
+    set lineWidth(value){ lineWidth = value; },
+    get rectStroke(){ return rectStroke; },
+    set rectStroke(value){ rectStroke = value; },
+    get rectFill(){ return rectFill; },
+    set rectFill(value){ rectFill = value; },
+    get rectFilled(){ return rectFilled; },
+    set rectFilled(value){ rectFilled = value; },
+    get roomFill(){ return roomFill; },
+    set roomFill(value){ roomFill = value; },
+    get roomStroke(){ return roomStroke; },
+    set roomStroke(value){ roomStroke = value; },
+    get roomLabelColor(){ return roomLabelColor; },
+    set roomLabelColor(value){ roomLabelColor = value; },
+    get floorFill(){ return floorFill; },
+    set floorFill(value){ floorFill = value; },
+    get floorStroke(){ return floorStroke; },
+    set floorStroke(value){ floorStroke = value; },
+    get categoryColors(){ return categoryColors; },
+    set categoryColors(value){ categoryColors = value; },
+    get furnitureOpacity(){ return furnitureOpacity; },
+    set furnitureOpacity(value){ furnitureOpacity = value; },
+    get floorWallWidth(){ return floorWallWidth; },
+    set floorWallWidth(value){ floorWallWidth = value; },
+    get roomWallWidth(){ return roomWallWidth; },
+    set roomWallWidth(value){ roomWallWidth = value; },
+    get wallStroke(){ return wallStroke; },
+    set wallStroke(value){ wallStroke = value; },
+    get wallWidth(){ return wallWidth; },
+    set wallWidth(value){ wallWidth = value; },
+    get roomStyle(){ return roomStyle; },
+    get app(){ return app; },
+    set app(value){ app = value; },
+    get currentApp(){ return currentApp; },
+    get tool(){ return tool; },
+    set tool(value){ tool = value; },
+    get elbow(){ return elbow; },
+    set elbow(value){ elbow = value; },
+    get shapes(){ return shapes; },
+    set shapes(value){ shapes = value; },
+    get draft(){ return draft; },
+    set draft(value){ draft = value; },
+    get cursor(){ return cursor; },
+    set cursor(value){ cursor = value; },
+    get aim(){ return aim; },
+    set aim(value){ aim = value; },
+    get selectedId(){ return selectedId; },
+    set selectedId(value){ selectedId = value; },
+    get nextId(){ return nextId; },
+    set nextId(value){ nextId = value; },
+    get wiringPaper(){ return wiringPaper; },
+    set wiringPaper(value){ wiringPaper = value; },
+    get paper(){ return paper; },
+    get electricBoard(){ return electricBoard; },
+    get boardWidth(){ return boardWidth; },
+    get boardHeight(){ return boardHeight; },
+    get svgEl(){ return svgEl; },
+    set svgEl(value){ svgEl = value; },
+    get drawing(){ return drawing; },
+    get viewport(){ return viewport; },
+    get sheet(){ return sheet; },
+    set sheet(value){ sheet = value; },
+    get sheetLast(){ return sheetLast; },
+    get sheetShown(){ return sheetShown; },
+    get sheetRect(){ return sheetRect; },
+    get history(){ return history; },
+    get editKey(){ return editKey; },
+    set editKey(value){ editKey = value; },
+    get selectedIds(){ return selectedIds; },
+    set selectedIds(value){ selectedIds = value; },
+    get selectedPoints(){ return selectedPoints; },
+    set selectedPoints(value){ selectedPoints = value; },
+    get selectedEdges(){ return selectedEdges; },
+    set selectedEdges(value){ selectedEdges = value; },
+    get selectionIds(){ return selectionIds; },
+    get selectedShapes(){ return selectedShapes; },
+    get selectedShape(){ return selectedShape; },
+    get selectedRoom(){ return selectedRoom; },
+    get activePoints(){ return activePoints; },
+    get activeEdges(){ return activeEdges; },
+    get branchEditing(){ return branchEditing; },
+    set branchEditing(value){ branchEditing = value; },
+    get branchSelected(){ return branchSelected; },
+    get singleBar(){ return singleBar; },
+    get transformBox(){ return transformBox; },
+    get arrangeMenu(){ return arrangeMenu; },
+    set arrangeMenu(value){ arrangeMenu = value; },
+    get targetChoice(){ return targetChoice; },
+    set targetChoice(value){ targetChoice = value; },
+    get shapeTarget(){ return shapeTarget; },
+    get marquee(){ return marquee; },
+    set marquee(value){ marquee = value; },
+    get imageSources(){ return imageSources; },
+    set imageSources(value){ imageSources = value; },
+    get imageInput(){ return imageInput; },
+    set imageInput(value){ imageInput = value; },
+    get CLIPBOARD_PREFIX(){ return CLIPBOARD_PREFIX; },
+    get clipboardShapes(){ return clipboardShapes; },
+    set clipboardShapes(value){ clipboardShapes = value; },
+    get clipboardToken(){ return clipboardToken; },
+    set clipboardToken(value){ clipboardToken = value; },
+    get pasteCount(){ return pasteCount; },
+    set pasteCount(value){ pasteCount = value; },
+    get clipboardFurniture(){ return clipboardFurniture; },
+    set clipboardFurniture(value){ clipboardFurniture = value; },
+    get pointer(){ return pointer; },
+    set pointer(value){ pointer = value; },
+    get pasteKey(){ return pasteKey; },
+    set pasteKey(value){ pasteKey = value; },
+    get clipboardFittings(){ return clipboardFittings; },
+    set clipboardFittings(value){ clipboardFittings = value; },
+    get selectedParts(){ return selectedParts; },
+    set selectedParts(value){ selectedParts = value; },
+    get partGroup(){ return partGroup; },
+    get furnitureGroup(){ return furnitureGroup; },
+    get doorGroup(){ return doorGroup; },
+    get doorsPlaced(){ return doorsPlaced; },
+    set doorsPlaced(value){ doorsPlaced = value; },
+    get furnishedRooms(){ return furnishedRooms; },
+    set furnishedRooms(value){ furnishedRooms = value; },
+    get fileNotice(){ return fileNotice; },
+    set fileNotice(value){ fileNotice = value; },
+    get placing(){ return placing; },
+    set placing(value){ placing = value; },
+    get placement(){ return placement; },
+    get pipeDraft(){ return pipeDraft; },
+    set pipeDraft(value){ pipeDraft = value; },
+    get pipeMedium(){ return pipeMedium; },
+    set pipeMedium(value){ pipeMedium = value; },
+    get hydronicLibrary(){ return hydronicLibrary; },
+    set hydronicLibrary(value){ hydronicLibrary = value; },
+    get nodePrefix(){ return nodePrefix; },
+    set nodePrefix(value){ nodePrefix = value; },
+    get pgdPrefix(){ return pgdPrefix; },
+    set pgdPrefix(value){ pgdPrefix = value; },
+    get exportTargets(){ return exportTargets; },
+    set exportTargets(value){ exportTargets = value; },
+    get pgdFloat(){ return pgdFloat; },
+    set pgdFloat(value){ pgdFloat = value; },
+    get freshPipes(){ return freshPipes; },
+    set freshPipes(value){ freshPipes = value; },
+    get selectedFitting(){ return selectedFitting; },
+    set selectedFitting(value){ selectedFitting = value; },
+    get extraFittings(){ return extraFittings; },
+    set extraFittings(value){ extraFittings = value; },
+    get hydronicStyle(){ return hydronicStyle; },
+    get shapeIndex(){ return shapeIndex; },
+    get pipeRoutes(){ return pipeRoutes; },
+    get snapRadius(){ return snapRadius; },
+    get hoverRadius(){ return hoverRadius; },
+    get pipeAim(){ return pipeAim; },
+    get pipeCursor(){ return pipeCursor; },
+    get portTarget(){ return portTarget; },
+    get pipeThickness(){ return pipeThickness; },
+    set pipeThickness(value){ pipeThickness = value; },
+    get textStyle(){ return textStyle; },
+    set textStyle(value){ textStyle = value; },
+    get editingTextId(){ return editingTextId; },
+    set editingTextId(value){ editingTextId = value; },
+    get editingText(){ return editingText; },
+    get describingId(){ return describingId; },
+    set describingId(value){ describingId = value; },
+    get describing(){ return describing; },
+    get activeFitting(){ return activeFitting; },
+    get fittingGroup(){ return fittingGroup; },
+    get readoutBoxes(){ return readoutBoxes; },
+    get fittingNames(){ return fittingNames; },
+    get networkSelection(){ return networkSelection; },
+    get registerDevices(){ return registerDevices; },
+    get sheetMeta(){ return sheetMeta; },
+    get turnable(){ return turnable; },
+    get renamingId(){ return renamingId; },
+    set renamingId(value){ renamingId = value; },
+    get renamingRoom(){ return renamingRoom; },
+    get renamingElementId(){ return renamingElementId; },
+    set renamingElementId(value){ renamingElementId = value; },
+    get renamingElement(){ return renamingElement; },
+    get renamingFitting(){ return renamingFitting; },
+    set renamingFitting(value){ renamingFitting = value; },
+    get renamingFittingEntry(){ return renamingFittingEntry; },
+    get documents(){ return documents; },
+    set documents(value){ documents = value; },
+    get variableNames(){ return variableNames; },
+    set variableNames(value){ variableNames = value; },
+    get PAGED_APPS(){ return PAGED_APPS; },
+    get pageSets(){ return pageSets; },
+    set pageSets(value){ pageSets = value; },
+    get ioPoints(){ return ioPoints; },
+    set ioPoints(value){ ioPoints = value; },
+    get ioOthers(){ return ioOthers; },
+    set ioOthers(value){ ioOthers = value; },
+    get ioOpen(){ return ioOpen; },
+    set ioOpen(value){ ioOpen = value; },
+    get ioVisible(){ return ioVisible; },
+    get wiringListVisible(){ return wiringListVisible; },
+    get powerList(){ return powerList; },
+    set powerList(value){ powerList = value; },
+    get controlList(){ return controlList; },
+    set controlList(value){ controlList = value; },
+    get documentName(){ return documentName; },
+    set documentName(value){ documentName = value; },
+    get saveDialog(){ return saveDialog; },
+    set saveDialog(value){ saveDialog = value; },
+    get documentHash(){ return documentHash; },
+    get savedHash(){ return savedHash; },
+    set savedHash(value){ savedHash = value; },
+    get unsaved(){ return unsaved; },
+    get autosaveFile(){ return autosaveFile; },
+    set autosaveFile(value){ autosaveFile = value; },
+    get fileWriting(){ return fileWriting; },
+    set fileWriting(value){ fileWriting = value; },
+    get projectTitle(){ return projectTitle; },
+    get fileHandle(){ return fileHandle; },
+    set fileHandle(value){ fileHandle = value; },
+    get fileAccessState(){ return fileAccessState; },
+    set fileAccessState(value){ fileAccessState = value; },
+    get canPickFiles(){ return canPickFiles; },
+    get showDisplaySettings(){ return showDisplaySettings; },
+    set showDisplaySettings(value){ showDisplaySettings = value; },
+    get draggingVariable(){ return draggingVariable; },
+    set draggingVariable(value){ draggingVariable = value; },
+    get linkHover(){ return linkHover; },
+    set linkHover(value){ linkHover = value; },
+    get linkTarget(){ return linkTarget; },
+    get atviseDialog(){ return atviseDialog; },
+    set atviseDialog(value){ atviseDialog = value; }
+  };
+  const { fitContent, zoomToSelection, manhattan, rectBetween, pathFor, describe, commitFields, showFileNotice, focusName, readHex } = Object.assign(ctx, createCanvas(ctx));
+  const { redo, undo } = Object.assign(ctx, createHistory(ctx));
+  const { shapeById, selectShape, selectionUnits, unitBox, groupSelection, ungroupSelection, commonValue, reorderSelection, openArrange, alignSelection, distributeSelection, lockSelection, pickTool, deleteSelected, removeShape } = Object.assign(ctx, createSelection(ctx));
+  const { rotateSelection, flipSelection } = Object.assign(ctx, createTransform(ctx));
+  const { handleMove, handleLeave, handleDown, commit } = Object.assign(ctx, createPointer(ctx));
+  const { handleCopy, handleCut, handlePaste } = Object.assign(ctx, createClipboard(ctx));
+  const { openImagePicker, readImage, fitImage, setImageOpacity } = Object.assign(ctx, createImages(ctx));
+  const { commitText, cancelText, editSelectedText, setTextStyle } = Object.assign(ctx, createText(ctx));
+  const { startPlacing, rotatePlacing } = Object.assign(ctx, createPlacement(ctx));
+  const { ensurePages, pageShapes, selectPage, addPage, movePage, duplicatePage, renamePage, deletePage, switchApp } = Object.assign(ctx, createPages(ctx));
+  const { confirmSave, currentDocument, applyDocument, projectHash, autosaveToFile, resumeAutosave, setAutosaveFile, saveProject, saveProjectAs, downloadProject, importPages, newProject, openDrawing, renameProject, clearAll } = Object.assign(ctx, createProject(ctx));
+  const { handleKeydown } = Object.assign(ctx, createKeyboard(ctx));
+  const { startExport, confirmAtvise } = Object.assign(ctx, createExports(ctx));
+  const { cornerCurved, edgeHiddenState, hideEdges, setShapeKind, showRoomNames, setLabelSize, setCornerRadius, pointGroup, thermostatState, setThermostat, resolvePart, partBox, removeParts, commonCategory, setCategory, placeDoors, updateDoor, removeDoor, furnishSelected, clearFurniture, furnishOffices, rotateFurniture, removeFurniture, roomAt, snapFurnitureToWall, doorPlacement, setRoomName, commitRename, commitRoomName } = Object.assign(ctx, createFloorplan(ctx));
+  const { routeBox, pipeTargetAt, setPipeWidth, setMedium, reversePipes, tidyPipes, pipeLayer } = Object.assign(ctx, createPipes(ctx));
+  const { setFittingReadout, setMeterReadout, resetReadoutPosition, setFittingName, setReadoutScale, setFittingScale, setFittingNameSize, turnFitting, flipFitting, commitFittingRename } = Object.assign(ctx, createFittings(ctx));
+  const { selectedElements, setElementSize, toggleTankProbe, setNameSize, centred, resetElementSize, rotateElements, hydronicPlacement, commitElementRename } = Object.assign(ctx, createElements(ctx));
+  const { setBranchName, setBranchParam } = Object.assign(ctx, createBranches(ctx));
+  const { addVariables, linkVariable, variableOver, variableLeave, variableDrop } = Object.assign(ctx, createVariableLinks(ctx));
+  const { copyPgd, downloadPgdImages } = Object.assign(ctx, createPgdExport(ctx));
+  const { commitDescription, connectSelected, saveRegisters, addDevices, setDeviceParam } = Object.assign(ctx, createNetwork(ctx));
+  const { showSheet, drawPowerPages, listFields, editFromDrawing, resetFromDrawing, generateWiring, printWiring, exportDxf } = Object.assign(ctx, createWiring(ctx));
 
   const ELBOWS = [
     { id: "h", label: "Horizontal first" },
@@ -179,33 +447,9 @@
   let showMinorGrid = $derived(showGrid && gridSize >= 6);
   let drawing = $derived(tool !== "select" && tool !== "pan");
 
-  function clamp(value, max){
-    return Math.min(max, Math.max(0, value));
-  }
-
-  function snapValue(value, max){
-    const stepped = snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value);
-    return clamp(stepped, max);
-  }
-
-  function snapPoint(point){
-    return { x: snapValue(point.x, boardWidth), y: snapValue(point.y, boardHeight) };
-  }
-
-  function toCanvas(event){
-    const matrix = svgEl?.getScreenCTM();
-    if (!matrix) return null;
-    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
-    return viewport.toWorld({ x: point.x, y: point.y });
-  }
-
   const viewport = new Viewport();
   let sidebarOpen = $state(false);
   let fitted = false;
-
-  function fitContent(){
-    viewport.fit(sheetRect ?? { x: 0, y: 0, width: boardWidth, height: boardHeight });
-  }
 
   let sheet = $state(0);
   let sheetLast = $derived(electricBoard ? electricBoard.pages - 1 : 0);
@@ -213,50 +457,11 @@
   let sheetRect = $derived(electricBoard ? { x: pageLeft(sheetShown, paper), y: 0, width: paper.width, height: paper.height } : null);
   let sheetTotal = $derived(electricBoard ? Math.max(electricBoard.used, sheetShown + 1, 1) : 1);
 
-  function showSheet(index){
-    if (!electricBoard) return;
-    sheet = Math.max(0, Math.min(sheetLast, index));
-    viewport.fit({ x: pageLeft(sheet, paper), y: 0, width: paper.width, height: paper.height });
-  }
-
-  function zoomToSelection(){
-    const box = transformBox;
-    if (!box) return;
-    viewport.fit({ x: box.x, y: box.y, width: Math.max(box.width, 1), height: Math.max(box.height, 1) }, Math.min(80, Math.min(viewport.width, viewport.height) * 0.12));
-  }
-
   $effect(() => {
     if (fitted || viewport.width === 0 || viewport.height === 0) return;
     fitted = true;
     fitContent();
   });
-
-  function manhattan(from, to, mode){
-    if (from.x === to.x || from.y === to.y) return [from, to];
-
-    if (mode === "v") return [from, { x: from.x, y: to.y }, to];
-
-    if (mode === "zh") {
-      const x = snapValue((from.x + to.x) / 2, boardWidth);
-      return [from, { x, y: from.y }, { x, y: to.y }, to];
-    }
-
-    if (mode === "zv") {
-      const y = snapValue((from.y + to.y) / 2, boardHeight);
-      return [from, { x: from.x, y }, { x: to.x, y }, to];
-    }
-
-    return [from, { x: to.x, y: from.y }, to];
-  }
-
-  function rectBetween(from, to){
-    return {
-      x: Math.min(from.x, to.x),
-      y: Math.min(from.y, to.y),
-      width: Math.abs(to.x - from.x),
-      height: Math.abs(to.y - from.y)
-    };
-  }
 
   let ghost = $derived.by(() => {
     if (!draft || !cursor) return null;
@@ -266,121 +471,6 @@
     }
     return { kind: "rect", ...rectBetween(draft.start, cursor) };
   });
-
-  function pathFor(points){
-    return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-  }
-
-  function traceLength(points){
-    let total = 0;
-    for (let index = 1; index < points.length; index += 1) {
-      total += Math.abs(points[index].x - points[index - 1].x);
-      total += Math.abs(points[index].y - points[index - 1].y);
-    }
-    return total;
-  }
-
-  function describe(shape){
-    if (shape.kind === "wall") return describeWall(shape);
-    if (shape.kind === "equipment" || shape.kind === "pipe") return describeHydronic(shape);
-    if (isRoomShape(shape)) return describeRoom(shape);
-    if (shape.kind === "curve") return describeCurve(shape);
-    if (shape.kind === "image") return `Reference image · ${Math.round(shape.opacity * 100)}% opacity`;
-    if (shape.kind === "text") return describeText(shape);
-    if (shape.kind === "line") {
-      const start = shape.points[0];
-      const end = shape.points[shape.points.length - 1];
-      return `${start.x},${start.y} → ${end.x},${end.y} · ${traceLength(shape.points)} long`;
-    }
-    return `${shape.x},${shape.y} · ${shape.width} × ${shape.height}`;
-  }
-
-  function handleMove(event){
-    pointer = toCanvas(event);
-    if (!drawing) return;
-    const raw = toCanvas(event);
-    aim = raw;
-    if (raw) cursor = snapPoint(raw);
-    if (raw && isRoomTool(tool)) cursor = roomPoint(raw, event);
-    if (raw && tool === "curve") cursor = roomPoint(raw, event);
-  }
-
-  function handleLeave(){
-    cursor = null;
-    pointer = null;
-  }
-
-  function commitFields(){
-    const active = document.activeElement;
-    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement) active.blur();
-  }
-
-  function handleDown(event){
-    if (event.button !== 0) return;
-
-    if (!drawing) {
-      if (tool === "select" && beginMove(event)) return;
-      if (tool === "select" && beginMarquee(event)) return;
-      branchEditing = false;
-      selectedId = null;
-      return;
-    }
-
-    const raw = toCanvas(event);
-    if (!raw) return;
-    const point = snapPoint(raw);
-    cursor = point;
-
-    if (tool === "text") {
-      placeText(point);
-      return;
-    }
-
-    if (tool === "place") {
-      placeElement(event);
-      return;
-    }
-
-    if (tool === "pipe") {
-      pipeClick(event);
-      return;
-    }
-
-    if (isRoomTool(tool)) {
-      roomClick(roomPoint(raw, event));
-      return;
-    }
-
-    if (tool === "curve") {
-      penDown(event, roomPoint(raw, event));
-      return;
-    }
-
-    if (!draft) {
-      draft = { kind: tool, start: point };
-      return;
-    }
-
-    commit(point);
-  }
-
-  function commit(point){
-    if (draft.kind === "line") {
-      if (point.x === draft.start.x && point.y === draft.start.y) {
-        draft = null;
-        return;
-      }
-      shapes.push({ id: nextId++, kind: "line", points: manhattan(draft.start, point, elbow) });
-    } else {
-      const box = rectBetween(draft.start, point);
-      if (box.width === 0 || box.height === 0) {
-        draft = null;
-        return;
-      }
-      shapes.push({ id: nextId++, kind: "rect", ...box });
-    }
-    draft = null;
-  }
 
   const history = new History();
   let editKey = null;
@@ -393,33 +483,9 @@
     });
   });
 
-  function restore(state){
-    if (state === null) return;
-    shapes = JSON.parse(state);
-    draft = null;
-  }
-
-  function redo(){
-    restore(history.redo());
-  }
-
-  function round2(value){
-    return Math.round(value * 100) / 100;
-  }
-
-  function constrainAngle(vector){
-    const length = Math.hypot(vector.x, vector.y);
-    const angle = Math.round(Math.atan2(vector.y, vector.x) / (Math.PI / 4)) * (Math.PI / 4);
-    return { x: Math.cos(angle) * length, y: Math.sin(angle) * length };
-  }
-
   let selectedIds = $state([]);
   let selectedPoints = $state([]);
   let selectedEdges = $state([]);
-
-  function shapeById(id){
-    return shapes.find((shape) => shape.id === id);
-  }
 
   let selectionIds = $derived.by(() => {
     if (selectedId === null) return [];
@@ -434,108 +500,6 @@
   let editableShapes = $derived(tool === "select"
     ? selectedShapes.filter((shape) => ["floor", "room", "curve", "wall"].includes(shape.kind) && (!shape.groupId || selectionIds.length === 1))
     : []);
-
-  function sameKey(a, b){
-    return a.id === b.id && a.index === b.index;
-  }
-
-  function toggleKey(list, key){
-    return list.some((entry) => sameKey(entry, key)) ? list.filter((entry) => !sameKey(entry, key)) : [...list, key];
-  }
-
-  function clearSubSelection(){
-    selectedPoints = [];
-    selectedEdges = [];
-    selectedParts = [];
-    selectedFitting = null;
-    extraFittings = [];
-  }
-
-  function clearShapeSubSelection(){
-    selectedPoints = [];
-    selectedEdges = [];
-    selectedParts = [];
-  }
-
-  function withGroups(ids){
-    const groups = new Set(ids.map((id) => shapeById(id)?.groupId).filter(Boolean));
-    const members = shapes.filter((shape) => groups.has(shape.groupId) && !shape.locked).map((shape) => shape.id);
-    return [...new Set([...ids, ...members])];
-  }
-
-  function selectShape(id, additive = false, deep = false){
-    const members = deep ? [id] : withGroups([id]);
-    selectedParts = [];
-    if (!additive) {
-      selectedIds = members;
-      selectedId = id;
-      clearSubSelection();
-      return true;
-    }
-    if (selectionIds.includes(id)) {
-      selectedIds = selectionIds.filter((entry) => !members.includes(entry));
-      selectedId = selectedIds[selectedIds.length - 1] ?? null;
-      return false;
-    }
-    selectedIds = [...selectionIds, ...members.filter((entry) => !selectionIds.includes(entry))];
-    selectedId = id;
-    return true;
-  }
-
-  function selectionUnits(){
-    const units = new Map();
-    for (const shape of selectedShapes) {
-      const grouped = shape.groupId && selectedShapes.filter((entry) => entry.groupId === shape.groupId).length > 1;
-      const key = grouped ? `g${shape.groupId}` : `s${shape.id}`;
-      if (!units.has(key)) units.set(key, []);
-      units.get(key).push(shape);
-    }
-    const chosen = new Set(selectionIds);
-    return [...units.values()].map((members) => {
-      const owned = branchPipeIds(shapes, members.filter(isBranch).map((shape) => shape.id)).filter((id) => !chosen.has(id)).map(shapeById);
-      return owned.length ? [...members, ...owned] : members;
-    });
-  }
-
-  function memberBox(shape){
-    return shape.kind === "pipe" ? routeBox(shape) : shapeBox(shape);
-  }
-
-  function unitBox(members){
-    const boxes = members.map(memberBox).filter(Boolean);
-    return boxes.length ? unionBox(boxes) : shapeBox(members[0]);
-  }
-
-  function groupSelection(){
-    if (selectionUnits().length < 2) return;
-    const groupId = nextId++;
-    for (const shape of selectedShapes) shape.groupId = groupId;
-  }
-
-  function ungroupSelection(){
-    for (const shape of selectedShapes) delete shape.groupId;
-    const counts = new Map();
-    for (const shape of shapes) if (shape.groupId) counts.set(shape.groupId, (counts.get(shape.groupId) ?? 0) + 1);
-    for (const shape of shapes) if (shape.groupId && counts.get(shape.groupId) < 2) delete shape.groupId;
-  }
-
-  function selectAll(){
-    if (shapes.length === 0) return;
-    selectedIds = shapes.filter((shape) => !shape.locked).map((shape) => shape.id);
-    selectedId = selectedIds[selectedIds.length - 1] ?? null;
-    clearSubSelection();
-    const fittings = shapes.filter((shape) => shape.kind === "pipe" && !shape.locked)
-      .flatMap((pipe) => (pipe.fittings ?? []).map((fitting) => ({ pipeId: pipe.id, fittingId: fitting.id })));
-    if (fittings.length) {
-      selectedFitting = fittings[fittings.length - 1];
-      extraFittings = fittings.slice(0, -1);
-    }
-  }
-
-  function cornerCurved(shape, index){
-    const count = shape.points.length;
-    return segmentCurved(shape, (index - 1 + count) % count) || segmentCurved(shape, index);
-  }
 
   let selectedPointCount = $derived(pointGroup().length);
   let unitCount = $derived(selectionUnits().length);
@@ -587,135 +551,6 @@
     };
   });
 
-  function commonValue(list){
-    return list.length && list.every((value) => value === list[0]) ? list[0] : null;
-  }
-
-  function edgeHiddenState(){
-    const keys = activeEdges.filter((key) => ["room", "floor"].includes(shapeById(key.id)?.kind));
-    const hidden = keys.filter((key) => shapeById(key.id).hiddenEdges?.includes(key.index)).length;
-    return hidden === 0 ? "none" : hidden === keys.length ? "all" : "mixed";
-  }
-
-  function edgeEnds(shape, index){
-    return [shape.points[index], shape.points[(index + 1) % shape.points.length]];
-  }
-
-  function twinEdges(shape, index){
-    const [a, b] = edgeEnds(shape, index);
-    const twins = [];
-    for (const other of shapes) {
-      if (other === shape || other.kind !== "room" || shape.kind !== "room") continue;
-      other.points.forEach((_, edge) => {
-        const [c, d] = edgeEnds(other, edge);
-        if ((samePoint(a, c) && samePoint(b, d)) || (samePoint(a, d) && samePoint(b, c))) twins.push({ shape: other, index: edge });
-      });
-    }
-    return twins;
-  }
-
-  function setEdgeHidden(shape, index, hide){
-    const hidden = new Set(shape.hiddenEdges ?? []);
-    if (hide) hidden.add(index);
-    else hidden.delete(index);
-    if (hidden.size) shape.hiddenEdges = [...hidden].sort((a, b) => a - b);
-    else delete shape.hiddenEdges;
-  }
-
-  function hideEdges(hide){
-    for (const key of activeEdges) {
-      const shape = shapeById(key.id);
-      if (shape?.kind !== "room" && shape?.kind !== "floor") continue;
-      setEdgeHidden(shape, key.index, hide);
-      for (const twin of twinEdges(shape, key.index)) setEdgeHidden(twin.shape, twin.index, hide);
-    }
-  }
-
-  function setShapeKind(kind){
-    for (const shape of selectedShapes) {
-      if (shape.kind === kind || (shape.kind !== "floor" && shape.kind !== "room")) continue;
-      shape.kind = kind;
-      if (kind === "room" && !shape.name) shape.name = nextRoomName(shapes);
-    }
-  }
-
-  function showRoomNames(show){
-    for (const shape of selectedShapes) {
-      if (shape.kind !== "room") continue;
-      if (show) delete shape.hideName;
-      else shape.hideName = true;
-    }
-  }
-
-  function setLabelSize(value){
-    editKey = "label-size";
-    for (const shape of selectedShapes) if (shape.kind === "room") shape.labelSize = value;
-  }
-
-  function setCornerRadius(value){
-    editKey = "radius";
-    for (const key of activePoints) {
-      const shape = shapeById(key.id);
-      if (shape.kind !== "floor" && shape.kind !== "room" && !(shape.kind === "wall" && !shape.open)) continue;
-      if (cornerCurved(shape, key.index)) continue;
-      if (!shape.radii) shape.radii = shape.points.map(() => 0);
-      shape.radii[key.index] = Math.min(value, maxCornerRadius(shape.points, key.index));
-    }
-  }
-
-  function ensureHandles(shape){
-    if (!shape.handles) shape.handles = shape.points.map(() => null);
-  }
-
-  function pointGroup(){
-    const keys = [...activePoints];
-    for (const edge of activeEdges) {
-      const shape = shapeById(edge.id);
-      for (const index of [edge.index, (edge.index + 1) % shape.points.length]) {
-        const key = { id: edge.id, index };
-        if (!keys.some((entry) => sameKey(entry, key))) keys.push(key);
-      }
-    }
-    return keys.map((key) => {
-      const shape = shapeById(key.id);
-      return { shape, index: key.index, original: { x: shape.points[key.index].x, y: shape.points[key.index].y } };
-    });
-  }
-
-  function snapCandidates(group){
-    const skip = new Set(group.map((entry) => `${entry.shape.id}:${entry.index}`));
-    const candidates = [];
-    for (const shape of shapes) {
-      if (!isRoomShape(shape)) continue;
-      shape.points.forEach((point, index) => {
-        if (!skip.has(`${shape.id}:${index}`)) candidates.push(point);
-      });
-    }
-    return candidates;
-  }
-
-  function applyPointDelta(group, dx, dy){
-    const delta = clampDelta(polygonBounds(group.map((entry) => entry.original)), dx, dy, boardWidth, boardHeight);
-    const byShape = new Map();
-    for (const entry of group) {
-      if (!byShape.has(entry.shape)) byShape.set(entry.shape, entry.shape.points.map((point) => ({ x: point.x, y: point.y })));
-      byShape.get(entry.shape)[entry.index] = { x: round2(entry.original.x + delta.dx), y: round2(entry.original.y + delta.dy) };
-    }
-    for (const [shape, points] of byShape) {
-      if (shape.kind !== "curve" && !shape.open && polygonSelfIntersects(outlinePoints({ ...shape, points }))) return false;
-    }
-    for (const [shape, points] of byShape) shape.points = points;
-    return true;
-  }
-
-  let lastPress = { id: null, time: 0 };
-  let lastFittingPress = { key: null, time: 0 };
-
-  function routeBox(pipe){
-    const route = pipeRoutes.get(pipe.id);
-    return route?.length ? polygonBounds(route) : null;
-  }
-
   let branchEditing = $state(false);
   let branchSelected = $derived(selectedShapes.some(isBranch));
   let singleBar = $derived(selectedShapes.length === 1 && selectedShapes[0].kind === "equipment" && HYDRONIC_ELEMENTS[selectedShapes[0].type]?.bar ? selectedShapes[0] : null);
@@ -732,181 +567,7 @@
     return boxes.length ? unionBox(boxes) : null;
   });
 
-  function transformGroup(){
-    const carried = [...new Set([...selectionIds, ...branchPipeIds(shapes, selectionIds)])];
-    const ids = [...new Set([...carried, ...ridingPipes(shapes, carried)])];
-    const entries = ids.map(shapeById).filter(Boolean).map((shape) => ({ shape, original: $state.snapshot(shape) }));
-    const elements = new Map(entries.filter((entry) => entry.shape.kind === "equipment").map((entry) => [entry.shape.id, entry.original]));
-    const ends = [];
-    for (const pipe of shapes) {
-      if (pipe.kind !== "pipe") continue;
-      for (const key of ["from", "to"]) {
-        if (pipe[key]?.id !== undefined && elements.has(pipe[key].id)) ends.push({ pipe, key, end: $state.snapshot(pipe[key]), element: elements.get(pipe[key].id) });
-      }
-    }
-    return { entries, ends };
-  }
-
-  function onGrid(shape){
-    const spec = HYDRONIC_ELEMENTS[shape.type];
-    if (!snapToGrid || shape.kind !== "equipment" || !spec || spec.branch || spec.electric || spec.bar || spec.noPorts) return {};
-    const width = Math.max(gridSize, Math.round(shape.width / gridSize) * gridSize);
-    const height = Math.max(gridSize, Math.round(shape.height / gridSize) * gridSize);
-    const cx = Math.round((shape.x + shape.width / 2) / gridSize) * gridSize;
-    const cy = Math.round((shape.y + shape.height / 2) / gridSize) * gridSize;
-    return { width, height, x: cx - width / 2, y: cy - height / 2 };
-  }
-
-  function applyTransformation({ entries, ends }, t){
-    for (const entry of entries) {
-      Object.assign(entry.shape, transformShape(entry.original, t));
-      if (t.kind === "scale") Object.assign(entry.shape, onGrid(entry.shape));
-    }
-    for (const item of ends) item.pipe[item.key] = transformPort(item.end, item.element, shapeById(item.end.id), t);
-  }
-
-  function scaleBranchFittings({ entries }, factor){
-    const branches = new Set(entries.filter((entry) => isBranch(entry.original)).map((entry) => entry.original.id));
-    const round = (value) => Math.round(value * 1000) / 1000;
-    for (const { shape, original } of entries) {
-      if (shape.kind !== "pipe" || !branches.has(original.branchOf)) continue;
-      if (original.width) shape.width = round(original.width * factor);
-      if (!original.fittings) continue;
-      shape.fittings = original.fittings.map((fitting) => ({
-        ...fitting,
-        scale: round((fitting.scale ?? 1) * factor),
-        ...(fitting.readoutOffset ? { readoutOffset: { x: round(fitting.readoutOffset.x * factor), y: round(fitting.readoutOffset.y * factor) } } : {}),
-        ...(readoutSpec(fitting.type) ? { readoutScale: round(readoutScaleOf(fitting) * factor) } : {})
-      }));
-    }
-  }
-
-  function scaleRatio(value, start, anchor){
-    const base = start - anchor;
-    if (Math.abs(base) < 1e-6) return 1;
-    return Math.max(0.05, (value - anchor) / base);
-  }
-
-  function beginTransform(event, handle){
-    const box = transformBox;
-    if (!box) return;
-    if (handle !== "rotate" && singleBar) {
-      beginBarScale(event, singleBar, handle);
-      return;
-    }
-    if (handle !== "rotate" && handle.length === 2 && selectedShapes.length === 1 && selectedShapes[0].kind === "equipment" && !isBranch(selectedShapes[0])) {
-      beginElementScale(event, selectedShapes[0], handle);
-      return;
-    }
-    const start = toCanvas(event);
-    if (!start) return;
-    const parts = !selectedShapes.length ? partEntries() : null;
-    const group = parts ? null : transformGroup();
-    const apply = (t) => parts ? transformParts(parts, t) : applyTransformation(group, t);
-    const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    const rigid = !!group?.entries.some((entry) => entry.shape.kind === "equipment" || entry.shape.kind === "pipe");
-    const textOnly = !!group?.entries.length && group.entries.every((entry) => entry.shape.kind === "text");
-    const groupIds = new Set((group?.entries ?? []).map((entry) => entry.shape.id));
-    const keepFittings = holdFittings(groupIds);
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        if (handle === "rotate") {
-          const raw = (Math.atan2(point.y - center.y, point.x - center.x) - Math.atan2(start.y - center.y, start.x - center.x)) * 180 / Math.PI;
-          const step = rigid ? 90 : next.shiftKey ? 15 : 1;
-          apply(rotating(center, Math.round(raw / step) * step));
-          keepFittings();
-          return;
-        }
-        const anchor = {
-          x: handle.includes("w") ? box.x + box.width : handle.includes("e") ? box.x : center.x,
-          y: handle.includes("n") ? box.y + box.height : handle.includes("s") ? box.y : center.y
-        };
-        const corner = handle.length === 2;
-        let sx = (!branchSelected || corner) && (handle.includes("w") || handle.includes("e")) ? scaleRatio(point.x, start.x, anchor.x) : 1;
-        let sy = handle.includes("n") || handle.includes("s") ? scaleRatio(point.y, start.y, anchor.y) : 1;
-        if (corner && (branchSelected || (textOnly ? next.shiftKey : !next.shiftKey))) sx = sy = Math.max(sx, sy);
-        const t = scaling(anchor, sx, sy);
-        t.textScale = textOnly ? next.shiftKey : true;
-        apply(t);
-        if (branchSelected && group) scaleBranchFittings(group, corner ? sx : 1);
-        keepFittings();
-      },
-      onend: () => {
-        settleCorners([...groupIds].filter((id) => shapeById(id)?.kind === "pipe" && shapeById(id)?.corners));
-        history.endGesture();
-      }
-    });
-  }
-
-  function moveInList(list, picked, mode){
-    if (mode === "front") return [...list.filter((entry) => !picked(entry)), ...list.filter(picked)];
-    if (mode === "back") return [...list.filter(picked), ...list.filter((entry) => !picked(entry))];
-    const next = [...list];
-    if (mode === "forward") {
-      for (let index = next.length - 2; index >= 0; index -= 1) {
-        if (picked(next[index]) && !picked(next[index + 1])) [next[index], next[index + 1]] = [next[index + 1], next[index]];
-      }
-    } else {
-      for (let index = 1; index < next.length; index += 1) {
-        if (picked(next[index]) && !picked(next[index - 1])) [next[index], next[index - 1]] = [next[index - 1], next[index]];
-      }
-    }
-    return next;
-  }
-
-  function reorderSelection(mode){
-    if (partGroup.length) {
-      const keys = new Set(partGroup.map((part) => `${part.kind}:${part.roomId}:${part.id}`));
-      for (const room of new Set(partGroup.map((part) => part.room))) {
-        if (room.furniture) room.furniture = moveInList(room.furniture, (item) => keys.has(`furniture:${room.id}:${item.id}`), mode);
-        if (room.doors) room.doors = moveInList(room.doors, (door) => keys.has(`door:${room.id}:${door.id}`), mode);
-      }
-      return;
-    }
-    stackSelection(mode);
-    const ids = new Set(selectionIds);
-    shapes = moveInList(shapes, (shape) => ids.has(shape.id), mode);
-  }
-
-  function stackSelection(mode){
-    const byId = new Map(shapes.map((shape) => [shape.id, shape]));
-    const layered = (shape) => shape?.kind === "equipment" || shape?.kind === "pipe";
-    const owner = (shape) => shape.kind === "pipe" && shape.branchOf !== undefined ? byId.get(shape.branchOf) ?? shape : shape;
-    const targets = [...new Set(selectedShapes.filter(layered).map(owner))];
-    if (!targets.length) return;
-    const others = shapes.filter((shape) => layered(shape) && shape.branchOf === undefined && !targets.includes(shape)).map((shape) => layerOf(shape, byId));
-    const top = Math.max(0, ...others);
-    const bottom = Math.min(0, ...others);
-    for (const shape of targets) {
-      const z = layerOf(shape, byId);
-      const next = mode === "front" ? top + 1 : mode === "back" ? bottom - 1 : mode === "forward" ? z + 1 : z - 1;
-      if (next) shape.z = next;
-      else delete shape.z;
-    }
-  }
-
   let arrangeMenu = $state(null);
-
-  function openArrange(event){
-    event.preventDefault();
-    draft = null;
-    pipeDraft = null;
-    if (tool !== "select") return;
-    const node = event.target.closest?.("[data-shape-id]");
-    const fittingId = node?.dataset.fittingId ?? node?.dataset.readoutId;
-    if (fittingId !== undefined) {
-      if (fittingGroup.length < 2 || !fittingGroup.some((entry) => entry.fitting.id === Number(fittingId))) return;
-      arrangeMenu = { x: event.clientX, y: event.clientY, mode: "fittings" };
-      return;
-    }
-    const id = node && !partGroup.length ? Number(node.dataset.shapeId) : null;
-    if (id !== null && !selectionIds.includes(id)) selectShape(id);
-    if (!selectionIds.length && !partGroup.length) return;
-    arrangeMenu = { x: event.clientX, y: event.clientY, mode: selectionIds.length ? "shapes" : "parts" };
-  }
 
   let arrangeContext = $derived.by(() => {
     if (!arrangeMenu) return null;
@@ -918,1003 +579,26 @@
     return null;
   });
 
-  function rotateSelection(){
-    const box = transformBox;
-    if (!box || selectedShapes.some(isBranch)) return;
-    const t = rotating({ x: box.x + box.width / 2, y: box.y + box.height / 2 }, 90);
-    if (!selectedShapes.length) transformParts(partEntries(), t);
-    else applyTransformation(transformGroup(), t);
-  }
-
-  function flipSelection(axis){
-    const box = transformBox;
-    if (!box) return;
-    const t = mirroring({ x: box.x + box.width / 2, y: box.y + box.height / 2 }, axis);
-    if (!selectedShapes.length) transformParts(partEntries(), t);
-    else applyTransformation(transformGroup(), t);
-  }
-
-  function beginMove(event){
-    const handle = event.target instanceof Element ? event.target.closest("[data-transform]") : null;
-    if (handle) {
-      beginTransform(event, handle.dataset.transform);
-      return true;
-    }
-    let target = event.target instanceof Element ? event.target.closest("[data-shape-id]") : null;
-    let shape = target ? shapeById(Number(target.dataset.shapeId)) : null;
-    if (!shape) return false;
-    const additive = event.ctrlKey || event.metaKey;
-    const owner = shape.kind === "pipe" && shape.branchOf !== undefined ? shapeById(shape.branchOf) : null;
-    if (owner && !branchEditing) {
-      shape = owner;
-      target = { dataset: { shapeId: String(owner.id) } };
-    }
-    if (branchEditing && !isBranch(shape) && shape.branchOf === undefined) branchEditing = false;
-
-    if (target.dataset.furnitureId !== undefined) {
-      beginFurnitureDrag(event, shape, Number(target.dataset.furnitureId));
-      return true;
-    }
-    if (target.dataset.readoutId !== undefined) {
-      beginReadoutDrag(event, shape, Number(target.dataset.readoutId));
-      return true;
-    }
-    if (target.dataset.fittingId !== undefined && !additive) {
-      const key = `${shape.id}:${target.dataset.fittingId}`;
-      const now = performance.now();
-      if (lastFittingPress.key === key && now - lastFittingPress.time < 400) {
-        lastFittingPress = { key: null, time: 0 };
-        selectedId = null;
-        clearSubSelection();
-        selectedFitting = { pipeId: shape.id, fittingId: Number(target.dataset.fittingId) };
-        renamingFitting = { pipeId: shape.id, fittingId: Number(target.dataset.fittingId) };
-        return true;
-      }
-      lastFittingPress = { key, time: now };
-    }
-    if (target.dataset.fittingId !== undefined && target.dataset.fittingLabel !== undefined && !additive) {
-      beginNameDrag(event, shape, Number(target.dataset.fittingId));
-      return true;
-    }
-    if (target.dataset.fittingId !== undefined) {
-      beginFittingDrag(event, shape, Number(target.dataset.fittingId));
-      return true;
-    }
-    if (target.dataset.elementLabel !== undefined && !additive) {
-      const now = performance.now();
-      if (lastPress.id === shape.id && now - lastPress.time < 400) {
-        lastPress = { id: null, time: 0 };
-        selectShape(shape.id);
-        renamingElementId = shape.id;
-        return true;
-      }
-      lastPress = { id: shape.id, time: now };
-      beginNameDrag(event, shape, null);
-      return true;
-    }
-    if (target.dataset.waypointIndex !== undefined) {
-      beginWaypointDrag(event, shape, Number(target.dataset.waypointIndex));
-      return true;
-    }
-    if (target.dataset.pipeEnd) {
-      beginPipeEndDrag(event, shape, target.dataset.pipeEnd);
-      return true;
-    }
-    if (target.dataset.pipeVertex !== undefined) {
-      beginPipeVertexDrag(event, shape, Number(target.dataset.pipeVertex));
-      return true;
-    }
-    if (target.dataset.pipeEdge !== undefined) {
-      beginPipeEdgeDrag(event, shape, Number(target.dataset.pipeEdge));
-      return true;
-    }
-    if (target.dataset.roomLabel !== undefined) {
-      beginRoomLabelDrag(event, shape);
-      return true;
-    }
-    if (target.dataset.thermostat !== undefined) {
-      beginThermostatDrag(event, shape);
-      return true;
-    }
-    if (target.dataset.doorId !== undefined) {
-      beginDoorDrag(event, shape, Number(target.dataset.doorId));
-      return true;
-    }
-    if (target.dataset.handle) {
-      beginHandleDrag(event, shape, Number(target.dataset.vertexIndex), target.dataset.handle);
-      return true;
-    }
-    if (target.dataset.vertexIndex !== undefined) {
-      beginPointDrag(event, shape, Number(target.dataset.vertexIndex), additive);
-      return true;
-    }
-    if (target.dataset.edgeIndex !== undefined) {
-      beginEdgeDrag(event, shape, Number(target.dataset.edgeIndex), additive);
-      return true;
-    }
-
-    const now = performance.now();
-    const repeated = !additive && lastPress.id === shape.id && now - lastPress.time < 400;
-    lastPress = additive ? { id: null, time: 0 } : { id: shape.id, time: repeated ? 0 : now };
-    if (repeated && shape.kind === "text") {
-      selectShape(shape.id);
-      editingTextId = shape.id;
-      return true;
-    }
-    if (repeated && shape.kind === "room") {
-      selectShape(shape.id);
-      renameRoom();
-      return true;
-    }
-    if (repeated && isBranch(shape)) {
-      branchEditing = true;
-      selectedId = null;
-      selectedIds = [];
-      clearSubSelection();
-      return true;
-    }
-    if (repeated && (isDeviceType(shape.type) || HYDRONIC_ELEMENTS[shape.type]?.generic)) {
-      selectShape(shape.id);
-      setTimeout(() => document.querySelector("input.branch-name")?.select(), 0);
-      return true;
-    }
-    if (repeated && shape.kind === "equipment" && shape.type === "fieldDevice") {
-      selectShape(shape.id);
-      describingId = shape.id;
-      return true;
-    }
-    if (repeated && shape.kind === "equipment" && hasNameLabel(shape)) {
-      selectShape(shape.id);
-      renamingElementId = shape.id;
-      return true;
-    }
-
-    const deep = event.altKey && !!shape.groupId;
-    const wasSelected = selectionIds.includes(shape.id) && !deep;
-    if (additive) {
-      if (!selectShape(shape.id, true)) return true;
-    } else if (deep) {
-      selectShape(shape.id, false, true);
-    } else if (!wasSelected) {
-      selectShape(shape.id);
-    } else {
-      selectedIds = selectionIds;
-      selectedId = shape.id;
-      clearShapeSubSelection();
-    }
-
-    const start = toCanvas(event);
-    if (!start) return true;
-    const carried = [...new Set([...selectionIds, ...branchPipeIds(shapes, selectionIds)])];
-    const group = [...new Set([...carried, ...ridingPipes(shapes, carried)])].map(shapeById).map((entry) => ({ shape: entry, original: $state.snapshot(entry) }));
-    const movingIds = new Set(group.map((entry) => entry.shape.id));
-    const solids = group.filter((entry) => entry.shape.kind !== "pipe");
-    const lonelyBranch = solids.length === 1 && isBranch(solids[0].shape) ? solids[0] : null;
-    const lonelyEnds = lonelyBranch ? branchLegEnds(shapes, lonelyBranch.shape) : {};
-    const resting = lonelyBranch ? shapes.filter((entry) => !group.some((member) => member.shape === entry)) : [];
-    const docker = app === "hydronic" && solids.length === 1 && solids[0].shape.kind === "equipment" && !isBranch(solids[0].shape)
-      && HYDRONIC_ELEMENTS[solids[0].shape.type] && !HYDRONIC_ELEMENTS[solids[0].shape.type].electric ? solids[0] : null;
-    const looseEnds = docker ? shapes.filter((entry) => entry.kind === "pipe" && !movingIds.has(entry.id) && !mediumOf(entry.medium).electric).flatMap((entry) => {
-      const route = pipeRoutes.get(entry.id);
-      return ["from", "to"].filter((end) => isFreeEnd(entry[end])).map((end) => ({
-        pipe: entry, end, x: entry[end].x, y: entry[end].y, original: { x: entry[end].x, y: entry[end].y },
-        near: route?.length > 1 ? (end === "from" ? route[1] : route[route.length - 2]) : null
-      }));
-    }) : [];
-    let docked = null;
-    const stretched = shapes.filter((entry) => entry.kind === "pipe" && !movingIds.has(entry.id) && !mediumOf(entry.medium).electric && entry.branchOf === undefined
-      && pipeRoutes.get(entry.id) && movingIds.has(entry.from?.id) !== movingIds.has(entry.to?.id)).map((entry) => {
-      const route = pipeRoutes.get(entry.id);
-      const atStart = movingIds.has(entry.from?.id);
-      const end = atStart ? route[0] : route[route.length - 1];
-      const next = atStart ? route[1] : route[route.length - 2];
-      const flat = Math.abs(end.y - next.y) < 0.01;
-      const onFirst = (point) => flat
-        ? Math.abs(point.y - end.y) < 0.5 && point.x >= Math.min(end.x, next.x) - 0.5 && point.x <= Math.max(end.x, next.x) + 0.5
-        : Math.abs(point.x - end.x) < 0.5 && point.y >= Math.min(end.y, next.y) - 0.5 && point.y <= Math.max(end.y, next.y) + 0.5;
-      const joints = route.length >= 3 ? shapes.filter((other) => other.kind === "pipe" && other !== entry && !movingIds.has(other.id)).flatMap((other) =>
-        ["from", "to"].filter((key) => other[key]?.pipe === entry.id && other[key].fitting === undefined && onFirst(other[key]))
-          .map((key) => ({ pipe: other, key, x: other[key].x, y: other[key].y, route: pipeRoutes.get(other.id), points: structuredClone($state.snapshot(other.points ?? [])) }))) : [];
-      return { pipe: entry, route, atStart, end, flat, joints, points: structuredClone($state.snapshot(entry.points ?? [])) };
-    });
-    const keepFittings = holdFittings(movingIds);
-    const framed = group.filter((entry) => entry.shape.kind !== "pipe").map((entry) => shapeBox(entry.original));
-    const box = framed.length ? unionBox(framed) : null;
-    const step = snapToGrid ? gridSize : 1;
-    let moved = false;
-    const pressed = group.find((entry) => entry.shape === shape)?.original;
-    const centre = snapToGrid && shape.kind === "equipment" && !isBranch(shape) && !isElectricType(shape.type) && pressed
-      ? { x: pressed.x + pressed.width / 2, y: pressed.y + pressed.height / 2 }
-      : null;
-    const rails = new Map(shapes.filter((entry) => entry.kind === "pipe" && !movingIds.has(entry.id) && mediumOf(entry.medium).electric
-      && Number.isFinite(entry.from?.y) && entry.from.y === entry.to?.y).map((entry) => [entry.id, entry]));
-    const sliders = shapes.filter((entry) => entry.kind === "pipe" && !movingIds.has(entry.id)).flatMap((entry) => {
-      const ends = [["from", "to"], ["to", "from"]];
-      return ends.filter(([own, other]) => movingIds.has(entry[own]?.id) && rails.has(entry[other]?.pipe))
-        .map(([, other]) => {
-          const rail = rails.get(entry[other].pipe);
-          return { pipe: entry, end: other, x: entry[other].x, min: Math.min(rail.from.x, rail.to.x), max: Math.max(rail.from.x, rail.to.x) };
-        });
-    });
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        const still = Math.hypot(point.x - start.x, point.y - start.y) * viewport.zoom < 3;
-        const dx = still ? 0 : centre ? round2(Math.round((centre.x + point.x - start.x) / step) * step - centre.x) : Math.round((point.x - start.x) / step) * step;
-        const dy = still ? 0 : centre ? round2(Math.round((centre.y + point.y - start.y) / step) * step - centre.y) : Math.round((point.y - start.y) / step) * step;
-        let delta = box ? clampDelta(box, dx, dy, boardWidth, boardHeight) : { dx, dy };
-        if (lonelyBranch) {
-          const ends = {};
-          for (const [role, end] of Object.entries(lonelyEnds)) ends[role] = { x: end.x + delta.dx, y: end.y + delta.dy };
-          delta = { dx: delta.dx, dy: delta.dy + snapBranch(ends, resting, snapRadius) };
-        }
-        if (looseEnds.length) {
-          const found = dockPort({ ...docker.original, ...translateShape(docker.original, delta.dx, delta.dy) }, looseEnds, snapRadius);
-          if (docked && docked.end !== found?.end) docked.end.pipe[docked.end.end] = { ...docked.end.original };
-          docked = found;
-          if (docked) {
-            delta = { dx: round2(delta.dx + docked.shift.x), dy: round2(delta.dy + docked.shift.y) };
-            docked.end.pipe[docked.end.end] = docked.port;
-          }
-        }
-        if (delta.dx !== 0 || delta.dy !== 0) moved = true;
-        for (const entry of group) Object.assign(entry.shape, translateShape(entry.original, delta.dx, delta.dy, movingIds));
-        for (const slider of sliders) slider.pipe[slider.end] = { ...slider.pipe[slider.end], x: Math.min(slider.max, Math.max(slider.min, slider.x + delta.dx)) };
-        for (const entry of stretched) {
-          for (const joint of entry.joints) {
-            const point = { x: entry.flat ? joint.x : round2(joint.x + delta.dx), y: entry.flat ? round2(joint.y + delta.dy) : joint.y };
-            joint.pipe[joint.key] = { ...joint.pipe[joint.key], ...point };
-          }
-        }
-        keepFittings();
-      },
-      onend: () => {
-        history.endGesture();
-        if (!moved && !additive && wasSelected && (selectionIds.length > 1 || fittingGroup.length > 0)) selectShape(shape.id);
-      }
-    });
-    return true;
-  }
-
-  function beginPointDrag(event, shape, index, additive){
-    const key = { id: shape.id, index };
-    if (event.altKey && shape.kind !== "curve") {
-      beginAnchorConvert(event, shape, index);
-      return;
-    }
-
-    const wasSelected = activePoints.some((entry) => sameKey(entry, key));
-    if (shape.kind !== "curve") {
-      if (additive) {
-        selectedPoints = toggleKey(activePoints, key);
-        selectedEdges = activeEdges;
-        if (wasSelected) return;
-      } else if (!wasSelected) {
-        selectedPoints = [key];
-        selectedEdges = [];
-      }
-    }
-
-    const group = shape.kind === "curve"
-      ? [{ shape, index, original: { x: shape.points[index].x, y: shape.points[index].y } }]
-      : pointGroup();
-    const anchor = group.find((entry) => entry.shape === shape && entry.index === index).original;
-    const candidates = snapCandidates(group);
-    let moved = false;
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const raw = toCanvas(next);
-        if (!raw) return;
-        const radius = VERTEX_SNAP_PX / viewport.zoom;
-        const target = nearestVertex(raw, candidates, radius) ?? snapToEdges(raw, shapes, radius, shape, snapPoint(raw)) ?? snapPoint(raw);
-        if (!samePoint(target, anchor)) moved = true;
-        applyPointDelta(group, target.x - anchor.x, target.y - anchor.y);
-      },
-      onend: () => {
-        history.endGesture();
-        if (!moved && !additive && wasSelected && activePoints.length > 1) selectedPoints = [key];
-      }
-    });
-  }
-
-  function beginEdgeDrag(event, shape, index, additive){
-    const key = { id: shape.id, index };
-    const wasSelected = activeEdges.some((entry) => sameKey(entry, key));
-    if (additive) {
-      selectedEdges = toggleKey(activeEdges, key);
-      selectedPoints = activePoints;
-      if (wasSelected) return;
-    } else if (!wasSelected) {
-      selectedEdges = [key];
-      selectedPoints = [];
-    }
-
-    const group = pointGroup();
-    const a = shape.points[index];
-    const b = shape.points[(index + 1) % shape.points.length];
-    const length = distance(a, b);
-    const normal = length === 0 ? { x: 0, y: 0 } : { x: -(b.y - a.y) / length, y: (b.x - a.x) / length };
-    const base = normal.x * a.x + normal.y * a.y;
-    const others = snapCandidates(group).map((point) => normal.x * point.x + normal.y * point.y - base);
-    const start = toCanvas(event);
-    const step = snapToGrid ? gridSize : 1;
-    let moved = false;
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point || !start) return;
-        let dx = point.x - start.x;
-        let dy = point.y - start.y;
-        if (!next.altKey && length > 0) {
-          const raw = dx * normal.x + dy * normal.y;
-          const radius = VERTEX_SNAP_PX / viewport.zoom;
-          const near = others.reduce((best, offset) => Math.abs(offset - raw) <= radius && (best === null || Math.abs(offset - raw) < Math.abs(best - raw)) ? offset : best, null);
-          const offset = near ?? Math.round(raw / step) * step;
-          dx = normal.x * offset;
-          dy = normal.y * offset;
-        } else {
-          dx = Math.round(dx / step) * step;
-          dy = Math.round(dy / step) * step;
-        }
-        if (dx !== 0 || dy !== 0) moved = true;
-        applyPointDelta(group, dx, dy);
-      },
-      onend: () => {
-        history.endGesture();
-        if (!moved && !additive && wasSelected && activeEdges.length > 1) selectedEdges = [key];
-      }
-    });
-  }
-
-  function beginHandleDrag(event, shape, index, side){
-    const other = side === "in" ? "out" : "in";
-    const anchor = { x: shape.points[index].x, y: shape.points[index].y };
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const raw = toCanvas(next);
-        if (!raw) return;
-        let vector = { x: raw.x - anchor.x, y: raw.y - anchor.y };
-        if (next.shiftKey) vector = constrainAngle(vector);
-        vector = { x: round2(vector.x), y: round2(vector.y) };
-        const handle = { ...$state.snapshot(shape.handles[index]) };
-        handle[side] = vector;
-        if (next.altKey) handle.smooth = false;
-        if (handle.smooth && handle[other]) {
-          const keep = Math.hypot(handle[other].x, handle[other].y);
-          const size = Math.hypot(vector.x, vector.y) || 1;
-          handle[other] = { x: round2(-vector.x / size * keep), y: round2(-vector.y / size * keep) };
-        }
-        shape.handles[index] = handle;
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function beginAnchorConvert(event, shape, index){
-    const existing = shape.handles?.[index];
-    const anchor = { x: shape.points[index].x, y: shape.points[index].y };
-    selectedPoints = [{ id: shape.id, index }];
-    selectedEdges = [];
-    let pulled = false;
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const raw = toCanvas(next);
-        if (!raw) return;
-        let vector = { x: raw.x - anchor.x, y: raw.y - anchor.y };
-        if (Math.hypot(vector.x, vector.y) * viewport.zoom < 4) return;
-        if (next.shiftKey) vector = constrainAngle(vector);
-        vector = { x: round2(vector.x), y: round2(vector.y) };
-        ensureHandles(shape);
-        shape.handles[index] = { in: { x: -vector.x, y: -vector.y }, out: vector, smooth: true };
-        pulled = true;
-      },
-      onend: () => {
-        if (!pulled && existing) shape.handles[index] = null;
-        history.endGesture();
-      }
-    });
-  }
-
-  function deletePoints(){
-    const byShape = new Map();
-    for (const key of activePoints) {
-      if (!byShape.has(key.id)) byShape.set(key.id, []);
-      byShape.get(key.id).push(key.index);
-    }
-    const removed = [];
-    for (const [id, indices] of byShape) {
-      const shape = shapeById(id);
-      if (shape.kind === "curve") continue;
-      const keep = (_, index) => !indices.includes(index);
-      const points = shape.points.filter(keep);
-      if (points.length < (shape.open || hasCurves(shape) ? 2 : 3)) {
-        removed.push(id);
-        continue;
-      }
-      shape.points = points;
-      if (shape.radii) shape.radii = shape.radii.filter(keep);
-      if (shape.handles) shape.handles = shape.handles.filter(keep);
-      if (shape.doors) shape.doors = shape.doors.filter((door) => door.edge < points.length);
-    }
-    if (removed.length) shapes = shapes.filter((shape) => !removed.includes(shape.id));
-    selectedPoints = [];
-  }
-
-  function deleteSelection(){
-    const ids = selectionIds;
-    shapes = shapes.filter((shape) => !ids.includes(shape.id));
-    shapes = pruneDangling(shapes);
-    selectedId = null;
-    clearSubSelection();
-  }
-
   let targetChoice = $state(null);
   let shapeTarget = $derived(targetChoice ?? (shapes.length === 0 ? "floor" : "room"));
 
   let marquee = $state(null);
 
-  function beginMarquee(event){
-    const start = toCanvas(event);
-    if (!start) return false;
-    const additive = event.ctrlKey || event.metaKey || event.shiftKey;
-    const base = additive ? [...selectionIds] : [];
-    const baseFittings = additive ? fittingGroup.map((entry) => ({ pipeId: entry.pipe.id, fittingId: entry.fitting.id })) : [];
-    if (!additive) {
-      selectedId = null;
-      clearSubSelection();
-    }
-
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        const box = {
-          x: Math.min(start.x, point.x),
-          y: Math.min(start.y, point.y),
-          width: Math.abs(point.x - start.x),
-          height: Math.abs(point.y - start.y)
-        };
-        if (box.width * viewport.zoom < 3 && box.height * viewport.zoom < 3) return;
-        marquee = box;
-        const hits = branchEditing ? [] : withGroups(shapes.filter((shape) => !shape.locked && contains(box, shapeBox(shape))).map((shape) => shape.id));
-        const ids = [...base, ...hits.filter((id) => !base.includes(id))];
-        selectedIds = ids;
-        selectedId = ids[ids.length - 1] ?? null;
-        clearSubSelection();
-        const fits = [...baseFittings, ...fittingsIn(box).filter((key) => !baseFittings.some((entry) => sameFitting(entry, key)))];
-        if (fits.length) {
-          selectedFitting = fits[fits.length - 1];
-          extraFittings = fits.slice(0, -1);
-        }
-      },
-      onend: () => {
-        if (!marquee && !additive) branchEditing = false;
-        marquee = null;
-      }
-    });
-    return true;
-  }
-
-  function movePointsTo(group, positions){
-    const byShape = new Map();
-    group.forEach((entry, index) => {
-      if (!byShape.has(entry.shape)) byShape.set(entry.shape, entry.shape.points.map((point) => ({ x: point.x, y: point.y })));
-      byShape.get(entry.shape)[entry.index] = { x: round2(positions[index].x), y: round2(positions[index].y) };
-    });
-    for (const [shape, points] of byShape) {
-      if (shape.kind !== "curve" && !shape.open && polygonSelfIntersects(outlinePoints({ ...shape, points }))) return;
-    }
-    for (const [shape, points] of byShape) shape.points = points;
-  }
-
-  function moveShapesBy(group, offsets){
-    const moving = new Set(group.map((shape) => shape.id));
-    group.forEach((shape, index) => {
-      const { dx, dy } = offsets[index];
-      if (dx === 0 && dy === 0) return;
-      Object.assign(shape, translateShape($state.snapshot(shape), round2(dx), round2(dy), moving));
-    });
-  }
-
-  function pointBoxes(group){
-    return group.map((entry) => ({ x: entry.original.x, y: entry.original.y, width: 0, height: 0 }));
-  }
-
-  function shiftPoints(group, offsets){
-    movePointsTo(group, group.map((entry, index) => ({ x: entry.original.x + offsets[index].dx, y: entry.original.y + offsets[index].dy })));
-  }
-
-  function alignSelection(mode){
-    if (partGroup.length >= 1) {
-      alignParts(mode);
-      return;
-    }
-    if (fittingGroup.length && selectionIds.length) {
-      alignMixed(mode);
-      return;
-    }
-    if (fittingGroup.length >= 2) {
-      alignFittings(mode);
-      return;
-    }
-    const points = pointGroup();
-    if (points.length >= 2) {
-      const boxes = pointBoxes(points);
-      shiftPoints(points, alignOffsets(boxes, mode, unionBox(boxes)));
-      return;
-    }
-    const units = selectionUnits();
-    if (units.length === 0) return;
-    const boxes = units.map((members) => unitBox(members));
-    const frame = units.length === 1 ? { x: 0, y: 0, width: boardWidth, height: boardHeight } : unionBox(boxes);
-    moveUnitsBy(units, alignOffsets(boxes, mode, frame));
-  }
-
-  function moveUnitsBy(units, offsets){
-    units.forEach((members, index) => moveShapesBy(members, members.map(() => offsets[index])));
-  }
-
-  function mixedMembers(){
-    const members = fittingGroup.map(({ pipe, fitting }) => ({ route: pipeRoutes.get(pipe.id), fitting })).filter((member) => member.route);
-    const units = selectionUnits();
-    const boxes = [...units.map((list) => unitBox(list)), ...members.map((member) => fittingBox(member.route, member.fitting))];
-    return { members, units, boxes };
-  }
-
-  function applyMixed({ members, units }, offsets){
-    const targets = fittingTargets(members, offsets.slice(units.length));
-    moveUnitsBy(units, offsets.slice(0, units.length));
-    applyFittingTargets(members, targets);
-  }
-
-  function alignMixed(mode){
-    const group = mixedMembers();
-    if (group.boxes.length < 2) return;
-    applyMixed(group, alignOffsets(group.boxes, mode, unionBox(group.boxes)));
-  }
-
-  function distributeMixed(axis){
-    const group = mixedMembers();
-    if (group.boxes.length < 3) return;
-    applyMixed(group, distributeOffsets(group.boxes, axis));
-  }
-
-  function distributeSelection(axis){
-    if (partGroup.length >= 3) {
-      distributeParts(axis);
-      return;
-    }
-    if (fittingGroup.length && selectionIds.length) {
-      distributeMixed(axis);
-      return;
-    }
-    if (fittingGroup.length >= 3) {
-      distributeFittings(axis);
-      return;
-    }
-    const points = pointGroup();
-    if (points.length >= 3) {
-      shiftPoints(points, distributeOffsets(pointBoxes(points), axis));
-      return;
-    }
-    const units = selectionUnits();
-    if (points.length >= 2 || units.length < 3) return;
-    moveUnitsBy(units, distributeOffsets(units.map((members) => unitBox(members)), axis));
-  }
-
-  function thermostatState(list){
-    const rooms = list.filter((entry) => entry.kind === "room");
-    const on = rooms.filter((entry) => entry.regulated).length;
-    return on === 0 ? "none" : on === rooms.length ? "all" : "mixed";
-  }
-
-  function setThermostat(on){
-    for (const shape of selectedShapes) {
-      if (shape.kind !== "room") continue;
-      if (on) shape.regulated = true;
-      else delete shape.regulated;
-    }
-  }
-
-  let lastLabelPress = 0;
-
-  function beginRoomLabelDrag(event, room){
-    const now = performance.now();
-    if (now - lastLabelPress < 400) {
-      lastLabelPress = 0;
-      selectShape(room.id);
-      renameRoom();
-      return;
-    }
-    lastLabelPress = now;
-    const start = toCanvas(event);
-    if (!start) return;
-    const base = labelPoint(room);
-    const current = roomLabelPoint(room, roomStyle);
-    const original = { dx: current.x - base.x, dy: current.y - base.y };
-    const outline = outlinePoints(room);
-    const step = snapToGrid ? gridSize / 2 : 1;
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        const candidate = {
-          dx: round2(original.dx + Math.round((point.x - start.x) / step) * step),
-          dy: round2(original.dy + Math.round((point.y - start.y) / step) * step)
-        };
-        if (pointInPolygon({ x: base.x + candidate.dx, y: base.y + candidate.dy }, outline)) room.labelOffset = candidate;
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function beginThermostatDrag(event, room){
-    if (!selectionIds.includes(room.id)) selectShape(room.id, false, true);
-    const start = toCanvas(event);
-    if (!start) return;
-    const original = { ...(room.thermostat ?? { dx: 0, dy: 0 }) };
-    const step = snapToGrid ? gridSize / 2 : 1;
-    const globalScale = thermostatGlobalScale(shapes, roomStyle);
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        const candidate = {
-          dx: original.dx + Math.round((point.x - start.x) / step) * step,
-          dy: original.dy + Math.round((point.y - start.y) / step) * step
-        };
-        if (thermostatFit({ ...room, thermostat: candidate }, roomStyle) >= globalScale - 0.001) room.thermostat = candidate;
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
   let imageSources = $state.raw({});
   let imageInput;
 
-  function openImagePicker(){
-    imageInput?.click();
-  }
-
-  function readImage(file){
-    if (!file || !file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => addImage(reader.result);
-    reader.readAsDataURL(file);
-  }
-
   const CLIPBOARD_PREFIX = "pathfinder-shapes:";
   let clipboardShapes = null;
-  let clipboardBox = null;
+
   let clipboardToken = "";
   let pasteCount = 0;
   let clipboardFurniture = null;
   let pointer = null;
   let pasteKey = null;
 
-  function typingInto(target){
-    return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
-  }
-
   let clipboardFittings = null;
 
-  function copyFittingSelection(event){
-    if (!fittingGroup.length || selectionIds.length) return false;
-    clipboardFittings = copyFittings(fittingGroup.map(({ pipe, fitting }) => ({ pipe, fitting: $state.snapshot(fitting) })), pipeRoutes);
-    clipboardShapes = null;
-    clipboardFurniture = null;
-    clipboardToken = `${Date.now()}`;
-    pasteCount = 0;
-    event.clipboardData?.setData("text/plain", CLIPBOARD_PREFIX + clipboardToken);
-    event.preventDefault();
-    return true;
-  }
-
-  function pasteFittings(){
-    pasteCount += 1;
-    const byId = new Map(shapes.map((shape) => [shape.id, shape]));
-    const targets = pasteTargets(clipboardFittings, {
-      routes: pipeRoutes,
-      isOpen: (id) => byId.get(id)?.kind === "pipe" && !byId.get(id).locked,
-      pointer,
-      radius: Math.max(24, 30 / viewport.zoom),
-      count: pasteCount
-    });
-    const placed = [];
-    const renamed = new Map(clipboardFittings.map((item) => [item.fitting.id, nextId++]));
-    clipboardFittings.forEach((item, index) => {
-      const target = targets[index];
-      const host = target ? byId.get(target.pipeId) : null;
-      if (!host) return;
-      const id = renamed.get(item.fitting.id);
-      const { meterOf, ...copy } = structuredClone(item.fitting);
-      const name = item.fitting.name === "" ? "" : nextFittingName(item.fitting.type, shapes);
-      host.fittings = [...(host.fittings ?? []), { ...copy, id, t: target.t, name, ...(renamed.has(meterOf) ? { meterOf: renamed.get(meterOf) } : {}) }];
-      placed.push({ pipeId: host.id, fittingId: id });
-    });
-    if (!placed.length) return;
-    if (tool !== "select") pickTool("select");
-    selectedId = null;
-    clearSubSelection();
-    selectedFitting = placed[placed.length - 1];
-    extraFittings = placed.slice(0, -1);
-  }
-
-  function copyFurniture(event){
-    if (!partGroup.length) return false;
-    clipboardFurniture = partGroup.map((part) => ({ kind: part.kind, roomId: part.roomId, item: $state.snapshot(part.item), center: part.kind === "door" ? doorCenter(part.room, part.item) : null }));
-    clipboardShapes = null;
-    clipboardFittings = null;
-    clipboardToken = `${Date.now()}`;
-    pasteCount = 0;
-    pasteKey = null;
-    event.clipboardData?.setData("text/plain", CLIPBOARD_PREFIX + clipboardToken);
-    event.preventDefault();
-    return true;
-  }
-
-  function partCenter(entry){
-    return entry.kind === "door" ? entry.center : { x: entry.item.cx, y: entry.item.cy };
-  }
-
-  function doorClashes(room, door, extra = []){
-    const [a, b] = edgeEnds(room, door.edge);
-    const length = Math.hypot(b.x - a.x, b.y - a.y);
-    return [...(room.doors ?? []), ...extra].some((other) => other.edge === door.edge
-      && Math.abs(other.t - door.t) * length < (other.width + door.width) / 2 + 10);
-  }
-
-  function pasteDoor(entry, room, target, taken){
-    const step = snapToGrid ? gridSize : 20;
-    const first = projectDoor(room, target, entry.item.width);
-    if (!first) return null;
-    const [a, b] = edgeEnds(room, first.edge);
-    const u = { x: (b.x - a.x), y: (b.y - a.y) };
-    const length = Math.hypot(u.x, u.y);
-    const base = { x: a.x + u.x * first.t, y: a.y + u.y * first.t };
-    for (let index = 0; index < 200; index += 1) {
-      const shift = (index % 2 ? 1 : -1) * Math.ceil(index / 2) * step;
-      const point = { x: base.x + u.x / length * shift, y: base.y + u.y / length * shift };
-      const placed = projectDoor(room, point, entry.item.width);
-      if (!placed) continue;
-      const door = { ...entry.item, ...placed };
-      if (!doorClashes(room, door, taken)) return door;
-    }
-    return null;
-  }
-
-  function pasteFurniture(){
-    const entries = clipboardFurniture.filter((entry) => shapeById(entry.roomId) || pointer);
-    if (!entries.length) return;
-    const hovered = pointer ? roomAt(pointer) : null;
-    const sources = new Set(entries.map((entry) => entry.roomId));
-    const atPointer = !!hovered && !hovered.locked && !sources.has(hovered.id);
-    const step = snapToGrid ? gridSize : 20;
-    const centers = entries.map(partCenter).filter(Boolean);
-    const middle = { x: centers.reduce((sum, p) => sum + p.x, 0) / centers.length, y: centers.reduce((sum, p) => sum + p.y, 0) / centers.length };
-    const origin = atPointer ? { x: Math.round(pointer.x / step) * step, y: Math.round(pointer.y / step) * step } : middle;
-    const key = atPointer ? `${hovered.id}:${origin.x}:${origin.y}` : "source";
-    if (key !== pasteKey) {
-      pasteKey = key;
-      pasteCount = 0;
-    }
-    pasteCount += 1;
-    const first = atPointer ? pasteCount - 1 : pasteCount;
-    const roomFor = (entry) => {
-      const room = atPointer ? hovered : shapeById(entry.roomId);
-      return room?.kind === "room" && !room.locked ? room : null;
-    };
-    const furniture = entries.filter((entry) => entry.kind === "furniture");
-    const doors = entries.filter((entry) => entry.kind === "door");
-    const keys = [];
-
-    if (furniture.length) {
-      let placed = null;
-      for (let ring = first; ring < first + 40 && !placed; ring += 1) {
-        for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [0, 1], [-1, 0], [0, -1]]) {
-          const dx = origin.x - middle.x + sx * ring * step;
-          const dy = origin.y - middle.y + sy * ring * step;
-          const attempt = furniture.map((entry) => {
-            const room = roomFor(entry);
-            const item = room ? { ...entry.item, cx: round2(entry.item.cx + dx), cy: round2(entry.item.cy + dy) } : null;
-            return item && furnitureFits(room, item) ? { room, item } : null;
-          });
-          if (attempt.every(Boolean)) {
-            placed = attempt;
-            break;
-          }
-        }
-      }
-      for (const { room, item } of placed ?? []) {
-        const id = nextId++;
-        room.furniture = [...(room.furniture ?? []), { ...item, id }];
-        keys.push({ kind: "furniture", roomId: room.id, id });
-      }
-    }
-
-    const shift = { x: origin.x - middle.x, y: origin.y - middle.y };
-    const taken = new Map();
-    for (const entry of doors) {
-      const room = roomFor(entry);
-      if (!room || !entry.center) continue;
-      const list = taken.get(room.id) ?? [];
-      const door = pasteDoor(entry, room, { x: entry.center.x + shift.x, y: entry.center.y + shift.y }, list);
-      if (!door) continue;
-      list.push(door);
-      taken.set(room.id, list);
-      const id = nextId++;
-      room.doors = [...(room.doors ?? []), { ...door, id }];
-      keys.push({ kind: "door", roomId: room.id, id });
-    }
-
-    if (!keys.length) return;
-    if (tool !== "select") pickTool("select");
-    selectedId = null;
-    clearSubSelection();
-    selectedParts = keys;
-  }
-
-  function handleCopy(event){
-    if (ioVisible || wiringListVisible) return;
-    if (!typingInto(event.target) && copyFurniture(event)) return;
-    if (!typingInto(event.target) && copyFittingSelection(event)) return;
-    if (typingInto(event.target) || selectionIds.length === 0) return;
-    clipboardFurniture = null;
-    clipboardFittings = null;
-    const owned = branchPipeIds(shapes, selectionIds).filter((id) => !selectionIds.includes(id)).map(shapeById);
-    clipboardShapes = $state.snapshot([...selectedShapes, ...owned]);
-    clipboardBox = transformBox ? { ...transformBox } : null;
-    clipboardToken = `${Date.now()}`;
-    pasteCount = 0;
-    pasteKey = null;
-    event.clipboardData?.setData("text/plain", CLIPBOARD_PREFIX + clipboardToken);
-    event.preventDefault();
-  }
-
-  function handleCut(event){
-    if (ioVisible || wiringListVisible) return;
-    handleCopy(event);
-    if (!event.defaultPrevented) return;
-    if (clipboardFurniture && partGroup.length) removeParts();
-    else if (clipboardFittings && activeFitting) removeFitting();
-    else deleteSelection();
-  }
-
-  function copyName(name, taken){
-    if (/^Room \d+$/.test(name)) return nextRoomName(taken);
-    let candidate = `${name} copy`;
-    let index = 2;
-    while (taken.some((shape) => shape.kind === "room" && shape.name === candidate)) candidate = `${name} copy ${index++}`;
-    return candidate;
-  }
-
-  function pasteShapes(){
-    const present = clipboardShapes.some((source) => shapes.some((shape) => shape.id === source.id));
-    const step = (snapToGrid ? gridSize : 20) * 2;
-    const grid = snapToGrid ? gridSize : 1;
-    const origin = pointer && clipboardBox ? { x: Math.round(pointer.x / grid) * grid, y: Math.round(pointer.y / grid) * grid } : null;
-    const key = origin ? `${origin.x}:${origin.y}` : "source";
-    if (key !== pasteKey) {
-      pasteKey = key;
-      pasteCount = 0;
-    }
-    pasteCount += 1;
-    const ring = step * (origin || !present ? pasteCount - 1 : pasteCount);
-    const base = origin ? { x: origin.x - Math.round((clipboardBox.x + clipboardBox.width / 2) / grid) * grid, y: origin.y - Math.round((clipboardBox.y + clipboardBox.height / 2) / grid) * grid } : { x: 0, y: 0 };
-    const offset = { x: base.x + ring, y: base.y + ring };
-    const groups = new Map();
-    const created = [];
-    const idMap = new Map();
-
-    for (const source of clipboardShapes) {
-      const copy = { ...structuredClone(source), ...translateShape(source, offset.x, offset.y), id: nextId++ };
-      idMap.set(source.id, copy.id);
-      if (copy.fittings) copy.fittings = copy.fittings.map((item) => ({ ...item, id: nextId++ }));
-      delete copy.locked;
-      if (copy.groupId) {
-        if (!groups.has(copy.groupId)) groups.set(copy.groupId, nextId++);
-        copy.groupId = groups.get(copy.groupId);
-      }
-      if (copy.doors) copy.doors = copy.doors.map((door) => ({ ...door, id: nextId++ }));
-      if (copy.furniture) copy.furniture = copy.furniture.map((item) => ({ ...item, id: nextId++ }));
-      if (copy.kind === "room") copy.name = copyName(copy.name, [...shapes, ...created]);
-      created.push(copy);
-    }
-
-    const linked = linkPastedPipes(created, idMap, offset).map((shape) => shape.branchOf !== undefined && idMap.has(shape.branchOf) ? { ...shape, branchOf: idMap.get(shape.branchOf) } : shape).filter((shape) => shape.branchOf === undefined || created.some((entry) => entry.id === shape.branchOf));
-    if (tool !== "select") pickTool("select");
-    shapes.push(...linked);
-    selectedIds = linked.map((shape) => shape.id);
-    selectedId = selectedIds[selectedIds.length - 1] ?? null;
-    clearSubSelection();
-  }
-
-  function handlePaste(event){
-    if (ioVisible || wiringListVisible) return;
-    const target = event.target;
-    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-    const text = event.clipboardData?.getData("text/plain");
-    if (clipboardFurniture && text === CLIPBOARD_PREFIX + clipboardToken) {
-      event.preventDefault();
-      pasteFurniture();
-      return;
-    }
-    if (clipboardShapes && text === CLIPBOARD_PREFIX + clipboardToken) {
-      event.preventDefault();
-      pasteShapes();
-      return;
-    }
-    if (clipboardFittings && text === CLIPBOARD_PREFIX + clipboardToken) {
-      event.preventDefault();
-      pasteFittings();
-      return;
-    }
-    const item = [...(event.clipboardData?.items ?? [])].find((entry) => entry.type.startsWith("image/"));
-    if (!item) return;
-    event.preventDefault();
-    readImage(item.getAsFile());
-  }
-
-  function imageFit(width, height){
-    const scale = Math.min(canvasWidth / width, canvasHeight / height);
-    const fitWidth = round2(width * scale);
-    const fitHeight = round2(height * scale);
-    return { x: round2((canvasWidth - fitWidth) / 2), y: round2((canvasHeight - fitHeight) / 2), width: fitWidth, height: fitHeight };
-  }
-
-  function addImage(source){
-    const probe = new Image();
-    probe.onload = () => {
-      const imageId = `image_${nextId++}`;
-      imageSources = { ...imageSources, [imageId]: source };
-      const shape = { id: nextId++, kind: "image", imageId, ...imageFit(probe.naturalWidth, probe.naturalHeight), opacity: 0.5 };
-      shapes.push(shape);
-      if (tool !== "select") pickTool("select");
-      selectShape(shape.id);
-    };
-    probe.src = source;
-  }
-
-  function fitImage(){
-    const image = selectedShape?.kind === "image" ? selectedShape : null;
-    if (image) Object.assign(image, imageFit(image.width, image.height));
-  }
-
-  function setImageOpacity(value){
-    if (selectedShape?.kind !== "image") return;
-    editKey = "opacity";
-    selectedShape.opacity = value;
-  }
-
-  function lockSelection(){
-    for (const shape of selectedShapes) shape.locked = true;
-    selectedId = null;
-    clearSubSelection();
-  }
-
   let selectedParts = $state([]);
-
-  function resolvePart(key){
-    const room = shapeById(key.roomId);
-    if (!room || room.locked) return null;
-    const item = (key.kind === "door" ? room.doors : room.furniture)?.find((entry) => entry.id === key.id);
-    return item ? { ...key, room, item } : null;
-  }
 
   let partGroup = $derived(tool === "select" ? selectedParts.map(resolvePart).filter(Boolean) : []);
   let furnitureGroup = $derived(partGroup.filter((part) => part.kind === "furniture"));
@@ -1923,103 +607,6 @@
   let activeDoor = $derived(partGroup.length === 1 && partGroup[0].kind === "door" ? { room: partGroup[0].room, door: partGroup[0].item } : null);
 
   let partOptions = $derived(partGroup.length ? { count: partGroup.length, furniture: furnitureGroup.length, doors: doorGroup.length } : null);
-
-  function samePart(a, b){
-    return a.kind === b.kind && a.roomId === b.roomId && a.id === b.id;
-  }
-
-  function pickPart(key, additive){
-    selectedId = null;
-    selectedIds = [];
-    selectedPoints = [];
-    selectedEdges = [];
-    selectedFitting = null;
-    extraFittings = [];
-    if (additive) {
-      selectedParts = selectedParts.some((entry) => samePart(entry, key))
-        ? selectedParts.filter((entry) => !samePart(entry, key))
-        : [...selectedParts, key];
-      return false;
-    }
-    if (!selectedParts.some((entry) => samePart(entry, key))) selectedParts = [key];
-    return true;
-  }
-
-  function partBox(part){
-    if (part.kind === "furniture") return polygonBounds(furnitureCorners(part.item));
-    const geometry = doorGeometry(part.room, part.item);
-    return geometry ? polygonBounds([geometry.p0, geometry.p1]) : null;
-  }
-
-  function shiftParts(parts, offsets){
-    parts.forEach((part, index) => {
-      const { dx, dy } = offsets[index];
-      if (!dx && !dy) return;
-      if (part.kind === "furniture") {
-        part.item.cx = round2(part.item.cx + dx);
-        part.item.cy = round2(part.item.cy + dy);
-        return;
-      }
-      const center = doorCenter(part.room, part.item);
-      if (!center) return;
-      const placed = projectDoor(part.room, { x: center.x + dx, y: center.y + dy }, part.item.width);
-      if (placed) Object.assign(part.item, placed);
-    });
-  }
-
-  function roomInterior(room){
-    const box = polygonBounds(outlinePoints(room));
-    const inset = roomStyle.roomWidth / 2;
-    return { x: box.x + inset, y: box.y + inset, width: box.width - inset * 2, height: box.height - inset * 2 };
-  }
-
-  function alignParts(mode){
-    const parts = partGroup.filter(partBox);
-    const boxes = parts.map(partBox);
-    if (!boxes.length) return;
-    const frame = boxes.length === 1 ? roomInterior(parts[0].room) : unionBox(boxes);
-    shiftParts(parts, alignOffsets(boxes, mode, frame));
-  }
-
-  function distributeParts(axis){
-    const parts = partGroup.filter(partBox);
-    const boxes = parts.map(partBox);
-    if (boxes.length < 3) return;
-    shiftParts(parts, distributeOffsets(boxes, axis));
-  }
-
-  function removeParts(){
-    for (const part of partGroup) {
-      if (part.kind === "door") part.room.doors = part.room.doors.filter((entry) => entry.id !== part.id);
-      else part.room.furniture = part.room.furniture.filter((entry) => entry.id !== part.id);
-    }
-    selectedParts = [];
-  }
-
-  function partEntries(){
-    return partGroup.map((part) => ({ part, original: $state.snapshot(part.item), center: part.kind === "door" ? doorCenter(part.room, part.item) : null }));
-  }
-
-  function transformParts(entries, t){
-    for (const entry of entries) {
-      if (entry.part.kind === "furniture") {
-        const next = furnitureItem(entry.original, t);
-        if (entries.length > 1 || furnitureFits(entry.part.room, next)) Object.assign(entry.part.item, next);
-        continue;
-      }
-      if (t.kind !== "scale" || !entry.center) continue;
-      const room = entry.part.room;
-      const factor = Math.sqrt(Math.abs(t.sx * t.sy));
-      const width = Math.round(Math.min(Math.max(MIN_DOOR_WIDTH, entry.original.width * factor), Math.max(MIN_DOOR_WIDTH, maxDoorWidth(room, entry.original.edge))));
-      const placed = projectDoor(room, t.point(entry.center), width);
-      const flipped = t.sx * t.sy < 0;
-      Object.assign(entry.part.item, {
-        width,
-        ...(placed ?? {}),
-        hinge: flipped ? (entry.original.hinge === "left" ? "right" : "left") : entry.original.hinge
-      });
-    }
-  }
 
   let doorOptions = $derived(doorGroup.length && !furnitureGroup.length ? {
     count: doorGroup.length,
@@ -2031,83 +618,7 @@
     maxWidth: Math.max(MIN_DOOR_WIDTH, Math.min(...doorGroup.map((part) => maxDoorWidth(part.room, part.item.edge))))
   } : null);
 
-  function commonCategory(list){
-    const categories = new Set(list.filter((entry) => entry.kind === "room").map((entry) => entry.category ?? ""));
-    return categories.size === 1 ? [...categories][0] : "mixed";
-  }
-
-  function setCategory(value){
-    if (value === "mixed") return;
-    for (const shape of selectedShapes) {
-      if (shape.kind !== "room") continue;
-      if (value) shape.category = value;
-      else delete shape.category;
-    }
-  }
-
   let doorsPlaced = $state(null);
-  let doorsTimer;
-
-  function placeDoors(){
-    let count = 0;
-    for (const room of shapes) {
-      if (room.kind !== "room" || room.doors?.length) continue;
-      const door = suggestDoor(room, shapes);
-      if (!door) continue;
-      room.doors = [{ id: nextId++, ...door }];
-      count += 1;
-    }
-    doorsPlaced = count;
-    furnishedRooms = null;
-    clearTimeout(doorsTimer);
-    doorsTimer = setTimeout(() => doorsPlaced = null, 2000);
-  }
-
-  function doorCenter(room, door){
-    const geometry = doorGeometry(room, door);
-    return geometry ? { x: (geometry.p0.x + geometry.p1.x) / 2, y: (geometry.p0.y + geometry.p1.y) / 2 } : null;
-  }
-
-  function beginDoorDrag(event, room, doorId){
-    if (!pickPart({ kind: "door", roomId: room.id, id: doorId }, event.ctrlKey || event.metaKey)) return;
-    const door = room.doors.find((entry) => entry.id === doorId);
-    const start = toCanvas(event);
-    const center = door ? doorCenter(room, door) : null;
-    if (!door || !start || !center) return;
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        const placed = projectDoor(room, { x: center.x + point.x - start.x, y: center.y + point.y - start.y }, door.width);
-        if (!placed) return;
-        door.edge = placed.edge;
-        door.t = placed.t;
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function updateDoor(changes){
-    for (const { room, item: door } of doorGroup) {
-      let patch = changes;
-      const center = doorCenter(room, door);
-      if (patch.type === "double" && door.width < DOOR_ELEMENTS.doubleDoor.width) {
-        patch = { ...patch, width: Math.min(DOOR_ELEMENTS.doubleDoor.width, maxDoorWidth(room, door.edge)) };
-      }
-      if (patch.width) patch = { ...patch, width: Math.min(patch.width, Math.max(MIN_DOOR_WIDTH, maxDoorWidth(room, door.edge))) };
-      Object.assign(door, patch);
-      if (patch.width && center) {
-        const placed = projectDoor(room, center, door.width);
-        if (placed) Object.assign(door, placed);
-      }
-    }
-  }
-
-  function removeDoor(){
-    removeParts();
-  }
 
   let activeFurniture = $derived(partGroup.length === 1 && partGroup[0].kind === "furniture" ? { room: partGroup[0].room, item: partGroup[0].item } : null);
 
@@ -2116,30 +627,9 @@
     roomName: activeFurniture.room.name
   } : null);
 
-  function furnishRoom(room){
-    room.furniture = furnishForCategory(room, roomStyle).map((item) => ({ ...item, id: nextId++ }));
-    return room.furniture.length;
-  }
-
-  function furnishSelected(){
-    if (selectedShape?.kind === "room" && FURNISHABLE.includes(selectedShape.category)) furnishRoom(selectedShape);
-  }
-
-  function clearFurniture(){
-    if (selectedShape?.kind === "room") delete selectedShape.furniture;
-  }
-
   let furnishedRooms = $state(null);
-  let furnishTimer;
 
   let fileNotice = $state(null);
-  let fileNoticeTimer;
-
-  function showFileNotice(text){
-    fileNotice = text;
-    clearTimeout(fileNoticeTimer);
-    fileNoticeTimer = setTimeout(() => fileNotice = null, 2400);
-  }
 
   let notice = $derived(fileNotice ?? (doorsPlaced !== null
     ? doorsPlaced === 0 ? "Every room already has a door" : `Placed ${doorsPlaced} door${doorsPlaced === 1 ? "" : "s"}`
@@ -2147,117 +637,7 @@
       ? furnishedRooms === 0 ? "Nothing to furnish · set room categories first" : `Furnished ${furnishedRooms} room${furnishedRooms === 1 ? "" : "s"}`
       : null));
 
-  function furnishOffices(){
-    let count = 0;
-    for (const room of shapes) {
-      if (room.kind !== "room" || !FURNISHABLE.includes(room.category) || room.furniture?.length) continue;
-      if (furnishRoom(room) > 0) count += 1;
-    }
-    furnishedRooms = count;
-    doorsPlaced = null;
-    clearTimeout(furnishTimer);
-    furnishTimer = setTimeout(() => furnishedRooms = null, 2000);
-  }
-
-  function beginFurnitureDrag(event, room, itemId){
-    if (!pickPart({ kind: "furniture", roomId: room.id, id: itemId }, event.ctrlKey || event.metaKey)) return;
-    const start = toCanvas(event);
-    const moving = furnitureGroup.map((part) => ({ part, origin: { cx: part.item.cx, cy: part.item.cy } }));
-    if (!moving.length || !start) return;
-    const step = snapToGrid ? gridSize / 2 : 1;
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        const dx = Math.round((point.x - start.x) / step) * step;
-        const dy = Math.round((point.y - start.y) / step) * step;
-        const candidates = moving.map(({ part, origin }) => ({ part, next: { ...part.item, cx: round2(origin.cx + dx), cy: round2(origin.cy + dy) } }));
-        if (!candidates.every(({ part, next }) => furnitureFits(part.room, next))) return;
-        for (const { part, next } of candidates) {
-          part.item.cx = next.cx;
-          part.item.cy = next.cy;
-        }
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function rotateFurniture(){
-    for (const part of furnitureGroup) part.item.rotation = (part.item.rotation + 90) % 360;
-  }
-
-  function removeFurniture(){
-    removeParts();
-  }
-
   let placing = $state(null);
-
-  function startPlacing(type){
-    pickTool("place");
-    placing = { type, rotation: 0, auto: true };
-  }
-
-  function rotatePlacing(){
-    if (!placing) return;
-    placing.rotation = (placing.rotation + 90) % 360;
-    placing.auto = false;
-  }
-
-  function roomAt(point){
-    const rooms = shapes.filter((shape) => shape.kind === "room");
-    for (let index = rooms.length - 1; index >= 0; index -= 1) {
-      if (pointInPolygon(point, outlinePoints(rooms[index]))) return rooms[index];
-    }
-    return null;
-  }
-
-  function snapFurnitureToWall(room, item){
-    const rect = usableRect(room, roomStyle.roomWidth / 2 + 2);
-    const spec = FURNITURE[item.type];
-    if (!rect) return item;
-    let best = null;
-    for (const side of wallSides(rect)) {
-      const depth = (item.cx - side.origin.x) * side.n.x + (item.cy - side.origin.y) * side.n.y;
-      const along = (item.cx - side.origin.x) * side.t.x + (item.cy - side.origin.y) * side.t.y;
-      if (depth < -30 || depth > spec.depth / 2 + 40 || along < 0 || along > side.length) continue;
-      if (!best || depth < best.depth) best = { side, depth, along };
-    }
-    if (!best) return item;
-    const { side } = best;
-    const along = Math.min(side.length - spec.width / 2, Math.max(spec.width / 2, best.along));
-    return {
-      ...item,
-      cx: round2(side.origin.x + side.t.x * along + side.n.x * spec.depth / 2),
-      cy: round2(side.origin.y + side.t.y * along + side.n.y * spec.depth / 2),
-      rotation: side.rotation
-    };
-  }
-
-  function doorPlacement(point, spec){
-    const radius = Math.max(60, 40 / viewport.zoom);
-    const inside = roomAt(point);
-    const rooms = shapes.filter((shape) => shape.kind === "room");
-    let best = null;
-    for (const room of rooms) {
-      for (const width of [spec.width, Math.round(spec.width * 0.75), 70]) {
-        const placed = projectDoor(room, point, width);
-        if (!placed) continue;
-        const door = { edge: placed.edge, t: placed.t, width, hinge: "left", swing: "in", type: spec.type };
-        const geometry = doorGeometry(room, door);
-        if (!geometry) break;
-        const gap = Math.hypot((geometry.p0.x + geometry.p1.x) / 2 - point.x, (geometry.p0.y + geometry.p1.y) / 2 - point.y);
-        if (gap > radius) break;
-        const score = gap - (room === inside ? radius : 0);
-        if (!best || score < best.score) best = { room, door, score };
-        break;
-      }
-    }
-    return best
-      ? { kind: "door", room: best.room, door: best.door, valid: true }
-      : { kind: "door", room: null, door: null, valid: false };
-  }
 
   let placement = $derived.by(() => {
     if (tool !== "place" || !placing || !cursor) return null;
@@ -2281,25 +661,6 @@
           ? "Click to place it · Shift keeps placing · Esc stops"
           : "Click inside a room to place it · snaps flush to walls · Shift keeps placing · Esc stops"
   } : null);
-
-  function placeElement(event){
-    const target = placement;
-    if (!target?.valid) return;
-    if (target.kind === "equipment" || target.kind === "fitting") {
-      placeHydronic(target, event.shiftKey);
-      return;
-    }
-    const id = nextId++;
-    if (target.kind === "door") target.room.doors = [...(target.room.doors ?? []), { id, ...target.door }];
-    else target.room.furniture = [...(target.room.furniture ?? []), { id, ...target.item }];
-    if (event.shiftKey) return;
-
-    const roomId = target.room.id;
-    pickTool("select");
-    selectedId = null;
-    clearSubSelection();
-    selectedParts = [{ kind: target.kind === "door" ? "door" : "furniture", roomId, id }];
-  }
 
   let pipeDraft = $state(null);
   let pipeMedium = $state(DEFAULT_MEDIUM);
@@ -2337,16 +698,6 @@
   let pipeCursor = $derived(pipeAim.point);
   let portTarget = $derived(pipeTargeting && pipeCursor ? pipeTargetAt(pipeAim.aligned ? pipeCursor : aim ?? pipeCursor) : null);
 
-  function pipeTargetAt(point){
-    const exclude = pipeDraft?.rewire?.pipeId ?? null;
-    const valve = findValvePort(point, shapes, pipeRoutes, hoverRadius, exclude);
-    if (valve) return valve;
-    const port = findPort(point, shapes, hoverRadius);
-    const pipe = findPipePoint(point, pipeRoutes, hoverRadius, exclude, pipeAim.aligned || !snapToGrid ? 0 : gridSize);
-    if (!port || !pipe) return port ?? pipe;
-    return pipe.gap < Math.hypot(port.point.x - point.x, port.point.y - point.y) ? pipe : port;
-  }
-
   let pipePreview = $derived.by(() => {
     if (!pipeTargeting || !pipeDraft || !cursor) return null;
     const start = endpointPose(pipeDraft.from, shapeIndex, (id) => pipeRoutes.get(id), pipeDraft.points[0] ?? cursor);
@@ -2360,246 +711,16 @@
     return { route: manhattanRoute(start, pipeDraft.points, end), points: pipeDraft.points, medium, width: rewired?.width ?? pipeThickness, from: pipeDraft.from, to: endPose ? endOf(portTarget) : null };
   });
 
-  function round4(value){
-    return Math.round(value * 10000) / 10000;
-  }
-
-  function flashPipe(id){
-    if (prefersReducedMotion.current) return;
-    freshPipes = [...freshPipes, id];
-    setTimeout(() => freshPipes = freshPipes.filter((entry) => entry !== id), 1200);
-  }
-
-  function holdFittings(skip = new Set()){
-    const held = shapes.filter((entry) => entry.kind === "pipe" && !skip.has(entry.id) && entry.fittings?.length && pipeRoutes.get(entry.id)).map((entry) => {
-      const route = pipeRoutes.get(entry.id);
-      return { pipe: entry, spots: new Map(entry.fittings.map((fitting) => {
-        const spot = routePoint(route, fitting.t);
-        return [fitting.id, { x: spot.x, y: spot.y, horizontal: spot.angle === 0 || Math.abs(spot.angle) === 180, leg: legAt(route, fitting.t), legs: route.length }];
-      })) };
-    });
-    return () => {
-      if (!held.length) return;
-      const routes = computeRoutes(shapes);
-      for (const entry of held) {
-        const route = routes.get(entry.pipe.id);
-        if (!route) continue;
-        for (const fitting of entry.pipe.fittings ?? []) {
-          const spot = entry.spots.get(fitting.id);
-          const t = spot ? keepSpot(route, spot, spot.horizontal, route.length === spot.legs ? spot.leg : null) : null;
-          if (t !== null) fitting.t = round4(Math.min(0.98, Math.max(0.02, t)));
-        }
-      }
-    };
-  }
-
-  function settleCorners(ids){
-    const routes = computeRoutes(shapes);
-    for (const id of ids) {
-      const pipe = shapeById(id);
-      const route = keepsCorners(pipe) ? routes.get(id) : null;
-      if (!route) continue;
-      pipe.points = freezeRoute(route);
-      pipe.anchors = routeAnchors(route);
-      pipe.corners = true;
-    }
-  }
-
-  function markCorners(pipe, path){
-    if (!keepsCorners(pipe) || path.length < 2) return;
-    pipe.anchors = routeAnchors(path);
-    pipe.corners = true;
-  }
-
-  function finishRewire(snapshot, end){
-    const pipe = shapeById(snapshot.rewire.pipeId);
-    pipeDraft = null;
-    if (!pipe) return;
-    if (snapshot.rewire.end === "to") {
-      pipe.to = end;
-      pipe.points = snapshot.points;
-    } else {
-      pipe.from = end;
-      pipe.points = [...snapshot.points].reverse();
-    }
-    pipe.corners = false;
-    settleCorners([pipe.id]);
-    flashPipe(pipe.id);
-  }
-
-  function pipeClick(event){
-    const target = portTarget ?? (pipeCursor ? { free: true, x: pipeCursor.x, y: pipeCursor.y, point: pipeCursor } : null);
-    if (!pipeDraft) {
-      if (target) pipeDraft = { from: endOf(target), points: [] };
-      return;
-    }
-    if (event.ctrlKey || event.metaKey) {
-      const last = pipeDraft.points[pipeDraft.points.length - 1];
-      if (pipeCursor && !(last && samePoint(last, pipeCursor))) pipeDraft.points.push({ x: pipeCursor.x, y: pipeCursor.y });
-      return;
-    }
-    if (!target && pipeDraft.rewire) {
-      removeShape(pipeDraft.rewire.pipeId);
-      pipeDraft = null;
-      return;
-    }
-    if (!target || sameEnd(endOf(target), pipeDraft.from)) return;
-    if (target.pipe !== undefined && pipeDraft.from.pipe === target.pipe) return;
-    const snapshot = $state.snapshot(pipeDraft);
-    if (snapshot.rewire) {
-      finishRewire(snapshot, endOf(target));
-      return;
-    }
-    const id = nextId++;
-    shapes.push({
-      id,
-      kind: "pipe",
-      from: snapshot.from,
-      to: endOf(target),
-      points: snapshot.points,
-      medium: junctionMedium(snapshot.from, endOf(target), shapeIndex) ?? pipeMedium,
-      width: pipeThickness,
-      fittings: []
-    });
-    pipeDraft = null;
-    settleCorners([id]);
-    flashPipe(id);
-  }
-
-  function pipeKeydown(event){
-    if (tool !== "pipe" || !pipeDraft) return false;
-    if (event.key === "Escape") {
-      pipeDraft = null;
-      return true;
-    }
-    if (event.key === "Delete" && pipeDraft.rewire) {
-      event.preventDefault();
-      removeShape(pipeDraft.rewire.pipeId);
-      pipeDraft = null;
-      return true;
-    }
-    if (event.key === "Backspace" || (event.key.toLowerCase() === "z" && (event.ctrlKey || event.metaKey))) {
-      event.preventDefault();
-      if (pipeDraft.points.length) pipeDraft.points.pop();
-      else pipeDraft = null;
-      return true;
-    }
-    return false;
-  }
-
   let pipeThickness = $state(HYDRONIC_STYLE.pipeWidth);
-
-  function setPipeWidth(value){
-    pipeThickness = value;
-    editKey = "pipeWidth";
-    for (const shape of selectedShapes) if (shape.kind === "pipe") shape.width = value;
-  }
 
   let textStyle = $state({ fontSize: 16, color: "#1E293B", bold: false, italic: false, underline: false, align: "left" });
   let editingTextId = $state(null);
-  let freshTextId = null;
+
   let editingText = $derived(shapes.find((shape) => shape.id === editingTextId && shape.kind === "text") ?? null);
   let textEditPosition = $derived(editingText ? viewport.toScreen({ x: editingText.x, y: editingText.y }) : null);
   let describingId = $state(null);
   let describing = $derived(shapes.find((shape) => shape.id === describingId && shape.type === "fieldDevice") ?? null);
   let describePosition = $derived(describing ? viewport.toScreen({ x: describing.x, y: describing.y + describing.height + 4 }) : null);
-
-  function commitDescription(value){
-    const shape = describing;
-    describingId = null;
-    if (!shape) return;
-    selectShape(shape.id);
-    setDeviceParam("description", value.split("\n").map((part) => part.trim()).join("\n").trim());
-  }
-
-  function placeText(point){
-    const id = nextId++;
-    shapes.push({ id, ...newText(point.x, point.y, $state.snapshot(textStyle)) });
-    pickTool("select");
-    selectShape(id);
-    freshTextId = id;
-    editingTextId = id;
-  }
-
-  function commitText({ text, rich, align }){
-    const shape = editingText;
-    editingTextId = null;
-    freshTextId = null;
-    if (!shape) return;
-    if (!text.trim()) {
-      removeShape(shape.id);
-      return;
-    }
-    shape.text = text;
-    if (rich) shape.rich = rich;
-    else delete shape.rich;
-    shape.align = align;
-    refitText(shape);
-  }
-
-  function cancelText(){
-    const id = editingTextId;
-    editingTextId = null;
-    if (id !== null && id === freshTextId) removeShape(id);
-    freshTextId = null;
-  }
-
-  function editSelectedText(){
-    if (selectedShape?.kind === "text") editingTextId = selectedShape.id;
-  }
-
-  function setTextStyle(key, value){
-    textStyle[key] = value;
-    editKey = `text-${key}`;
-    for (const shape of selectedShapes) {
-      if (shape.kind !== "text") continue;
-      shape[key] = value;
-      clearRunStyle(shape, key);
-      refitText(shape);
-    }
-  }
-
-  function selectedElements(){
-    return selectedShapes.filter((shape) => shape.kind === "equipment" && !shape.locked && HYDRONIC_ELEMENTS[shape.type]);
-  }
-
-  function setElementSize(dimension, value, keepRatio){
-    if (!(value >= 4)) return;
-    const elements = selectedElements();
-    for (const element of elements) {
-      const original = { x: element.x, y: element.y, width: element.width, height: element.height };
-      const entries = attachedEnds(element);
-      const cx = original.x + original.width / 2;
-      const cy = original.y + original.height / 2;
-      const other = dimension === "width" ? "height" : "width";
-      element[dimension] = value;
-      if (keepRatio && !HYDRONIC_ELEMENTS[element.type]?.fixedHeight) element[other] = Math.round(value * original[other] / original[dimension] * 100) / 100;
-      element.x = centreFor(element, cx) - element.width / 2;
-      element.y = centreFor(element, cy) - element.height / 2;
-      remapEnds(element, entries, original);
-    }
-    editKey = `size-${elements.map((element) => element.id).join(",")}`;
-  }
-
-  function toggleTankProbe(id){
-    const tanks = selectedElements().filter(hasTankProbes);
-    if (!tanks.length) return;
-    const on = !tanks.every((tank) => tank.probes?.[id]);
-    for (const tank of tanks) tank.probes = { ...(tank.probes ?? {}), [id]: on };
-  }
-
-  function setNameSize(value){
-    editKey = "name-size";
-    for (const element of selectedElements()) {
-      if (hasNameLabel(element)) element.nameSize = value;
-      else if (HYDRONIC_ELEMENTS[element.type]?.generic) element.fontSize = value;
-    }
-  }
-
-  function setMedium(value){
-    pipeMedium = value;
-    for (const shape of selectedShapes) if (shape.kind === "pipe" || HYDRONIC_ELEMENTS[shape.type]?.bar) shape.medium = value;
-  }
 
   let activeFitting = $derived.by(() => {
     if (!selectedFitting || tool !== "select") return null;
@@ -2636,39 +757,6 @@
   let readoutBoxes = $derived(app === "hydronic" ? readoutLayout(shapes, pipeRoutes, { width: canvasWidth, height: canvasHeight }) : new Map());
   let fittingNames = $derived(app === "hydronic" ? namePlaces(shapes, pipeRoutes, readoutBoxes) : new Map());
 
-  function setFittingReadout(value){
-    if (!activeFitting) return;
-    for (const { fitting } of fittingGroup) {
-      if (!readoutSpec(fitting.type) || meterOptions(fitting.type).length) continue;
-      fitting.readout = value;
-      if (value === "none") delete fitting.readoutOffset;
-    }
-  }
-
-  function keepReadoutGap(offset, before, after){
-    const shift = (value, from, to) => Math.abs(value) >= from / 2 ? value + Math.sign(value) * (to - from) / 2 : value;
-    return { x: Math.round(shift(offset.x, before.width, after.width)), y: Math.round(shift(offset.y, before.height, after.height)) };
-  }
-
-  function setMeterReadout(id){
-    const meters = fittingGroup.filter(({ fitting }) => meterOptions(fitting.type).some((option) => option.id === id));
-    if (!meters.length) return;
-    const on = !meters.every(({ fitting }) => meterReadouts(fitting).includes(id));
-    for (const { fitting } of meters) {
-      const scale = readoutScaleOf(fitting);
-      const before = readoutExtent(readoutRows(fitting), scale);
-      const kept = meterReadouts(fitting).filter((entry) => entry !== id);
-      fitting.readouts = meterOptions(fitting.type).map((option) => option.id).filter((entry) => kept.includes(entry) || (on && entry === id));
-      fitting.readout = fitting.readouts.length ? "value" : "none";
-      const after = readoutExtent(readoutRows(fitting), scale);
-      if (fitting.readoutOffset && after.height && before.height) fitting.readoutOffset = keepReadoutGap(fitting.readoutOffset, before, after);
-    }
-  }
-
-  function resetReadoutPosition(){
-    for (const { fitting } of fittingGroup) delete fitting.readoutOffset;
-  }
-
   let networkSelection = $derived.by(() => {
     if (app !== "network") return null;
     const devices = selectedIds.map((id) => shapeById(id)).filter((shape) => shape?.kind === "equipment" && isDeviceType(shape.type));
@@ -2676,14 +764,6 @@
     const centre = devices.find((shape) => ["hub", "gateway"].includes(HYDRONIC_ELEMENTS[shape.type].device)) ?? null;
     return { centre, devices: devices.filter((shape) => shape !== centre) };
   });
-
-  function connectSelected({ topology, medium }){
-    const selection = networkSelection;
-    if (!selection?.centre || !selection.devices.length) return;
-    const pipes = connectNetwork($state.snapshot(selection.centre), $state.snapshot(selection.devices), topology, medium, pipeThickness, () => nextId++);
-    shapes.push(...pipes);
-    showFileNotice(`Connected ${selection.devices.length} device${selection.devices.length === 1 ? "" : "s"} as a ${topology === "daisy" ? "daisy chain" : topology}`);
-  }
 
   let deviceBatchOpen = $state(false);
   let registersOpen = $state(false);
@@ -2693,41 +773,6 @@
     const keys = registerDevices.map((device) => JSON.stringify(device.params?.symbols ?? []));
     return { count: keys.every((key) => key === keys[0]) ? (registerDevices[0].params?.symbols ?? []).length : null };
   });
-
-  function saveRegisters(list){
-    for (const device of registerDevices) device.params = { ...$state.snapshot(device.params ?? {}), symbols: list.map((entry) => ({ ...entry })) };
-    showFileNotice(`Saved ${list.length} register${list.length === 1 ? "" : "s"} to ${registerDevices.length === 1 ? registerDevices[0].name || "the device" : `${registerDevices.length} devices`}`);
-  }
-
-  function addDevices({ type, count, name, slave, ip, medium, topology, symbols = [] }, standalone = false){
-    const centre = standalone ? null : networkSelection?.centre;
-    const margin = 60;
-    const room = Math.max(0, boardWidth - margin * 2);
-    const middle = viewport.toWorld({ x: viewport.width / 2, y: viewport.height / 2 });
-    const start = centre ? belowAnchor($state.snapshot(centre)) : { x: middle.x, top: middle.y - batchHeight(type, count, room) / 2 };
-    const half = batchWidth(type, count, room) / 2;
-    const anchor = {
-      x: Math.min(boardWidth - margin - half, Math.max(margin + half, start.x)),
-      top: Math.max(margin, start.top)
-    };
-    const added = placeDevices(anchor, type, count, name, slave, ip, room, symbols).map((device) => ({ id: nextId++, ...device }));
-    shapes.push(...added);
-    if (centre) shapes.push(...connectNetwork($state.snapshot(centre), added, topology, medium, pipeThickness, () => nextId++));
-    pickTool("select");
-    selectedIds = added.map((device) => device.id);
-    selectedId = added[0]?.id ?? null;
-    showFileNotice(`Added ${added.length} device${added.length === 1 ? "" : "s"}${centre ? ` under ${centre.name || "the gateway"}` : ""}`);
-  }
-
-  function setDeviceParam(name, value){
-    for (const element of selectedElements()) {
-      if (!isDeviceType(element.type) && !isElectricType(element.type)) continue;
-      element.params = { ...$state.snapshot(element.params ?? {}), [name]: value };
-      if (isElectricType(element.type)) Object.assign(element, electricSize(element.type, element.params));
-      const row = element.source?.row ? powerList.rows.find((entry) => entry.id === element.source.row) : null;
-      if (row && name === "description") row.description = value;
-    }
-  }
 
   let powerPages = $derived(app === "electrical" ? powerPageCount(shapes, paper) : 0);
   let supplyNote = $derived(`Sistem: ${powerList.supply.system} · ${powerList.supply.phases === 1 ? "230 V" : "400/230 V"}, 50 Hz`);
@@ -2742,82 +787,6 @@
   });
   let sheetMeta = $derived({ project: documentName ?? "", date: sheetDate(), pages: sheetTitles, notes: sheetTitles.map((title) => title === "NAPAJANJE" ? supplyNote : "") });
 
-  function drawPowerPages(quiet = false){
-    const before = powerPageCount(shapes, paper);
-    const current = $state.snapshot(shapes);
-    const edits = collectEdits(current.filter(isPowerShape));
-    const keys = quiet ? selectedShapes.map((shape) => shape?.source?.key).filter(Boolean) : [];
-    const removed = new Set(current.filter(isPowerShape).map((shape) => shape.id));
-    const touches = (end) => removed.has(end?.id) || removed.has(end?.pipe);
-    const kept = current.filter((shape) => !removed.has(shape.id) && !(shape.kind === "pipe" && (touches(shape.from) || touches(shape.to))));
-    const result = drawPower($state.snapshot(powerList), () => nextId++, paper);
-    const control = drawControl($state.snapshot(controlList), $state.snapshot(powerList), () => nextId++, paper, result.pages);
-    const generated = stamp(crossReference([...result.shapes, ...control.shapes], paper));
-    const restored = applyEdits(generated, edits);
-    shiftShapes(kept, (result.pages + control.pages - before) * (paper.width + paper.gap));
-    shapes = [...generated, ...kept];
-    if (quiet) {
-      const picked = generated.filter((shape) => keys.includes(shape.source?.key)).map((shape) => shape.id);
-      selectedIds = picked;
-      selectedId = picked[0] ?? null;
-      return;
-    }
-    sheet = 0;
-    setTimeout(fitContent, 0);
-    selectedId = null;
-    selectedIds = [];
-    ioOpen = false;
-    showFileNotice(`Drew ${result.pages} power and ${control.pages} control page${control.pages === 1 ? "" : "s"}${restored ? ` · kept ${restored} change${restored === 1 ? "" : "s"} made on the drawing` : ""}`);
-  }
-
-  function listFields(shape){
-    const owner = ownerOf(shape);
-    if (!owner) return [];
-    const type = shape.kind === "text" ? "text" : shape.type;
-    const text = (key, label, value, placeholder = "") => ({ key, label, value: value ?? "", placeholder });
-    const tag = (key, value) => ({ key, label: "Tag", value: value ?? "", tag: true });
-    if (owner.part === "supply") {
-      const supply = powerList.supply;
-      if (type === "terminalStrip") return [text("incoming", "Incoming terminals", supply.incoming, "-X0")];
-      if (type === "cable") return [tag("tag", supply.tag), text("cable", "Cable type", supply.cable)];
-      if (type === "supply") return [text("description", "Description", supply.description)];
-      return [];
-    }
-    if (owner.part === "power") {
-      const row = powerList.rows.find((entry) => entry.id === owner.id);
-      if (!row) return [];
-      if (type === "protection" && shape.params?.kind === "contact") return [text("switchedBy", "Switched by", row.switchedBy)];
-      if (type === "protection") return [
-        tag("tag", row.tag),
-        { key: "protection", label: "Protection", value: row.protection, options: [...PROTECTION_KINDS.map((kind) => ({ value: kind.id, label: kind.label })), { value: "none", label: "None" }] },
-        text("rating", "Rating", row.rating, String(shape.params?.rating ?? "").split("/")[0] || "auto"),
-        { key: "poles", label: "Poles", value: row.poles, options: POWER_POLES.map((pole) => ({ value: pole.id, label: pole.id })) }
-      ];
-      if (type === "fieldDevice" || type === "psu") return [tag("loadTag", row.loadTag), text("loadData", "Load data", row.loadData)];
-      if (type === "cable") return [text("cable", "Cable type", row.cable, shape.params?.cableType ?? "")];
-      if (type === "terminalStrip") return [text("strip", "Terminals", row.strip, shape.name ?? "")];
-      if (type === "text") return [text("description", "Description", row.description)];
-      return [];
-    }
-    if (owner.part === "control") {
-      const row = controlList.rows.find((entry) => entry.id === owner.id);
-      if (!row) return [];
-      if (type === "fieldDevice" || type === "relayCoil") return [tag("tag", row.tag), ...(type === "fieldDevice" ? [text("model", "Model", row.model)] : [])];
-      if (type === "cable") return [text("cable", "Cable type", row.cable, shape.params?.cableType ?? "")];
-      if (type === "terminalStrip") return [text("strip", "Terminals", row.strip, shape.name ?? "")];
-      if (type === "text") return [text("description", "Description", row.description)];
-      return [];
-    }
-    const link = controlList.links?.find((entry) => entry.id === owner.id);
-    if (!link) return [];
-    if (type === "cable") return [tag("tag", link.tag), text("cable", "Cable type", link.cable)];
-    if (type === "busLine") return [text("text", "Far end", link.text)];
-    if (type === "fieldDevice") return [tag("display", link.display)];
-    if (type === "terminalStrip") return [text("strip", "Terminals", link.strip, shape.name ?? "")];
-    if (type === "text") return [text("description", "Description", link.description)];
-    return [];
-  }
-
   let listEdit = $derived.by(() => {
     if (app !== "electrical" || selectedShapes.length !== 1) return null;
     const shape = selectedShapes[0];
@@ -2828,900 +797,10 @@
     return { fields, edited, generated: Boolean(shape.source.original) };
   });
 
-  function editFromDrawing(key, value){
-    const shape = selectedShapes[0];
-    const owner = shape ? ownerOf(shape) : null;
-    if (!owner) return;
-    const target = owner.part === "supply" ? powerList.supply
-      : owner.part === "power" ? powerList.rows.find((entry) => entry.id === owner.id)
-      : owner.part === "control" ? controlList.rows.find((entry) => entry.id === owner.id)
-      : controlList.links?.find((entry) => entry.id === owner.id);
-    if (!target || target[key] === value) return;
-    target[key] = value;
-    if (owner.part === "power" && key === "protection") target.rating = "";
-    drawPowerPages(true);
-  }
-
-  function resetFromDrawing(){
-    for (const shape of selectedShapes) if (shape?.source?.original) resetShape(shape);
-  }
-
-  function generateWiring(options){
-    const result = wiringFromIo($state.snapshot(ioPoints), $state.snapshot(shapes), () => nextId++, { ...options, paper: wiringPaper });
-    if (!result.shapes.length) return;
-    shapes.push(...result.shapes);
-    selectedId = null;
-    selectedIds = [];
-    showFileNotice(`Added ${result.points} IO point${result.points === 1 ? "" : "s"} on ${result.pages} page${result.pages === 1 ? "" : "s"}`);
-  }
-
-  function printWiring(){
-    printSheets($state.snapshot(shapes), sheetMeta, paper);
-  }
-
-  function exportDxf(){
-    downloadDxf($state.snapshot(shapes), sheetMeta, paper, documentName || "vezalna-shema");
-    showFileNotice("Downloaded the DXF drawing");
-  }
-
-  function setBranchName(value){
-    for (const element of selectedElements()) {
-      const others = shapes.filter((shape) => shape !== element);
-      element.name = value.trim() || (isElectricType(element.type) ? nextElectricName(element.type, others) : "");
-    }
-  }
-
-  function setBranchParam(name, value){
-    for (const element of selectedElements()) {
-      if (!isBranch(element)) continue;
-      element.params = { ...branchDefaults(), ...$state.snapshot(element.params ?? {}), [name]: value };
-      refreshBranch(element);
-    }
-  }
-
-  function refreshBranch(element){
-    const owned = ownedPipes(shapes, element.id);
-    if (!owned.length) return;
-    const rebuilt = rebuildBranch($state.snapshot(element), $state.snapshot(owned), () => nextId++);
-    const keep = new Set(rebuilt.map((pipe) => pipe.id));
-    const updates = new Map(rebuilt.map((pipe) => [pipe.id, pipe]));
-    const next = [];
-    for (const shape of shapes) {
-      if (shape.kind === "pipe" && shape.branchOf === element.id) {
-        if (keep.has(shape.id)) next.push(updates.get(shape.id));
-        continue;
-      }
-      next.push(shape);
-    }
-    for (const pipe of rebuilt) if (!shapes.some((shape) => shape.id === pipe.id)) next.push(pipe);
-    shapes = pruneDangling(next);
-  }
-
-  function beginNameDrag(event, owner, fittingId){
-    const target = fittingId === null ? owner : owner.fittings?.find((entry) => entry.id === fittingId);
-    if (!target) return;
-    const frame = () => fittingId === null ? elementBox(owner) : fittingBox(pipeRoutes.get(owner.id), target);
-    const label = fittingId === null ? elementLabel(owner) : fittingLabel(pipeRoutes.get(owner.id), target, fittingNames.get(target.id));
-    const width = event.target instanceof SVGGraphicsElement ? event.target.getBBox().width : textWidth(target.name, label.size);
-    if (fittingId === null) {
-      if (!selectionIds.includes(owner.id)) selectShape(owner.id);
-    } else {
-      selectedId = null;
-      clearSubSelection();
-      selectedFitting = { pipeId: owner.id, fittingId };
-    }
-    const start = toCanvas(event);
-    if (!start) return;
-    const origin = labelCentre(label, width);
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        delete target.nameOffset;
-        target.nameAnchor = nameAnchorAt(frame(), { x: origin.x + point.x - start.x, y: origin.y + point.y - start.y }, width, label.height);
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function setFittingName(value){
-    const entry = activeFitting;
-    if (!entry) return;
-    entry.fitting.name = value.trim();
-  }
-
-  function setReadoutScale(value){
-    editKey = "readoutScale";
-    for (const { fitting } of fittingGroup) if (readoutSpec(fitting.type)) fitting.readoutScale = value;
-  }
-
-  function beginReadoutDrag(event, pipe, fittingId){
-    selectedId = null;
-    clearSubSelection();
-    selectedFitting = { pipeId: pipe.id, fittingId };
-    const fitting = pipe.fittings?.find((entry) => entry.id === fittingId);
-    const box = readoutBoxes.get(fittingId);
-    const start = toCanvas(event);
-    if (!fitting || !box || !start) return;
-    const origin = { x: box.x + box.width / 2 - box.pose.x, y: box.y + box.height / 2 - box.pose.y };
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        fitting.readoutOffset = { x: Math.round(origin.x + point.x - start.x), y: Math.round(origin.y + point.y - start.y) };
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function setFittingScale(value){
-    if (!activeFitting) return;
-    editKey = "fittingScale";
-    for (const { fitting } of fittingGroup) fitting.scale = value;
-  }
-
-  function reversePipes(){
-    for (const pipe of selectedShapes) {
-      if (pipe.kind !== "pipe") continue;
-      const from = $state.snapshot(pipe.from);
-      pipe.from = $state.snapshot(pipe.to);
-      pipe.to = from;
-      pipe.points = $state.snapshot(pipe.points ?? []).reverse();
-      if (pipe.anchors) pipe.anchors = { from: $state.snapshot(pipe.anchors.to), to: $state.snapshot(pipe.anchors.from) };
-      pipe.fittings = (pipe.fittings ?? []).map((fitting) => ({ ...$state.snapshot(fitting), t: round4(1 - fitting.t) }));
-    }
-  }
-
-  function tidyPipes(){
-    const ids = selectedShapes.filter((shape) => keepsCorners(shape)).map((shape) => shape.id);
-    if (!ids.length) return;
-    const keepFittings = holdFittings();
-    let done = 0;
-    for (const id of ids) {
-      const result = tidyPipe($state.snapshot(shapes), id);
-      if (!result) continue;
-      Object.assign(shapeById(id), result);
-      done += 1;
-    }
-    keepFittings();
-    showFileNotice(done === ids.length ? `Tidied ${done} pipe${done === 1 ? "" : "s"}` : `Tidied ${done} of ${ids.length} pipes · the others have no free path around the equipment`);
-  }
-
-  function setFittingNameSize(value){
-    editKey = "fitting-name-size";
-    for (const { fitting } of fittingGroup) fitting.nameSize = value;
-  }
-
-  function pipeLayer(up){
-    const ids = selectedShapes.filter((shape) => shape.kind === "pipe").map((shape) => shape.id);
-    if (!ids.length) return;
-    const moving = shapes.filter((shape) => ids.includes(shape.id));
-    const rest = shapes.filter((shape) => !ids.includes(shape.id));
-    shapes = up ? [...rest, ...moving] : [...moving, ...rest];
-  }
-
-  function attachedEnds(element){
-    return shapes.filter((shape) => shape.kind === "pipe").map((pipe) => ({ pipe, from: $state.snapshot(pipe.from), to: $state.snapshot(pipe.to) }));
-  }
-
-  function remapEnds(element, entries, original){
-    for (const entry of entries) {
-      for (const key of ["from", "to"]) {
-        const end = entry[key];
-        if (!end || end.id !== element.id) continue;
-        const horizontal = end.side === "top" || end.side === "bottom";
-        entry.pipe[key] = { ...end, offset: scaledOffset(end.offset, horizontal ? original.width : original.height, horizontal ? element.width : element.height, portStep(element)) };
-      }
-    }
-  }
-
-  function beginElementScale(event, element, corner){
-    const original = { x: element.x, y: element.y, width: element.width, height: element.height };
-    const aspect = original.width / original.height;
-    const left = corner.includes("w");
-    const top = corner.includes("n");
-    const anchor = { x: left ? original.x + original.width : original.x, y: top ? original.y + original.height : original.y };
-    const entries = attachedEnds(element);
-    const keepFittings = holdFittings();
-    const free = !!HYDRONIC_ELEMENTS[element.type]?.noPorts;
-    const size = (value) => free ? Math.max(8, Math.round(value)) : Math.max(40, snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value));
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        const fixed = HYDRONIC_ELEMENTS[element.type]?.fixedHeight;
-        const width = fixed && isTurned(element) ? original.width : size(Math.abs(point.x - anchor.x));
-        const height = fixed
-          ? (isTurned(element) ? size(Math.abs(point.y - anchor.y)) : original.height)
-          : next.shiftKey ? size(Math.abs(point.y - anchor.y)) : size(width / aspect);
-        const x = left ? anchor.x - width : anchor.x;
-        const y = top ? anchor.y - height : anchor.y;
-        Object.assign(element, {
-          x: centred(x + width / 2) - width / 2,
-          y: centred(y + height / 2) - height / 2,
-          width,
-          height
-        });
-        remapEnds(element, entries, original);
-        keepFittings();
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function beginBarScale(event, element, handle){
-    const original = { x: element.x, y: element.y, width: element.width, height: element.height };
-    const vertical = original.height > original.width;
-    const low = vertical ? handle.includes("n") : handle.includes("w");
-    const high = vertical ? handle.includes("s") : handle.includes("e");
-    if (!low && !high) return;
-    const key = vertical ? "y" : "x";
-    const size = vertical ? "height" : "width";
-    const limit = vertical ? boardHeight : boardWidth;
-    const anchor = low ? original[key] + original[size] : original[key];
-    const grabbed = low ? original[key] : original[key] + original[size];
-    const minimum = snapToGrid ? gridSize * 2 : 40;
-    const entries = attachedEnds(element);
-    const start = toCanvas(event);
-    if (!start) return;
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        const edge = snapValue(grabbed + point[key] - start[key], limit);
-        const length = Math.max(minimum, low ? anchor - edge : edge - anchor);
-        element[key] = low ? anchor - length : anchor;
-        element[size] = length;
-        keepBarEnds(element, entries, original, vertical);
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function keepBarEnds(element, entries, original, vertical){
-    const shift = vertical ? original.y - element.y : original.x - element.x;
-    const length = vertical ? element.height : element.width;
-    for (const entry of entries) {
-      for (const key of ["from", "to"]) {
-        const end = entry[key];
-        if (!end || end.id !== element.id) continue;
-        const along = vertical ? end.side === "left" || end.side === "right" : end.side === "top" || end.side === "bottom";
-        if (along) entry.pipe[key] = { ...end, offset: Math.min(length, Math.max(0, round2(end.offset + shift))) };
-      }
-    }
-  }
-
-  function centred(value){
-    return snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value);
-  }
-
-  function beginLegDrag(event, pipe, end){
-    const original = $state.snapshot(pipe[end]);
-    if (!isFreeEnd(original)) return;
-    const start = toCanvas(event);
-    if (!start) return;
-    const branch = shapeById(pipe.branchOf);
-    const top = branch ? endpointPose(pipe.role === "supply" ? pipe.to : pipe.from, shapeIndex)?.point : null;
-    const bars = shapes.filter((shape) => shape.kind === "equipment" && HYDRONIC_ELEMENTS[shape.type]?.bar);
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        let y = snapValue(original.y + point.y - start.y, boardHeight);
-        const x = top?.x ?? original.x;
-        const bar = bars.find((entry) => x > entry.x && x < entry.x + entry.width && Math.abs(entry.y - y) <= snapRadius);
-        if (bar) y = bar.y;
-        if (top) y = Math.max(y, top.y + 40);
-        const before = branch ? legSpan(branch, pipe) : null;
-        pipe[end] = { x, y: round2(y) };
-        if (branch) pipe.fittings = keepLegDistances(branch, $state.snapshot(pipe), before);
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function keptCorners(pipe, end){
-    const route = pipeRoutes.get(pipe.id);
-    if (!route || route.length < 3) return { points: [], follow: null };
-    const ordered = (end === "from" ? [...route].reverse() : route).map((point) => ({ x: point.x, y: point.y }));
-    const tip = ordered[ordered.length - 1];
-    let corners = ordered.slice(1, -1);
-    let near = tip;
-    const last = corners[corners.length - 1];
-    if (Math.hypot(last.x - tip.x, last.y - tip.y) <= 20.5 && endpointPose(pipe[end], shapeIndex, (id) => pipeRoutes.get(id), last)?.normal) {
-      near = last;
-      corners = corners.slice(0, -1);
-    }
-    if (!corners.length) return { points: [], follow: null };
-    const corner = corners[corners.length - 1];
-    const follow = Math.abs(corner.y - near.y) < 0.5 ? "y" : Math.abs(corner.x - near.x) < 0.5 ? "x" : null;
-    return { points: corners, follow };
-  }
-
-  function followEnd(){
-    const draft = pipeDraft;
-    if (!draft?.follow || !draft.points.length) return;
-    const spot = portTarget?.point ?? pipeCursor;
-    if (spot) draft.points[draft.points.length - 1][draft.follow] = round2(spot[draft.follow]);
-  }
-
-  function beginPipeEndDrag(event, pipe, end){
-    if (isLeg(pipe)) {
-      beginLegDrag(event, pipe, end);
-      return;
-    }
-    const original = $state.snapshot(pipe[end]);
-    const fixed = $state.snapshot(end === "from" ? pipe.to : pipe.from);
-    const { points, follow } = keptCorners(pipe, end);
-    const junction = original?.pipe !== undefined;
-    const free = isFreeEnd(original);
-    const start = toCanvas(event);
-    if (!start || !fixed) return;
-    let moved = false;
-    selectedId = null;
-    clearSubSelection();
-    pipeDraft = { from: fixed, points, follow, rewire: { pipeId: pipe.id, end } };
-    cursor = snapPoint(start);
-    aim = start;
-
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const raw = toCanvas(next);
-        if (!raw) return;
-        if (!moved && Math.hypot(raw.x - start.x, raw.y - start.y) * viewport.zoom < 4) return;
-        moved = true;
-        aim = raw;
-        cursor = snapPoint(raw);
-        followEnd();
-      },
-      onend: () => {
-        const target = moved ? portTarget : null;
-        const spot = pipeCursor ? { x: pipeCursor.x, y: pipeCursor.y } : null;
-        const snapshot = $state.snapshot(pipeDraft);
-        pipeDraft = null;
-        cursor = null;
-        if (!snapshot) return;
-        if (!moved) {
-          if (!junction && !free) removeShape(pipe.id);
-          return;
-        }
-        const valid = target && !sameEnd(endOf(target), snapshot.from) && !(target.pipe !== undefined && target.pipe === snapshot.from.pipe);
-        if (valid) finishRewire(snapshot, endOf(target));
-        else if (!junction && spot && !sameEnd(spot, snapshot.from)) finishRewire(snapshot, spot);
-        else if (!junction) removeShape(pipe.id);
-      }
-    });
-  }
-
-  function resetElementSize(){
-    for (const element of selectedElements()) {
-      const spec = HYDRONIC_ELEMENTS[element.type];
-      const original = { width: element.width, height: element.height };
-      const entries = attachedEnds(element);
-      const size = footprint(spec.width, spec.height, rotationOf(element));
-      const cx = element.x + element.width / 2;
-      const cy = element.y + element.height / 2;
-      element.width = size.width;
-      element.height = size.height;
-      element.x = centreFor(element, cx) - size.width / 2;
-      element.y = centreFor(element, cy) - size.height / 2;
-      remapEnds(element, entries, original);
-    }
-  }
-
-  function centreFor(element, value){
-    return snapToGrid && !isBranch(element) ? Math.round(value / gridSize) * gridSize : value;
-  }
-
-  function beginPipeVertexDrag(event, pipe, index){
-    const route = pipeRoutes.get(pipe.id);
-    if (!route) return;
-    const path = editablePath(route);
-    const keepFittings = holdFittings();
-    if (event.altKey) {
-      pipe.points = storedPoints(path.filter((_, entry) => entry !== index));
-      markCorners(pipe, path);
-      return;
-    }
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const raw = toCanvas(next);
-        if (!raw) return;
-        pipe.points = storedPoints(dragVertex(path, index, snapPoint(raw)));
-        markCorners(pipe, path);
-        keepFittings();
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function beginPipeEdgeDrag(event, pipe, index){
-    const route = pipeRoutes.get(pipe.id);
-    const start = toCanvas(event);
-    if (!route || !start) return;
-    const path = editablePath(route);
-    const keepFittings = holdFittings();
-    const step = snapToGrid ? gridSize : 1;
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        const delta = { x: Math.round((point.x - start.x) / step) * step, y: Math.round((point.y - start.y) / step) * step };
-        pipe.points = storedPoints(dragEdge(path, index, delta));
-        markCorners(pipe, path);
-        keepFittings();
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function sameFitting(a, b){
-    return a.pipeId === b.pipeId && a.fittingId === b.fittingId;
-  }
-
-  function fittingsIn(box){
-    const keys = [];
-    for (const pipe of shapes) {
-      if (pipe.kind !== "pipe" || pipe.locked) continue;
-      const route = pipeRoutes.get(pipe.id);
-      if (!route) continue;
-      for (const fitting of pipe.fittings ?? []) if (HYDRONIC_ELEMENTS[fitting.type] && contains(box, fittingBox(route, fitting))) keys.push({ pipeId: pipe.id, fittingId: fitting.id });
-    }
-    return keys;
-  }
-
-  function beginFittingDrag(event, pipe, fittingId){
-    const key = { pipeId: pipe.id, fittingId };
-    const current = fittingGroup.map((entry) => ({ pipeId: entry.pipe.id, fittingId: entry.fitting.id }));
-    const inside = current.some((entry) => sameFitting(entry, key));
-    if (event.ctrlKey || event.metaKey || event.shiftKey) {
-      const next = inside ? current.filter((entry) => !sameFitting(entry, key)) : [...current, key];
-      clearShapeSubSelection();
-      selectedFitting = null;
-      extraFittings = [];
-      if (next.length) {
-        selectedFitting = next[next.length - 1];
-        extraFittings = next.slice(0, -1);
-      }
-      return;
-    }
-    if (inside && (current.length > 1 || selectionIds.length > 0)) {
-      beginFittingGroupDrag(event, key, current.filter((entry) => !sameFitting(entry, key)));
-      return;
-    }
-    beginFittingSingleDrag(event, pipe, fittingId);
-  }
-
-  function beginFittingGroupDrag(event, key, rest){
-    clearShapeSubSelection();
-    selectedFitting = key;
-    extraFittings = rest;
-    const members = [key, ...rest].map((entry) => {
-      const host = shapeById(entry.pipeId);
-      const fitting = host?.fittings?.find((item) => item.id === entry.fittingId);
-      const route = pipeRoutes.get(entry.pipeId);
-      if (!host || !fitting || !route) return null;
-      return { host, fitting, start: fittingPose(route, fitting), size: (HYDRONIC_ELEMENTS[fitting.type]?.width ?? 0) * (fitting.scale ?? 1) };
-    }).filter(Boolean);
-    const origin = toCanvas(event);
-    if (!origin || !members.length) return;
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        for (const member of members) {
-          const route = pipeRoutes.get(member.host.id);
-          if (!route) continue;
-          const hit = projectOnRoute(route, { x: member.start.x + point.x - origin.x, y: member.start.y + point.y - origin.y }, member.size);
-          if (hit) member.fitting.t = round4(hit.t);
-        }
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function alignFittings(mode){
-    const members = fittingGroup.map(({ pipe, fitting }) => ({ route: pipeRoutes.get(pipe.id), fitting })).filter((member) => member.route);
-    const boxes = members.map((member) => fittingBox(member.route, member.fitting));
-    applyFittingTargets(members, fittingTargets(members, alignOffsets(boxes, mode, unionBox(boxes))));
-  }
-
-  function distributeFittings(axis){
-    const members = fittingGroup.map(({ pipe, fitting }) => ({ route: pipeRoutes.get(pipe.id), fitting })).filter((member) => member.route);
-    const boxes = members.map((member) => fittingBox(member.route, member.fitting));
-    applyFittingTargets(members, fittingTargets(members, distributeOffsets(boxes, axis)));
-  }
-
-  function applyFittingTargets(members, targets){
-    members.forEach((member, index) => {
-      if (targets[index] !== null) member.fitting.t = targets[index];
-    });
-  }
-
-  function rotateElements(){
-    const elements = selectedShapes.filter((shape) => shape.kind === "equipment" && !shape.locked && HYDRONIC_ELEMENTS[shape.type]);
-    for (const element of elements) {
-      const original = { x: element.x, y: element.y, width: element.width, height: element.height };
-      const entries = attachedEnds(element);
-      const cx = original.x + original.width / 2;
-      const cy = original.y + original.height / 2;
-      element.rotation = (rotationOf(element) + 90) % 360;
-      element.width = original.height;
-      element.height = original.width;
-      element.x = centreFor(element, cx) - element.width / 2;
-      element.y = centreFor(element, cy) - element.height / 2;
-      for (const entry of entries) {
-        for (const end of ["from", "to"]) {
-          if (entry[end]?.id === element.id) entry.pipe[end] = turnPort(entry[end], original);
-        }
-      }
-    }
-  }
-
-  function beginFittingSingleDrag(event, pipe, fittingId){
-    selectedId = null;
-    clearSubSelection();
-    selectedFitting = { pipeId: pipe.id, fittingId };
-    let fitting = pipe.fittings?.find((entry) => entry.id === fittingId);
-    if (!fitting) return;
-    const size = (HYDRONIC_ELEMENTS[fitting.type]?.width ?? 0) * (fitting.scale ?? 1);
-    const roaming = fitting.meterOf !== undefined;
-    let host = pipe;
-
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const point = toCanvas(next);
-        if (!point) return;
-        if (roaming) {
-          const jump = nearestHydronicPipe(point, size);
-          if (jump && jump.pipe !== host) {
-            const moved = { ...$state.snapshot(fitting), t: round4(jump.hit.t) };
-            host.fittings = host.fittings.filter((entry) => entry.id !== moved.id);
-            jump.pipe.fittings = [...(jump.pipe.fittings ?? []), moved];
-            host = jump.pipe;
-            fitting = host.fittings.find((entry) => entry.id === moved.id);
-            selectedFitting = { pipeId: host.id, fittingId };
-            return;
-          }
-        }
-        const route = pipeRoutes.get(host.id);
-        if (!route) return;
-        const corner = HYDRONIC_ELEMENTS[fitting.type]?.junction
-          ? valveCorner(point, new Map([[host.id, route]]), Math.max(10, 14 / viewport.zoom), fitting.type, orientAngle, fitting.leg ?? "before")
-          : null;
-        if (corner) {
-          Object.assign(fitting, { t: corner.t, flip: corner.flip, leg: corner.leg });
-          return;
-        }
-        const hit = projectOnRoute(route, point, size);
-        if (!hit) return;
-        fitting.t = round4(hit.t);
-        delete fitting.leg;
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function nearestHydronicPipe(point, size){
-    const radius = Math.max(24, 30 / viewport.zoom);
-    let best = null;
-    for (const [pipeId, route] of pipeRoutes) {
-      const candidate = shapeById(pipeId);
-      if (!candidate || candidate.locked || familyOf(mediumOf(candidate.medium)) !== "hydronic") continue;
-      const hit = projectOnRoute(route, point, size);
-      if (hit && hit.gap <= radius && (!best || hit.gap < best.hit.gap)) best = { pipe: candidate, hit };
-    }
-    return best;
-  }
-
   let turnable = $derived(fittingGroup.filter(({ pipe, fitting }) => {
     const route = pipeRoutes.get(pipe.id);
     return HYDRONIC_ELEMENTS[fitting.type]?.junction && route && cornerLegs(route, routePoint(route, fitting.t));
   }));
-
-  function turnFitting(){
-    for (const { pipe, fitting } of turnable) {
-      const route = pipeRoutes.get(pipe.id);
-      const legs = cornerLegs(route, routePoint(route, fitting.t));
-      const leg = fitting.leg === "after" ? "before" : "after";
-      const flip = cornerFlip(fitting.type, legs, leg, orientAngle);
-      if (flip === undefined) continue;
-      Object.assign(fitting, { leg, flip });
-    }
-  }
-
-  function flipFitting(){
-    const corners = new Set(turnable.map(({ fitting }) => fitting.id));
-    for (const { fitting } of fittingGroup) if (HYDRONIC_ELEMENTS[fitting.type]?.orient !== "upright" && !corners.has(fitting.id)) fitting.flip = !fitting.flip;
-  }
-
-  function removeFitting(){
-    if (!activeFitting) return;
-    const gone = new Set(fittingGroup.map(({ fitting }) => fitting.id));
-    for (const shape of shapes) {
-      if (shape.kind !== "pipe" || !(shape.fittings ?? []).some((entry) => gone.has(entry.id) || gone.has(entry.meterOf))) continue;
-      shape.fittings = shape.fittings.filter((entry) => !gone.has(entry.id) && !gone.has(entry.meterOf));
-    }
-    selectedFitting = null;
-    extraFittings = [];
-  }
-
-  function beginWaypointDrag(event, pipe, index){
-    if (event.altKey) {
-      pipe.points = pipe.points.filter((_, entry) => entry !== index);
-      return;
-    }
-    history.beginGesture();
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        const raw = toCanvas(next);
-        if (raw) pipe.points[index] = snapPoint(raw);
-      },
-      onend: () => history.endGesture()
-    });
-  }
-
-  function hydronicPlacement(type, point){
-    const spec = HYDRONIC_ELEMENTS[type];
-    if (spec.inline) {
-      const radius = Math.max(24, 30 / viewport.zoom);
-      let best = null;
-      for (const [pipeId, route] of pipeRoutes) {
-        const near = projectOnRoute(route, point, 0);
-        if (!near || near.gap > radius || (best && near.gap >= best.near)) continue;
-        const hit = projectOnRoute(route, point, spec.width);
-        if (hit) best = { pipe: shapeById(pipeId), hit, near: near.gap };
-      }
-      const corner = spec.junction ? valveCorner(point, pipeRoutes, Math.max(10, 14 / viewport.zoom), type, orientAngle) : null;
-      if (corner && !shapeById(corner.pipeId)?.locked) {
-        return { kind: "fitting", type, pipe: shapeById(corner.pipeId), fitting: { type, t: corner.t, flip: corner.flip, leg: corner.leg }, pose: corner.pose, valid: true };
-      }
-      if (!best || best.pipe.locked) return { kind: "fitting", type, pipe: null, pose: { x: point.x, y: point.y, rotation: 0 }, valid: false };
-      return {
-        kind: "fitting",
-        type,
-        pipe: best.pipe,
-        fitting: { type, t: round4(best.hit.t), flip: false },
-        pose: { x: best.hit.x, y: best.hit.y, rotation: orientAngle(type, best.hit.angle) },
-        valid: true
-      };
-    }
-    const rotation = placing?.rotation ?? 0;
-    const size = footprint(spec.width, spec.height, rotation);
-    const element = {
-      type,
-      x: snapValue(point.x, boardWidth) - size.width / 2,
-      y: snapValue(point.y, boardHeight) - size.height / 2,
-      width: size.width,
-      height: size.height
-    };
-    if (spec.electric) {
-      element.x = snapValue(point.x - size.width / 2, boardWidth);
-      element.y = snapValue(point.y - size.height / 2, boardHeight);
-      element.params = electricDefaults(type);
-      Object.assign(element, electricSize(type, element.params));
-      return { kind: "equipment", element, valid: true };
-    }
-    if (rotation) element.rotation = rotation;
-    if (spec.bar) element.medium = pipeMedium;
-    if (spec.branch) {
-      element.params = branchDefaults();
-      let aligned = { ...alignBranch(element, (value) => snapValue(value, boardWidth)), id: -1 };
-      let ghostId = -1;
-      let pipes = createBranch(aligned, () => --ghostId);
-      const shift = snapBranch(legEndsOf(pipes), shapes, snapRadius);
-      if (shift) {
-        aligned = { ...aligned, y: aligned.y + shift };
-        ghostId = -1;
-        pipes = createBranch(aligned, () => --ghostId);
-      }
-      const { id, ...placed } = aligned;
-      return { kind: "equipment", element: placed, pipes, valid: true };
-    }
-    return { kind: "equipment", element, valid: true };
-  }
-
-  function placeFitting(id, target){
-    const spec = HYDRONIC_ELEMENTS[target.fitting.type];
-    const fitting = { id, ...target.fitting, name: nextFittingName(target.fitting.type, shapes) };
-    if (spec.measures) Object.assign(fitting, { readout: "value", readouts: [spec.measures[0]] });
-    const entries = spec.sensors ? [...pipeRoutes].map(([pipeId, route]) => ({ pipe: shapeById(pipeId), route })).filter((entry) => entry.pipe) : [];
-    const spots = spec.sensors ? placeSensors(entries, target.pipe.id, fitting) : [];
-    const across = spots.find((spot) => spot.pipeId !== target.pipe.id);
-    if (across) fitting.nameAnchor = meterNameAnchor(fitting, target.pipe.id, across);
-    target.pipe.fittings = [...(target.pipe.fittings ?? []), fitting];
-    if (spec.junction) joinValve(target.pipe, fitting);
-    for (const spot of spots) {
-      const host = shapeById(spot.pipeId);
-      host.fittings = [...(host.fittings ?? []), { id: nextId++, type: "meterSensor", t: spot.t, name: "", meterOf: id }];
-    }
-  }
-
-  function joinValve(host, fitting){
-    const route = pipeRoutes.get(host.id);
-    if (!route) return;
-    const spot = fittingPose(route, fitting);
-    for (const shape of shapes) {
-      if (shape.kind !== "pipe" || shape.id === host.id) continue;
-      for (const key of ["from", "to"]) {
-        const end = shape[key];
-        if (end?.pipe !== host.id || end.fitting !== undefined || Math.hypot(end.x - spot.x, end.y - spot.y) > 1) continue;
-        shape[key] = { pipe: host.id, x: spot.x, y: spot.y, fitting: fitting.id };
-      }
-    }
-  }
-
-  function meterNameAnchor(fitting, hostId, across){
-    const self = fittingPose(pipeRoutes.get(hostId), fitting);
-    const other = fittingPose(pipeRoutes.get(across.pipeId), { type: "meterSensor", t: across.t });
-    const box = fittingBox(pipeRoutes.get(hostId), fitting);
-    if (Math.abs(other.x - self.x) >= 1) return { side: other.x > self.x ? "right" : "left", gap: 6, shift: -Math.round(box.height / 2 + 12) };
-    return { side: other.y > self.y ? "bottom" : "top", gap: 4, shift: -Math.round(box.width / 2 + textWidth(fitting.name, 13) / 2 + 8) };
-  }
-
-  function legEndsOf(pipes){
-    const ends = {};
-    for (const pipe of pipes) {
-      if (pipe.role === "supply") ends.supply = pipe.from;
-      if (pipe.role === "return") ends.return = pipe.to;
-    }
-    return ends;
-  }
-
-  function placeHydronic(target, keep){
-    const id = nextId++;
-    if (target.kind === "equipment") {
-      const element = { id, kind: "equipment", ...target.element, name: isElectricType(target.element.type) ? nextElectricName(target.element.type, shapes) : HYDRONIC_ELEMENTS[target.element.type]?.nameless ? "" : nextElementName(target.element.type, shapes) };
-      shapes.push(element);
-      if (isBranch(element)) shapes.push(...createBranch(element, () => nextId++));
-    }
-    else placeFitting(id, target);
-    if (keep) return;
-    pickTool("select");
-    selectedId = null;
-    clearSubSelection();
-    if (target.kind === "equipment") selectShape(id);
-    else selectedFitting = { pipeId: target.pipe.id, fittingId: id };
-  }
-
-  function appKeydown(event){
-    const ctrl = event.ctrlKey || event.metaKey;
-    const key = event.key.toLowerCase();
-
-    if (!ctrl && event.shiftKey && event.code === "Digit1") {
-      event.preventDefault();
-      fitContent();
-      return true;
-    }
-    if (!ctrl && event.shiftKey && event.code === "Digit2") {
-      event.preventDefault();
-      zoomToSelection();
-      return true;
-    }
-    if (!ctrl && event.shiftKey && event.code === "Digit0") {
-      event.preventDefault();
-      viewport.resetZoom();
-      return true;
-    }
-    if (ctrl && (key === "y" || (event.shiftKey && key === "z"))) {
-      event.preventDefault();
-      redo();
-      return true;
-    }
-    if (ctrl && key === "g") {
-      event.preventDefault();
-      if (event.shiftKey) ungroupSelection();
-      else groupSelection();
-      return true;
-    }
-    if (ctrl && event.shiftKey && key === "l") {
-      event.preventDefault();
-      lockSelection();
-      return true;
-    }
-    if (ctrl && !event.altKey && key === "m" && tool === "select" && transformBox) {
-      event.preventDefault();
-      flipSelection(event.shiftKey ? "x" : "y");
-      return true;
-    }
-    if (ctrl && !event.altKey && (key === "f" || key === "b") && tool === "select" && (partGroup.length || selectionIds.length)) {
-      event.preventDefault();
-      reorderSelection(key === "f" ? (event.shiftKey ? "front" : "forward") : (event.shiftKey ? "back" : "backward"));
-      return true;
-    }
-    if (!ctrl && !event.altKey && event.shiftKey && (key === "h" || key === "v") && tool === "select" && transformBox) {
-      event.preventDefault();
-      flipSelection(key === "h" ? "x" : "y");
-      return true;
-    }
-    if (ctrl && event.shiftKey) {
-      const align = ALIGN_ACTIONS.find((action) => action.code === event.code);
-      const spread = DISTRIBUTE_ACTIONS.find((action) => action.code === event.code);
-      if (align || spread) {
-        event.preventDefault();
-        if (align) alignSelection(align.id);
-        else distributeSelection(spread.axis);
-        return true;
-      }
-    }
-    if (ctrl && key === "s") {
-      event.preventDefault();
-      if (event.shiftKey) saveProjectAs();
-      else saveProject();
-      return true;
-    }
-    if (ctrl && key === "o") {
-      event.preventDefault();
-      openDrawing();
-      return true;
-    }
-    if (ctrl && key === "a") {
-      event.preventDefault();
-      if (tool !== "select") pickTool("select");
-      selectAll();
-      return true;
-    }
-    if (tool === "select" && app === "hydronic" && !ctrl && key === "r" && selectedShapes.some((shape) => shape.kind === "equipment" && !shape.locked)) {
-      event.preventDefault();
-      if (!selectedShapes.some(isBranch)) rotateElements();
-      return true;
-    }
-    if (tool === "select" && app === "hydronic" && !ctrl && !event.altKey && key === "f" && selectedShapes.some((shape) => shape.kind === "pipe")) {
-      event.preventDefault();
-      reversePipes();
-      return true;
-    }
-    if (tool === "place" && !ctrl && key === "r") {
-      event.preventDefault();
-      rotatePlacing();
-      return true;
-    }
-    if (event.key === "Escape") {
-      if (tool !== "select") pickTool("select");
-      branchEditing = false;
-      clearSubSelection();
-      renamingId = null;
-      return false;
-    }
-    if (event.key === "Delete" || event.key === "Backspace") {
-      if (activeFitting) {
-        event.preventDefault();
-        const mixed = selectionIds.length > 0;
-        removeFitting();
-        if (mixed) deleteSelection();
-        return true;
-      }
-      if (partGroup.length) {
-        event.preventDefault();
-        removeParts();
-        return true;
-      }
-      if (activePoints.length > 0) {
-        event.preventDefault();
-        deletePoints();
-        return true;
-      }
-      if (selectionIds.length > 1) {
-        event.preventDefault();
-        deleteSelection();
-        return true;
-      }
-    }
-    return false;
-  }
 
   let renamingId = $state(null);
   let renamingRoom = $derived(shapes.find((shape) => shape.id === renamingId && shape.kind === "room"));
@@ -3748,213 +827,6 @@
     return viewport.toScreen({ x: label.center, y: label.middle });
   });
 
-  function commitFittingRename(value){
-    const entry = renamingFittingEntry;
-    renamingFitting = null;
-    if (!entry) return;
-    entry.fitting.name = value.trim();
-  }
-
-  function commitElementRename(value){
-    const element = renamingElement;
-    renamingElementId = null;
-    if (!element) return;
-    element.name = value.trim();
-  }
-
-  function setRoomName(room, value){
-    const name = value.trim();
-    room.name = name || nextRoomName(shapes.filter((shape) => shape !== room));
-  }
-
-  function commitRename(value){
-    const room = renamingRoom;
-    renamingId = null;
-    if (room) setRoomName(room, value);
-  }
-
-  function renameRoom(){
-    renamingId = selectedId;
-  }
-
-  function commitRoomName(event){
-    if (!selectedRoom) return;
-    const name = event.currentTarget.value.trim();
-    selectedRoom.name = name || nextRoomName(shapes.filter((shape) => shape !== selectedRoom));
-  }
-
-  function roomPoint(raw, event){
-    const point = snapPoint(raw);
-    const last = draft?.points && (isPolygonTool(draft.kind) || draft.kind === "pen") ? draft.points[draft.points.length - 1] : null;
-    const radius = VERTEX_SNAP_PX / viewport.zoom;
-    const vertex = nearestVertex(raw, snapVertices(shapes, draft), radius);
-    if (vertex && (!event.shiftKey || !last || vertex.x === last.x || vertex.y === last.y)) return vertex;
-    if (event.shiftKey && last) return constrainOrtho(last, point);
-    return snapToEdges(raw, shapes, Math.max(radius, roomStyle.floorWidth / 2 + 1), null, point) ?? point;
-  }
-
-  function roomClick(point){
-    cursor = point;
-
-    if (!draft) {
-      draft = { kind: tool, start: point, points: [point], target: shapeTarget };
-      return;
-    }
-
-    if (draft.kind === "room-rect") {
-      const points = rectPoints(draft.start, point);
-      if (points) shapes.push(draft.target === "wall"
-        ? { id: nextId++, kind: "wall", points }
-        : draft.target === "floor"
-          ? { id: nextId++, kind: "floor", points }
-          : { id: nextId++, kind: "room", name: nextRoomName(shapes), points });
-      draft = null;
-      return;
-    }
-
-    const last = draft.points[draft.points.length - 1];
-    if (samePoint(point, last) || samePoint(point, draft.start)) {
-      if (draft.target === "wall" && samePoint(point, last) && !samePoint(point, draft.start) && draft.points.length >= 2) finishPolygon(null, true);
-      else if (draft.points.length >= 3) finishPolygon();
-      return;
-    }
-
-    if (wouldCross(draft.points, point)) return;
-    draft.points.push(point);
-  }
-
-  function finishPolygon(closed = null, open = false){
-    if (!closed && (!draft?.points || draft.points.length < (open ? 2 : 3) || (!open && closingCrosses(draft.points)))) return;
-    const points = open ? $state.snapshot(draft.points) : removeCollinear(closed ?? $state.snapshot(draft.points));
-    if (open) {
-      shapes.push({ id: nextId++, kind: "wall", points, open: true });
-    } else if (points.length >= 3 && draft.target === "wall") {
-      shapes.push({ id: nextId++, kind: "wall", points });
-    } else if (points.length >= 3) {
-      shapes.push(draft.kind === "floor" || draft.target === "floor"
-        ? { id: nextId++, kind: "floor", points }
-        : { id: nextId++, kind: "room", name: nextRoomName(shapes), points });
-    }
-    draft = null;
-  }
-
-  function penDown(event, point){
-    cursor = point;
-
-    if (!draft) {
-      draft = { kind: "pen", start: point, points: [point], handles: [null], dragging: false, target: shapeTarget };
-      pullPenHandle(event, 0, false);
-      return;
-    }
-
-    const last = draft.points[draft.points.length - 1];
-    if (draft.points.length >= 2 && samePoint(point, draft.start)) {
-      pullPenHandle(event, 0, true);
-      return;
-    }
-    if (samePoint(point, last)) {
-      finishPen(null, draft.target === "wall");
-      return;
-    }
-
-    draft.points.push(point);
-    draft.handles.push(null);
-    pullPenHandle(event, draft.points.length - 1, false);
-  }
-
-  function pullPenHandle(event, index, closing){
-    const anchor = { x: draft.points[index].x, y: draft.points[index].y };
-    draft.dragging = true;
-
-    dragPointer(svgEl, event, {
-      onmove: (next) => {
-        if (!draft) return;
-        const raw = toCanvas(next);
-        if (!raw) return;
-        let vector = { x: raw.x - anchor.x, y: raw.y - anchor.y };
-        if (Math.hypot(vector.x, vector.y) * viewport.zoom < 4) return;
-        if (next.shiftKey) vector = constrainAngle(vector);
-        vector = { x: round2(vector.x), y: round2(vector.y) };
-        draft.handles[index] = { in: { x: -vector.x, y: -vector.y }, out: vector, smooth: true };
-      },
-      onend: () => {
-        if (!draft) return;
-        draft.dragging = false;
-        if (closing) finishPen();
-      }
-    });
-  }
-
-  function finishPen(closed = null, open = false){
-    if (!draft || draft.kind !== "pen") return;
-    const snapshot = $state.snapshot(draft);
-    const points = closed ?? snapshot.points;
-    const handles = closed ? [...snapshot.handles, ...closed.slice(snapshot.handles.length).map(() => null)] : open ? openEnds(snapshot.handles) : snapshot.handles;
-    const curved = handles.some(Boolean);
-    if (points.length < (curved || open ? 2 : 3)) return;
-    const shape = { id: nextId++, kind: draft.target === "floor" ? "floor" : draft.target === "wall" ? "wall" : "room", points };
-    if (open) shape.open = true;
-    if (curved) shape.handles = handles;
-    if (shape.kind === "room") shape.name = nextRoomName(shapes);
-    shapes.push(shape);
-    draft = null;
-  }
-
-  function roomKeydown(event){
-    if (!draft?.points || !(isPolygonTool(draft.kind) || draft.kind === "pen")) return false;
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      if (draft.kind === "pen") finishPen(null, draft.target === "wall");
-      else finishPolygon(null, draft.target === "wall");
-      return true;
-    }
-
-    const undoKey = event.key.toLowerCase() === "z" && (event.ctrlKey || event.metaKey);
-    if (event.key === "Backspace" || undoKey) {
-      event.preventDefault();
-      draft.points.pop();
-      draft.handles?.pop();
-      if (draft.points.length === 0) draft = null;
-      return true;
-    }
-
-    return false;
-  }
-
-  function cycleElbow(step){
-    const index = ELBOW_ORDER.indexOf(elbow);
-    elbow = ELBOW_ORDER[(index + step + ELBOW_ORDER.length) % ELBOW_ORDER.length];
-  }
-
-  function pickTool(next){
-    tool = next;
-    draft = null;
-    pipeDraft = null;
-    if (next !== "select") selectedId = null;
-  }
-
-  function deleteSelected(){
-    if (activeFitting) {
-      const mixed = selectionIds.length > 0;
-      removeFitting();
-      if (mixed) deleteSelection();
-      return;
-    }
-    if (selectionIds.length > 1) deleteSelection();
-    else if (selectedId !== null) removeShape(selectedId);
-  }
-
-  function removeShape(id){
-    shapes = shapes.filter((shape) => shape.id !== id);
-    shapes = pruneDangling(shapes);
-    if (selectedId === id) selectedId = null;
-  }
-
-  function undo(){
-    restore(history.undo());
-  }
-
   let documents = {};
   let variableNames = $state([]);
   const PAGED_APPS = ["floorplan", "hydronic", "network"];
@@ -3970,276 +842,10 @@
   let ioBranches = $derived(ioVisible ? pageShapes("hydronic").filter(isBranch).map((shape, index) => ({ id: shape.id, label: shape.name?.trim() || `Branch ${index + 1}`, type: branchParams(shape).branch_type })) : []);
   let documentName = $state(null);
   let saveDialog = $state(null);
-  let pickedFileName = null;
-
-  function openSaveDialog(mode = "as"){
-    saveDialog = { mode };
-  }
-
-  function confirmSave(name){
-    const mode = saveDialog?.mode ?? "as";
-    saveDialog = null;
-    downloadProject(cleanDocumentName(name) ?? defaultDocumentName(), mode !== "copy");
-  }
-
-  function newPageId(){
-    return `page-${crypto.randomUUID().slice(0, 8)}`;
-  }
-
-  function ensurePages(appId){
-    if (!PAGED_APPS.includes(appId) || pageSets[appId]) return;
-    const id = newPageId();
-    pageSets[appId] = { active: id, list: [{ id, name: "Page 1" }] };
-  }
-
-  function stashKey(appId){
-    const set = pageSets[appId];
-    return PAGED_APPS.includes(appId) && set ? `${appId}:${set.active}` : appId;
-  }
-
-  function storedShapes(appId, pageId){
-    const set = pageSets[appId];
-    if (appId === app && (!set || set.active === pageId)) return $state.snapshot(shapes);
-    return documents[set ? `${appId}:${pageId}` : appId]?.shapes ?? [];
-  }
-
-  function pageShapes(appId){
-    const set = pageSets[appId];
-    if (!set) return appId === app ? shapes : documents[appId]?.shapes ?? [];
-    return set.list.flatMap((page) => appId === app && page.id === set.active ? shapes : documents[`${appId}:${page.id}`]?.shapes ?? []);
-  }
-
-  function currentApps(){
-    const apps = {};
-    const pages = {};
-    const ids = new Set([...APPS.map((entry) => entry.id), ...Object.keys(documents).map((key) => key.split(":")[0])]);
-    for (const appId of ids) {
-      const set = pageSets[appId];
-      if (set) {
-        pages[appId] = { active: set.active, list: set.list.map((page) => ({ id: page.id, name: page.name, shapes: storedShapes(appId, page.id) })) };
-        apps[appId] = storedShapes(appId, set.active);
-      } else {
-        apps[appId] = appId === app ? $state.snapshot(shapes) : documents[appId]?.shapes ?? [];
-      }
-    }
-    return { apps, pages };
-  }
-
-  function resetInteraction(){
-    pickTool("select");
-    selectedId = null;
-    selectedIds = [];
-    clearSubSelection();
-    placing = null;
-    renamingId = null;
-    renamingElementId = null;
-    renamingFitting = null;
-    editingTextId = null;
-    targetChoice = null;
-    branchEditing = false;
-  }
-
-  function stashCurrent(){
-    documents[stashKey(app)] = { shapes: $state.snapshot(shapes), history: history.save() };
-  }
-
-  function loadStashed(key){
-    const next = documents[key];
-    delete documents[key];
-    resetInteraction();
-    history.load(next?.history ?? null);
-    shapes = next?.shapes ?? [];
-  }
-
-  function selectPage(pageId){
-    const set = pageSets[app];
-    if (!set || set.active === pageId) return;
-    stashCurrent();
-    set.active = pageId;
-    loadStashed(stashKey(app));
-  }
-
-  function addPage(){
-    const set = pageSets[app];
-    if (!set) return;
-    const taken = new Set(set.list.map((page) => page.name));
-    let index = set.list.length + 1;
-    while (taken.has(`Page ${index}`)) index += 1;
-    const id = newPageId();
-    stashCurrent();
-    set.list.push({ id, name: `Page ${index}` });
-    set.active = id;
-    loadStashed(stashKey(app));
-  }
-
-  function movePage(pageId, index){
-    const list = pageSets[app]?.list;
-    if (!list) return;
-    const from = list.findIndex((page) => page.id === pageId);
-    if (from < 0 || index < 0 || index >= list.length || index === from) return;
-    const [page] = list.splice(from, 1);
-    list.splice(index, 0, page);
-  }
-
-  function duplicatePage(pageId){
-    const set = pageSets[app];
-    if (!set) return;
-    const index = set.list.findIndex((page) => page.id === pageId);
-    const source = set.list[index];
-    if (!source) return;
-    const copied = copyPageShapes(storedShapes(app, pageId), () => nextId++);
-    const id = newPageId();
-    stashCurrent();
-    set.list.splice(index + 1, 0, { id, name: pageCopyName(source.name, set.list) });
-    set.active = id;
-    documents[`${app}:${id}`] = { shapes: copied, history: null };
-    loadStashed(stashKey(app));
-  }
-
-  function renamePage(pageId, name){
-    const page = pageSets[app]?.list.find((entry) => entry.id === pageId);
-    if (page) page.name = name;
-  }
-
-  function deletePage(pageId){
-    const set = pageSets[app];
-    if (!set || set.list.length < 2) return;
-    const index = set.list.findIndex((page) => page.id === pageId);
-    const page = set.list[index];
-    if (!page) return;
-    const filled = storedShapes(app, pageId).length > 0;
-    if (filled && !window.confirm(`Delete "${page.name}" and everything on it?`)) return;
-    const wasActive = set.active === pageId;
-    set.list.splice(index, 1);
-    delete documents[`${app}:${pageId}`];
-    if (!wasActive) return;
-    set.active = set.list[Math.min(index, set.list.length - 1)].id;
-    loadStashed(stashKey(app));
-  }
-
-  function projectSettings(){
-    return {
-      grid: { size: gridSize, majorEvery, show: showGrid, snap: snapToGrid, minorColor: gridMinorColor, majorColor: gridMajorColor },
-      drawing: { lineColor, lineWidth, rectStroke, rectFill, rectFilled },
-      rooms: {
-        roomFill, roomStroke, labelColor: roomLabelColor, floorFill, floorStroke, categoryColors: $state.snapshot(categoryColors),
-        furnitureOpacity, floorWallWidth, roomWallWidth, wallStroke, wallWidth
-      },
-      hydronic: { library: hydronicLibrary, nodePrefix, pgdPrefix, pgdFloat, targets: $state.snapshot(exportTargets) },
-      wiring: { paper: wiringPaper }
-    };
-  }
-
-  function applySettings(settings){
-    const number = (value, fallback) => Number.isFinite(value) ? value : fallback;
-    const text = (value, fallback) => typeof value === "string" && value ? value : fallback;
-    const flag = (value, fallback) => typeof value === "boolean" ? value : fallback;
-    const grid = settings?.grid ?? {};
-    const drawing = settings?.drawing ?? {};
-    const rooms = settings?.rooms ?? {};
-    gridSize = number(grid.size, 20);
-    majorEvery = number(grid.majorEvery, 5);
-    showGrid = flag(grid.show, true);
-    snapToGrid = flag(grid.snap, true);
-    gridMinorColor = text(grid.minorColor, "#E2E8F0");
-    gridMajorColor = text(grid.majorColor, "#CBD5E1");
-    lineColor = text(drawing.lineColor, "#2563EB");
-    lineWidth = number(drawing.lineWidth, 2);
-    rectStroke = text(drawing.rectStroke, "#0F172A");
-    rectFill = text(drawing.rectFill, "#BFDBFE");
-    rectFilled = flag(drawing.rectFilled, true);
-    roomFill = text(rooms.roomFill, ROOM_STYLE.roomFill);
-    roomStroke = text(rooms.roomStroke, ROOM_STYLE.roomStroke);
-    roomLabelColor = text(rooms.labelColor, ROOM_STYLE.labelColor);
-    floorFill = text(rooms.floorFill, ROOM_STYLE.floorFill);
-    floorStroke = text(rooms.floorStroke, ROOM_STYLE.floorStroke);
-    categoryColors = rooms.categoryColors && typeof rooms.categoryColors === "object" ? { ...defaultCategoryColors(), ...rooms.categoryColors } : defaultCategoryColors();
-    furnitureOpacity = number(rooms.furnitureOpacity, 0.5);
-    floorWallWidth = number(rooms.floorWallWidth, ROOM_STYLE.floorWidth);
-    roomWallWidth = number(rooms.roomWallWidth, ROOM_STYLE.roomWidth);
-    wallStroke = text(rooms.wallStroke, WALL_STYLE.stroke);
-    wallWidth = number(rooms.wallWidth, WALL_STYLE.width);
-    hydronicLibrary = text(settings?.hydronic?.library, HYDRONIC_STYLE.library);
-    nodePrefix = typeof settings?.hydronic?.nodePrefix === "string" ? settings.hydronic.nodePrefix : "";
-    pgdPrefix = typeof settings?.hydronic?.pgdPrefix === "string" ? settings.hydronic.pgdPrefix : PGD_TAGS.prefix;
-    exportTargets = targetsOf(settings?.hydronic?.targets);
-    pgdFloat = text(settings?.hydronic?.pgdFloat, PGD_TAGS.float);
-    wiringPaper = PAPERS[settings?.wiring?.paper] ? settings.wiring.paper : DEFAULT_PAPER;
-  }
-
-  function usedImages(apps, pages){
-    const ids = new Set();
-    const visit = (list) => { for (const shape of list ?? []) if (shape.kind === "image" && shape.imageId) ids.add(shape.imageId); };
-    Object.values(apps).forEach(visit);
-    Object.values(pages).forEach((set) => set.list.forEach((page) => visit(page.shapes)));
-    return Object.fromEntries([...ids].filter((id) => imageSources[id]).map((id) => [id, imageSources[id]]));
-  }
-
-  function currentDocument(withImages = true, name = documentName){
-    const { apps, pages } = currentApps();
-    return serializeDocument({
-      app, apps, pages,
-      canvas: { width: canvasWidth, height: canvasHeight, fill: canvasFill },
-      name,
-      io: { points: $state.snapshot(ioPoints), others: $state.snapshot(ioOthers) },
-      wiring: { power: $state.snapshot(powerList), control: $state.snapshot(controlList) },
-      settings: projectSettings(),
-      images: withImages ? usedImages(apps, pages) : null,
-      variables: $state.snapshot(variableNames)
-    });
-  }
-
-  function hasWiring(doc){
-    const list = doc.pages?.electrical?.list;
-    return Array.isArray(list) ? list.some((page) => page.shapes?.length) : Boolean(doc.apps?.electrical?.length);
-  }
-
-  function applyDocument(doc){
-    resetInteraction();
-    documents = {};
-    pageSets = {};
-    const next = APPS.some((entry) => entry.id === doc.app) ? doc.app : app;
-    nextId = highestId({ apps: doc.apps, pages: doc.pages }) + 1;
-    const ready = prepareShapes;
-    for (const entry of APPS) {
-      const appId = entry.id;
-      if (!PAGED_APPS.includes(appId)) {
-        if (doc.apps[appId]) documents[appId] = { shapes: ready(doc.apps[appId]), history: null };
-        continue;
-      }
-      const saved = doc.pages?.[appId];
-      const list = Array.isArray(saved?.list) && saved.list.length
-        ? saved.list.map((page, index) => ({ id: typeof page.id === "string" && page.id ? page.id : newPageId(), name: typeof page.name === "string" && page.name.trim() ? page.name.trim() : `Page ${index + 1}`, shapes: page.shapes }))
-        : [{ id: newPageId(), name: "Page 1", shapes: doc.apps[appId] ?? [] }];
-      const active = list.some((page) => page.id === saved?.active) ? saved.active : list[0].id;
-      pageSets[appId] = { active, list: list.map((page) => ({ id: page.id, name: page.name })) };
-      for (const page of list) documents[`${appId}:${page.id}`] = { shapes: ready(page.shapes), history: null };
-    }
-    app = next;
-    loadStashed(stashKey(next));
-    if (doc.canvas) {
-      if (doc.canvas.width > 0) canvasWidth = doc.canvas.width;
-      if (doc.canvas.height > 0) canvasHeight = doc.canvas.height;
-      if (typeof doc.canvas.fill === "string") canvasFill = doc.canvas.fill;
-    }
-    documentName = doc.name ?? null;
-    applySettings(doc.settings);
-    if (!doc.settings?.wiring && hasWiring(doc)) wiringPaper = "A3";
-    variableNames = doc.variables ?? [];
-    imageSources = doc.images ?? {};
-    ioPoints = doc.io?.points ?? [];
-    ioOthers = doc.io?.others ?? [];
-    powerList = normalizePower(doc.wiring?.power);
-    controlList = normalizeControl(doc.wiring?.control);
-  }
 
   const autosaved = loadAutosave();
   if (autosaved) applyDocument(autosaved);
   for (const appId of PAGED_APPS) ensurePages(appId);
-
-  function projectHash(text){
-    return hashText(text.replace(/"savedAt":"[^"]*",?/, "").replace(/"app":"[^"]*",?/, "").replace(/"active":"page-[^"]*",?/g, ""));
-  }
 
   let documentText = $derived(currentDocument());
   let documentHash = $derived(projectHash(documentText));
@@ -4265,16 +871,6 @@
     fileTimer = setTimeout(autosaveToFile, 1500);
   });
 
-  async function autosaveToFile(){
-    if (fileWriting || !fileHandle) return;
-    try {
-      await writeProject(fileHandle, documentName);
-    } catch (error) {
-      fileAccessState = await fileAccess(fileHandle);
-      if (fileAccessState === "granted") showFileNotice(`Autosave failed: ${error.message}`);
-    }
-  }
-
   let autosaveTimer;
   let autosaveWarned = false;
   $effect(() => {
@@ -4292,318 +888,15 @@
   let fileHandle = $state.raw(null);
   let fileAccessState = $state("none");
 
-  function linkFile(handle, access){
-    fileHandle = handle;
-    fileAccessState = handle ? access : "none";
-    rememberFile(handle);
-  }
-
-  async function ensureAccess(){
-    if (!fileHandle) return false;
-    if (fileAccessState !== "granted") fileAccessState = await fileAccess(fileHandle, true);
-    return fileAccessState === "granted";
-  }
-
-  async function resumeAutosave(){
-    if (await ensureAccess()) autosaveToFile();
-  }
-
-  async function setAutosaveFile(on){
-    if (!on) {
-      autosaveFile = false;
-      return;
-    }
-    if (!fileHandle) await saveProjectAs();
-    if (!fileHandle || !(await ensureAccess())) return;
-    autosaveFile = true;
-  }
-
   recallFile().then(async (handle) => {
     if (!handle || fileHandle || !canPickFiles || cleanDocumentName(handle.name) !== documentName) return;
     fileHandle = handle;
     fileAccessState = await fileAccess(handle);
   });
-  const FILE_TYPES = [{ description: "Pathfinder drawing", accept: { "application/json": [".json"] } }];
-  const PICKER_ID = "pathfinder-project";
+
   const canPickFiles = typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
 
-  function saveFailed(error){
-    if (error?.name !== "AbortError") showFileNotice(`Could not save: ${error.message}`);
-  }
-
-  async function writeProject(handle, name, adopt = true){
-    const text = currentDocument(true, name);
-    const hash = projectHash(text);
-    fileWriting = true;
-    try {
-      const writable = await handle.createWritable();
-      await writable.write(text);
-      await writable.close();
-      if (adopt) savedHash = hash;
-    } finally {
-      fileWriting = false;
-    }
-  }
-
-  async function saveProject(){
-    if (!fileHandle) return saveProjectAs();
-    if (!(await ensureAccess())) return saveProjectAs();
-    try {
-      await writeProject(fileHandle, documentName);
-      showFileNotice(`Saved to ${fileHandle.name}`);
-    } catch (error) {
-      saveFailed(error);
-    }
-  }
-
-  async function saveProjectAs(copy = false){
-    if (!canPickFiles) {
-      openSaveDialog(copy ? "copy" : "as");
-      return;
-    }
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: fileNameFor(documentName ?? defaultDocumentName()),
-        types: FILE_TYPES,
-        id: PICKER_ID,
-        ...(fileHandle ? { startIn: fileHandle } : {})
-      });
-      const name = cleanDocumentName(handle.name);
-      if (!copy) documentName = name;
-      await writeProject(handle, name, !copy);
-      if (!copy) linkFile(handle, "granted");
-      showFileNotice(copy ? `Saved a copy to ${handle.name}` : `Saved to ${handle.name}`);
-    } catch (error) {
-      saveFailed(error);
-    }
-  }
-
-  function downloadProject(name = documentName ?? defaultDocumentName(), adopt = false){
-    const fileName = fileNameFor(name);
-    const clean = cleanDocumentName(fileName);
-    if (adopt) {
-      documentName = clean;
-      linkFile(null);
-    }
-    const text = currentDocument(true, clean);
-    if (adopt) savedHash = projectHash(text);
-    const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showFileNotice(`Downloaded ${fileName}`);
-  }
-
-  function prepareShapes(list){
-    return freezePipes(anchorNames(nameFittings(migrateBranches(Array.isArray(list) ? list : [], () => nextId++))));
-  }
-
-  async function readProjectFile(){
-    if (typeof window.showOpenFilePicker === "function") {
-      const [handle] = await window.showOpenFilePicker({ types: FILE_TYPES, id: PICKER_ID });
-      return { text: await (await handle.getFile()).text(), name: handle.name };
-    }
-    const text = await pickFileText();
-    return { text, name: pickedFileName };
-  }
-
-  async function importPages(){
-    const set = pageSets[app];
-    if (!set) return;
-    try {
-      const file = await readProjectFile();
-      const doc = parseDocument(file.text);
-      const pages = importablePages(doc, app);
-      if (!pages.length) {
-        showFileNotice(`${file.name} has no ${currentApp.label} pages to import`);
-        return;
-      }
-      const offset = nextId;
-      const shifted = pages.map((page) => ({ ...page, shapes: shiftIds(page.shapes, offset) }));
-      nextId = highestId(shifted) + 1;
-      const images = { ...imageSources };
-      for (const page of pages) {
-        for (const imageId of imageIdsIn(page.shapes)) if (doc.images?.[imageId]) images[shiftImageId(imageId, offset)] = doc.images[imageId];
-      }
-      imageSources = images;
-      stashCurrent();
-      const taken = new Set(set.list.map((page) => page.name));
-      let first = null;
-      for (const page of shifted) {
-        let name = page.name;
-        for (let index = 2; taken.has(name); index += 1) name = `${page.name} (${index})`;
-        taken.add(name);
-        const id = newPageId();
-        first ??= id;
-        set.list.push({ id, name });
-        documents[`${app}:${id}`] = { shapes: prepareShapes(page.shapes), history: null };
-      }
-      set.active = first;
-      loadStashed(stashKey(app));
-      showFileNotice(`Imported ${shifted.length} page${shifted.length === 1 ? "" : "s"} from ${file.name}`);
-    } catch (error) {
-      if (error?.name !== "AbortError") showFileNotice(`Could not import: ${error.message}`);
-    }
-  }
-
-  function pickFileText(){
-    return new Promise((resolve, reject) => {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = ".json,application/json";
-      input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) return reject(Object.assign(new Error("No file"), { name: "AbortError" }));
-        pickedFileName = file.name;
-        resolve(await file.text());
-      };
-      input.click();
-    });
-  }
-
-  function newProject(){
-    const { apps, pages } = currentApps();
-    const filled = Object.values(apps).some((list) => list.length) || Object.values(pages).some((set) => set.list.some((page) => page.shapes.length)) || ioPoints.length > 0;
-    const pending = unsaved && filled && !(autosaveFile && fileHandle && fileAccessState === "granted");
-    if (pending && !window.confirm(`Start a new project? Unsaved changes in "${projectTitle}" will be lost.`)) return;
-    applyDocument({ app, apps: {}, pages: null, settings: null, images: {}, io: { points: [], others: [] }, name: null, canvas: { width: 1920, height: 1080, fill: "#FFFFFF" } });
-    linkFile(null);
-    savedHash = "";
-    showFileNotice("New project");
-  }
-
-  async function openDrawing(){
-    try {
-      let text;
-      if (typeof window.showOpenFilePicker === "function") {
-        const [handle] = await window.showOpenFilePicker({ types: FILE_TYPES, id: PICKER_ID });
-        text = await (await handle.getFile()).text();
-        applyDocument(parseDocument(text));
-        documentName = cleanDocumentName(handle.name) ?? documentName;
-        linkFile(handle, await fileAccess(handle));
-        savedHash = documentHash;
-        showFileNotice(`Opened ${handle.name}`);
-      } else {
-        text = await pickFileText();
-        applyDocument(parseDocument(text));
-        linkFile(null);
-        documentName = cleanDocumentName(pickedFileName) ?? documentName;
-        savedHash = documentHash;
-        showFileNotice("Drawing opened");
-      }
-    } catch (error) {
-      if (error?.name !== "AbortError") showFileNotice(`Could not open: ${error.message}`);
-    }
-  }
-
-  function viewKeydown(event){
-    if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return false;
-    const index = /^Digit([1-9])$/.exec(event.code)?.[1];
-    const target = index ? APPS[Number(index) - 1] : null;
-    if (!target) return false;
-    event.preventDefault();
-    switchApp(target.id);
-    return true;
-  }
-
   let viewTitle = $derived(ioVisible ? `${currentApp.label} · IO list` : currentApp.label);
-
-  function renameProject(value){
-    const clean = cleanDocumentName(value);
-    if (clean) documentName = clean;
-  }
-
-  function switchApp(id){
-    if (id === app) return;
-    stashCurrent();
-    ensurePages(id);
-    loadStashed(stashKey(id));
-    app = id;
-  }
-
-  function clearAll(){
-    shapes = [];
-    draft = null;
-    selectedId = null;
-  }
-
-  function handleKeydown(event){
-    const target = event.target;
-    if (typingInto(target) || target?.isContentEditable) return;
-    if (viewKeydown(event)) return;
-    if (electricBoard && !wiringListVisible && (event.key === "PageUp" || event.key === "PageDown")) {
-      event.preventDefault();
-      showSheet(sheetShown + (event.key === "PageDown" ? 1 : -1));
-      return;
-    }
-    if (ioVisible || wiringListVisible) {
-      const key = event.key.toLowerCase();
-      if ((event.ctrlKey || event.metaKey) && (key === "s" || key === "o")) appKeydown(event);
-      return;
-    }
-
-    if (roomKeydown(event)) return;
-    if (pipeKeydown(event)) return;
-    if (appKeydown(event)) return;
-
-    if (event.key === "Escape") {
-      draft = null;
-      selectedId = null;
-      showDisplaySettings = false;
-      return;
-    }
-
-    if (event.key.toLowerCase() === "z" && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      undo();
-      return;
-    }
-
-    if (event.key.toLowerCase() === "r" && tool === "line") {
-      cycleElbow(event.shiftKey ? -1 : 1);
-      return;
-    }
-
-    if ((event.key === "Delete" || event.key === "Backspace") && selectedId !== null) {
-      event.preventDefault();
-      removeShape(selectedId);
-      return;
-    }
-
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-
-    const shortcut = (currentApp.shortcuts ?? { s: "select", h: "pan" })[event.key.toLowerCase()];
-    if (shortcut && currentApp.tools.includes(shortcut)) pickTool(shortcut);
-  }
-
-  function appear(node, { duration = 240, dy = 6 } = {}) {
-    if (prefersReducedMotion.current) return { duration: 0 };
-    return {
-      duration,
-      easing: cubicOut,
-      css: (t, u) => `opacity: ${t}; transform: translate(0, ${u * dy}px);`
-    };
-  }
-
-  function addRow(node, { duration = 220 } = {}) {
-    if (prefersReducedMotion.current) return { duration: 0 };
-    const height = parseFloat(getComputedStyle(node).height);
-    return {
-      duration,
-      easing: cubicOut,
-      css: (t, u) => `
-        opacity: ${t};
-        height: ${t * height}px;
-        margin-top: ${u * -8}px;
-        align-items: flex-start;
-        overflow: hidden;
-      `
-    };
-  }
 
   let showDisplaySettings = $state(false);
   let settingsSection = $state("general");
@@ -4674,68 +967,7 @@
     return { target: element, title: element.name || spec.label, slots: elementSlots(element) };
   });
 
-  function addVariables(list){
-    variableNames = [...variableNames, ...list.filter((name) => !variableNames.includes(name))];
-    showFileNotice(`Added ${list.length} variable name${list.length === 1 ? "" : "s"}`);
-  }
-
-  function linkVariable(key, value){
-    if (linkTarget) setSlot(linkTarget.target, key, value);
-  }
-
-  function dropSpot(event){
-    const node = event.target?.closest?.("[data-link-key]");
-    if (!node) return null;
-    const fittingId = node.dataset.linkFitting;
-    return { shapeId: Number(node.dataset.linkShape), fittingId: fittingId === undefined ? null : Number(fittingId), key: node.dataset.linkKey };
-  }
-
-  function dropOwner(spot){
-    const shape = shapes.find((entry) => entry.id === spot.shapeId);
-    if (!shape) return null;
-    if (spot.fittingId === null) {
-      const spec = HYDRONIC_ELEMENTS[shape.type];
-      return { target: shape, title: shape.name || spec?.label || "Element", slots: elementSlots(shape) };
-    }
-    const fitting = shape.fittings?.find((entry) => entry.id === spot.fittingId);
-    return fitting ? { target: fitting, title: fitting.name || HYDRONIC_ELEMENTS[fitting.type]?.label || "Element", slots: fittingSlots(fitting) } : null;
-  }
-
-  function variableOver(event){
-    if (!draggingVariable) return;
-    const spot = dropSpot(event);
-    const same = spot && linkHover && spot.shapeId === linkHover.shapeId && spot.fittingId === linkHover.fittingId && spot.key === linkHover.key;
-    if (!same) linkHover = spot;
-    if (!spot) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "link";
-  }
-
-  function variableLeave(event){
-    if (!svgEl?.contains(event.relatedTarget)) linkHover = null;
-  }
-
-  function variableDrop(event){
-    const name = event.dataTransfer.getData("application/x-pathfinder-variable") || draggingVariable;
-    const spot = dropSpot(event);
-    linkHover = null;
-    draggingVariable = null;
-    if (!name || !spot) return;
-    event.preventDefault();
-    const owner = dropOwner(spot);
-    const slot = owner?.slots.find((entry) => entry.key === spot.key);
-    if (!slot) return;
-    setSlot(owner.target, spot.key, name);
-    const where = spot.key === "self" ? owner.title : `${owner.title} · ${slot.label}`;
-    showFileNotice(slot.value && slot.value !== name ? `${where}: ${slot.value} → ${name}` : `Linked ${name} to ${where}`);
-  }
-
   let wiringOpen = $state(false);
-
-  function focusName(node){
-    node.focus();
-    node.select();
-  }
 
   let fileItems = $derived([
     { label: "New project", hint: "Start an empty project", onclick: newProject },
@@ -4768,82 +1000,8 @@
     app === "electrical" ? { label: "Download DXF", hint: "All pages in one drawing, in millimetres, for AutoCAD and other CAD tools", disabled: !shapes.some((shape) => shape.kind === "equipment"), onclick: exportDxf } : null
   ]);
 
-  function readHex(event, current){
-    const value = event.currentTarget.value.trim();
-    const next = /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : current;
-    event.currentTarget.value = next;
-    return next;
-  }
-
-  function buildPgd(){
-    const target = exportTargets.pgd;
-    return hydronicToPgd(shapes, { ...hydronicStyle, iconSources: ICON_SOURCES }, { width: target.width, height: target.height, design: { width: canvasWidth, height: canvasHeight }, minFont: target.minFont, name: "Page1", tags: { prefix: pgdPrefix, float: pgdFloat } });
-  }
-
-  async function copyPgd(){
-    try {
-      await navigator.clipboard.writeText(buildPgd().page);
-      showFileNotice("pGD page copied to the clipboard");
-    } catch (err) {
-      showFileNotice(`Could not copy: ${err.message}`);
-    }
-  }
-
-  function downloadPgdImages(){
-    const result = buildPgd();
-    const blob = zipFiles(result.images.map((image) => ({ name: image.name.replace(/^images\//, ""), data: image.data })));
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "pathfinder-pgd-images.zip";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showFileNotice(`Downloaded ${result.images.length} pGD image${result.images.length === 1 ? "" : "s"}`);
-  }
-
-  function buildSvg(){
-    if (app === "hydronic" || app === "network") {
-      const target = exportTargets.atvise;
-      const fit = fitTarget({ width: canvasWidth, height: canvasHeight }, target);
-      const scaledTexts = shapes.filter((shape) => shape.kind === "text").map((shape) => textToAtvise(scaleText(shape, fit)));
-      return atviseDocument(target.width, target.height, [hydronicToSvg(shapes, hydronicStyle, fit), ...scaledTexts].filter(Boolean).join("\n"));
-    }
-    const body = [roomsToSvg(shapes, roomStyle, canvasFill), ...layered(shapes).filter((shape) => !isRoomShape(shape) && shape.kind !== "image" && shape.kind !== "wall").map((shape) => {
-      if (shape.kind === "curve") return curveToSvg(shape, lineColor);
-      if (shape.kind === "text") return textToAtvise(shape);
-      if (shape.kind === "line") {
-        return `<path d="${pathFor(shape.points)}" fill="none" id="trace_${shape.id}" stroke="${lineColor}" stroke-linecap="square" stroke-linejoin="miter" stroke-width="${lineWidth}"/>`;
-      }
-      return `<rect fill="${rectFilled ? rectFill : "none"}" height="${shape.height}" id="rect_${shape.id}" stroke="${rectStroke}" stroke-width="${lineWidth}" width="${shape.width}" x="${shape.x}" y="${shape.y}"/>`;
-    })].filter(Boolean).join("\n  ");
-
-    return atviseDocument(canvasWidth, canvasHeight, body);
-
-  }
-
   let atviseDialog = $state(false);
 
-  function startExport(){
-    if (app === "hydronic" || app === "network") atviseDialog = true;
-    else handleExport();
-  }
-
-  function confirmAtvise(prefix){
-    nodePrefix = String(prefix ?? "").trim();
-    atviseDialog = false;
-    handleExport();
-  }
-
-  async function handleExport(){
-    try {
-      await navigator.clipboard.writeText(buildSvg());
-      showFileNotice("SVG copied to the clipboard");
-    } catch (err) {
-      showFileNotice(`Could not copy: ${err.message}`);
-    }
-  }
 </script>
 
 <style>
