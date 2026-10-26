@@ -1,0 +1,6 @@
+{
+  "app": "electrical",
+  "name": "Wiring diagram",
+  "version": "1.0",
+  "paths": ["src/lib/apps/wiring", "src/lib/diagram"]
+}

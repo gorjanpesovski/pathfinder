@@ -1,0 +1,6 @@
+{
+  "app": "network",
+  "name": "Network topology",
+  "version": "1.0",
+  "paths": ["src/lib/apps/network", "src/lib/diagram"]
+}

@@ -1,0 +1,6 @@
+{
+  "app": "floorplan",
+  "name": "Floor plan",
+  "version": "1.0",
+  "paths": ["src/lib/apps/floorplan"]
+}

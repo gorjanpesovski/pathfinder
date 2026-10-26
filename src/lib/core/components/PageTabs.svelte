@@ -3,7 +3,7 @@
   import { flip } from "svelte/animate";
   import { portal } from "$lib/core/actions/portal.js";
 
-  let { pages, active, onselect, onadd, onrename, ondelete, onmove, onduplicate, version = "", build = "", position = "", marked = new Set() } = $props();
+  let { pages, active, onselect, onadd, onrename, ondelete, onmove, onduplicate, version = "", detail = "", position = "", marked = new Set() } = $props();
 
   const DRAG_THRESHOLD = 5;
 
@@ -350,7 +350,7 @@
   {/each}
   <div class="meta">
     {#if position}<span class="position" title="Cursor position">{position}</span>{/if}
-    {#if version}<span title="Pathfinder {version}{build ? ` · commit ${build}` : ""}">{version}</span>{/if}
+    {#if version}<span title={detail || version}>{version}</span>{/if}
   </div>
 </div>
 

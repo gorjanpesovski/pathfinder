@@ -9,7 +9,8 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"lint": "prettier --check .",
-		"format": "prettier --write ."
+		"format": "prettier --write .",
+		"changelog": "node scripts/changelog.js"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^3.0.10",

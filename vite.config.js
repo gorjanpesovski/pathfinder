@@ -2,7 +2,7 @@ import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 // Reads git at build time. Falls back rather than throwing, so the build still
 // works where git is unavailable (a source tarball, a container without git).
@@ -23,10 +23,24 @@ const [major, minor] = JSON.parse(readFileSync('./package.json', 'utf8')).versio
 const APP_VERSION = `v${major}.${minor}.${git('rev-list --count HEAD', '0')}`;
 const APP_COMMIT = git('rev-parse --short HEAD', 'dev');
 
+function appVersions() {
+	const root = './src/lib/apps';
+	return Object.fromEntries(
+		readdirSync(root, { withFileTypes: true })
+			.filter((entry) => entry.isDirectory() && existsSync(`${root}/${entry.name}/version.json`))
+			.map((entry) => {
+				const info = JSON.parse(readFileSync(`${root}/${entry.name}/version.json`, 'utf8'));
+				const paths = [...info.paths, ':(exclude,glob)**/CHANGELOG.md'].map((path) => `"${path}"`).join(' ');
+				return [info.app, `v${info.version}.${git(`rev-list --count HEAD -- ${paths}`, '0')}`];
+			})
+	);
+}
+
 export default defineConfig({
 	define: {
 		__APP_VERSION__: JSON.stringify(APP_VERSION),
-		__APP_COMMIT__: JSON.stringify(APP_COMMIT)
+		__APP_COMMIT__: JSON.stringify(APP_COMMIT),
+		__APP_VERSIONS__: JSON.stringify(appVersions())
 	},
 
 	plugins: [

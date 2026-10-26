@@ -424,6 +424,8 @@
   let app = $state(loadText("pathfinder.app", "floorplan"));
   $effect(() => saveText("pathfinder.app", app));
   let currentApp = $derived(appById(app));
+  let appVersion = $derived(__APP_VERSIONS__[app] ?? __APP_VERSION__);
+  let versionDetail = $derived(`${currentApp.label} ${appVersion} · Pathfinder ${__APP_VERSION__} · commit ${__APP_COMMIT__}`);
 
   let tool = $state("select");
   let elbow = $state("h");
@@ -2109,7 +2111,7 @@
 <div class="header">
   <div class="header-left">
     <div class="logo-section">
-      <img class="logo" src="{base}/logo.svg" alt="Pathfinder" title="Pathfinder {__APP_VERSION__} · commit {__APP_COMMIT__}">
+      <img class="logo" src="{base}/logo.svg" alt="Pathfinder" title={versionDetail}>
     </div>
     <nav class="menus" aria-label="Main menu">
       <HeaderMenu label="File" items={fileItems} width={290}
@@ -2522,7 +2524,7 @@
 
     {#if pageSet && !ioVisible}
       <PageTabs pages={pageSet.list} active={pageSet.active} onselect={selectPage} onadd={addPage} onrename={renamePage} ondelete={deletePage}
-                onmove={movePage} onduplicate={duplicatePage} version={__APP_VERSION__} build={__APP_COMMIT__}
+                onmove={movePage} onduplicate={duplicatePage} version={appVersion} detail={versionDetail}
                 marked={markedPages} position={cursor ? `${draft ? `${draft.start.x}, ${draft.start.y} → ` : ""}${cursor.x}, ${cursor.y}` : ""}/>
     {/if}
   </div>
