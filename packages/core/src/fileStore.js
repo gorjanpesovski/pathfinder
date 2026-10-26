@@ -25,6 +25,20 @@ function run(mode, action){
   }));
 }
 
+export async function rememberValue(key, value){
+  try {
+    await run("readwrite", (store) => store.put(value, key));
+  } catch {}
+}
+
+export async function recallValue(key){
+  try {
+    return await run("readonly", (store) => store.get(key)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function rememberFile(handle, slot){
   try {
     await run("readwrite", (store) => handle ? store.put(handle, slot) : store.delete(slot));

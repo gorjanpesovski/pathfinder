@@ -125,6 +125,7 @@ export function createPages(ctx){
     ctx.leaveApp();
     ctx.app = id;
     ctx.enterApp(id);
+    ctx.showRoute(id);
   }
 
   return { newPageId, ensurePages, stashKey, storedShapes, pageShapes, resetInteraction, stashCurrent, loadStashed, selectPage, addPage, movePage, duplicatePage, renamePage, deletePage, switchApp };

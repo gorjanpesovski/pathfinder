@@ -15,6 +15,7 @@ import { anchorNames, nameFittings } from "@pathfinder/diagram/fittingLabel.js";
 import { migrateBranches } from "@pathfinder/diagram/branch.js";
 import { importablePages, shiftIds, imageIdsIn, shiftImageId } from "@pathfinder/core/importPages.js";
 import { APP_DATA, readDocument, blankPart, partText, appLabel } from "./documents.js";
+import { addRecent, takeQueuedOpen } from "$lib/main/recent.js";
 
 const CANVAS = { width: 1920, height: 1080, fill: "#FFFFFF" };
 const SESSION_KEYS = ["documentName", "canvasWidth", "canvasHeight", "canvasFill", "fileHandle", "fileAccessState", "autosaveFile", "savedHash"];
@@ -253,6 +254,18 @@ export function createProject(ctx){
       } catch {}
     }
     openStored(ctx.app);
+    setTimeout(openQueued);
+  }
+
+  async function openQueued(){
+    const file = takeQueuedOpen();
+    if (!file) return;
+    try {
+      const text = file.text ?? await (await file.handle.getFile()).text();
+      await openFile({ ...file, text });
+    } catch (error) {
+      ctx.showFileNotice(`Could not open ${file.name}: ${error.message}`);
+    }
   }
 
   function writeAutosave(appId, text){
@@ -295,6 +308,7 @@ export function createProject(ctx){
     ctx.fileHandle = handle;
     ctx.fileAccessState = handle ? access : "none";
     rememberFile(handle, ctx.app);
+    addRecent(handle, ctx.app);
   }
 
   async function ensureAccess(){
@@ -480,34 +494,37 @@ export function createProject(ctx){
 
   async function openDrawing(){
     try {
-      const file = await readProjectFile();
-      const doc = readDocument(file.text, cleanDocumentName(file.name));
-      if (!doc.legacy) {
-        ctx.switchApp(doc.app);
-        applyDocument({ ...doc.parts[doc.app], name: cleanDocumentName(file.name) ?? doc.parts[doc.app].name });
-        linkFile(file.handle, file.handle ? await fileAccess(file.handle) : "none");
-        ctx.savedHash = ctx.documentHash;
-        ctx.showFileNotice(`Opened ${file.name}`);
-        return;
-      }
-      const apps = Object.keys(doc.parts);
-      if (!apps.length) {
-        ctx.showFileNotice(`${file.name} has no drawings to open`);
-        return;
-      }
-      for (const appId of apps) {
-        ctx.switchApp(appId);
-        applyDocument(doc.parts[appId]);
-        linkFile(null);
-        ctx.savedHash = "";
-      }
-      ctx.switchApp(apps.includes(doc.app) ? doc.app : apps[0]);
-      ctx.showFileNotice(apps.length === 1
-        ? `Opened ${file.name} as a new ${appLabel(apps[0])} file. Save it to keep it.`
-        : `Opened ${file.name} as ${apps.length} separate files, one per app. Save each one to keep it.`);
+      await openFile(await readProjectFile());
     } catch (error) {
       if (error?.name !== "AbortError") ctx.showFileNotice(`Could not open: ${error.message}`);
     }
+  }
+
+  async function openFile(file){
+    const doc = readDocument(file.text, cleanDocumentName(file.name));
+    if (!doc.legacy) {
+      ctx.switchApp(doc.app);
+      applyDocument({ ...doc.parts[doc.app], name: cleanDocumentName(file.name) ?? doc.parts[doc.app].name });
+      linkFile(file.handle, file.handle ? await fileAccess(file.handle) : "none");
+      ctx.savedHash = ctx.documentHash;
+      ctx.showFileNotice(`Opened ${file.name}`);
+      return;
+    }
+    const apps = Object.keys(doc.parts);
+    if (!apps.length) {
+      ctx.showFileNotice(`${file.name} has no drawings to open`);
+      return;
+    }
+    for (const appId of apps) {
+      ctx.switchApp(appId);
+      applyDocument(doc.parts[appId]);
+      linkFile(null);
+      ctx.savedHash = "";
+    }
+    ctx.switchApp(apps.includes(doc.app) ? doc.app : apps[0]);
+    ctx.showFileNotice(apps.length === 1
+      ? `Opened ${file.name} as a new ${appLabel(apps[0])} file. Save it to keep it.`
+      : `Opened ${file.name} as ${apps.length} separate files, one per app. Save each one to keep it.`);
   }
 
   function renameProject(value){

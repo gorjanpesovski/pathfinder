@@ -16,6 +16,7 @@ function defineApp(config){
 export const APPS = [
   defineApp({
     id: "floorplan",
+    route: "floorplan",
     label: "Floor plan",
     description: "Floors, rooms, walls, doors and furniture",
     special: ["room-rect", "room-poly", "curve"],
@@ -26,6 +27,7 @@ export const APPS = [
   }),
   defineApp({
     id: "hydronic",
+    route: "hydronic",
     label: "Hydronic station",
     description: "Pumps, valves, heat exchangers and piping",
     special: ["pipe"],
@@ -37,6 +39,7 @@ export const APPS = [
   }),
   defineApp({
     id: "network",
+    route: "network",
     label: "Network topology",
     description: "Controllers, switches, devices and their links",
     special: ["pipe"],
@@ -48,6 +51,7 @@ export const APPS = [
   }),
   defineApp({
     id: "electrical",
+    route: "wiring",
     label: "Wiring diagram",
     description: "Power, control and communication wiring",
     special: ["pipe"],
@@ -62,4 +66,8 @@ export const APPS = [
 
 export function appById(id){
   return APPS.find((entry) => entry.id === id) ?? APPS[0];
+}
+
+export function appByRoute(route){
+  return APPS.find((entry) => entry.route === route) ?? null;
 }

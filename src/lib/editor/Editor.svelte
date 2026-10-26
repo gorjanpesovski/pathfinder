@@ -1,5 +1,7 @@
 <script>
   import { base } from "$app/paths";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { untrack } from "svelte";
   import Toolbar from "@pathfinder/core/components/Toolbar.svelte";
   import ZoomControls from "@pathfinder/core/components/ZoomControls.svelte";
@@ -93,6 +95,7 @@
   import { createWiring } from "@pathfinder/wiring/editor.svelte.js";
 
   const ctx = {
+    showRoute,
     get ELBOW_ORDER(){ return ELBOW_ORDER; },
     get canvasWidth(){ return canvasWidth; },
     set canvasWidth(value){ canvasWidth = value; },
@@ -343,6 +346,12 @@
     get atviseDialog(){ return atviseDialog; },
     set atviseDialog(value){ atviseDialog = value; }
   };
+
+  function showRoute(id){
+    const path = `${base}/${appById(id).route}`;
+    if (page.url.pathname !== path) goto(path, { noScroll: true, keepFocus: true });
+  }
+
   const { fitContent, zoomToSelection, manhattan, rectBetween, pathFor, describe, commitFields, showFileNotice, focusName, readHex } = Object.assign(ctx, createCanvas(ctx));
   const { redo, undo } = Object.assign(ctx, createHistory(ctx));
   const { shapeById, selectShape, selectionUnits, unitBox, groupSelection, ungroupSelection, commonValue, reorderSelection, openArrange, alignSelection, distributeSelection, lockSelection, pickTool, deleteSelected, removeShape } = Object.assign(ctx, createSelection(ctx));
@@ -421,8 +430,12 @@
   $effect(() => saveFlag("pathfinder.elementsOpen", elementsOpen));
   let variablePanel = $state(loadFlag("pathfinder.variablePanel", false));
   $effect(() => saveFlag("pathfinder.variablePanel", variablePanel));
-  let app = $state(loadText("pathfinder.app", "floorplan"));
-  $effect(() => saveText("pathfinder.app", app));
+  let { route } = $props();
+  let app = $state(untrack(() => route));
+  $effect(() => {
+    const next = route;
+    untrack(() => switchApp(next));
+  });
   let currentApp = $derived(appById(app));
   let appVersion = $derived(__APP_VERSIONS__[app] ?? __APP_VERSION__);
   let versionDetail = $derived(`${currentApp.label} ${appVersion} · Pathfinder ${__APP_VERSION__} · commit ${__APP_COMMIT__}`);
@@ -1044,6 +1057,10 @@
     align-items: center;
     margin-right: 2px;
     color: #1E293B;
+  }
+
+  .logo-link {
+    display: flex;
   }
 
   .logo{
@@ -2101,7 +2118,9 @@
 
 </style>
 
-<title>{unsaved && !(autosaveFile && fileHandle) ? "• " : ""}{projectTitle} — Pathfinder</title>
+<svelte:head>
+  <title>{unsaved && !(autosaveFile && fileHandle) ? "• " : ""}{projectTitle} — Pathfinder</title>
+</svelte:head>
 
 <svelte:window onkeydown={handleKeydown} onpaste={handlePaste}
                oncopy={handleCopy} oncut={handleCut}/>
@@ -2111,7 +2130,7 @@
 <div class="header">
   <div class="header-left">
     <div class="logo-section">
-      <img class="logo" src="{base}/logo.svg" alt="Pathfinder" title={versionDetail}>
+      <a class="logo-link" href="{base}/" title="Main · {versionDetail}"><img class="logo" src="{base}/logo.svg" alt="Pathfinder"></a>
     </div>
     <nav class="menus" aria-label="Main menu">
       <HeaderMenu label="File" items={fileItems} width={290}
